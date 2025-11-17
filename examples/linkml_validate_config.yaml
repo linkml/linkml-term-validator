@@ -1,0 +1,45 @@
+# Example configuration file for using linkml-term-validator plugins with linkml-validate
+#
+# Usage:
+#   linkml-validate --config linkml_validate_config.yaml
+#
+# This demonstrates how to integrate linkml-term-validator's ontology validation
+# plugins into the standard LinkML validation workflow.
+
+# Path to your LinkML schema
+schema: examples/simple_schema.yaml
+
+# Optional: specify target class to validate against
+# target_class: Person
+
+# Data sources to validate
+data_sources:
+  - examples/simple_data.yaml
+
+# Validation plugins to use
+plugins:
+  # Standard JSON Schema validation (built-in to LinkML)
+  JsonschemaValidationPlugin:
+    closed: true
+
+  # Ontology term validation for dynamic enums
+  # Full module path: linkml_term_validator.plugins.DynamicEnumPlugin
+  "linkml_term_validator.plugins.DynamicEnumPlugin":
+    oak_adapter_string: "sqlite:obo:"
+    cache_labels: true
+    cache_dir: cache
+    # Optional: oak_config_path: oak_config.yaml
+
+  # Binding constraint validation
+  "linkml_term_validator.plugins.BindingValidationPlugin":
+    oak_adapter_string: "sqlite:obo:"
+    validate_labels: true
+    cache_labels: true
+    cache_dir: cache
+    # Optional: oak_config_path: oak_config.yaml
+
+# Note: For schema validation (permissible values), use linkml-term-validator CLI:
+#   linkml-term-validator validate-schema schema.yaml
+#
+# The PermissibleValueMeaningPlugin is designed for schema validation,
+# not data instance validation, so it's not typically used with linkml-validate.

@@ -1,0 +1,47 @@
+id: https://example.org/test-dynamic-enums
+name: test-dynamic-enums
+description: Test schema with dynamic enums for unit testing
+
+prefixes:
+  TEST: http://example.org/TEST_
+  linkml: https://w3id.org/linkml/
+
+default_prefix: test-dynamic-enums
+default_range: string
+
+classes:
+  Sample:
+    description: A sample with ontology-based fields
+    attributes:
+      id:
+        identifier: true
+        required: true
+      process_type:
+        description: A biological process type
+        range: ProcessTypeEnum
+        required: false
+      term:
+        description: Any descendant of root term
+        range: RootDescendantsEnum
+        required: false
+
+enums:
+  # Dynamic enum using reachable_from
+  ProcessTypeEnum:
+    description: Any biological process (dynamic enum with reachable_from)
+    reachable_from:
+      source_ontology: simpleobo:tests/data/test_ontology.obo
+      source_nodes:
+        - TEST:0000005  # biological_process
+      relationship_types:
+        - rdfs:subClassOf
+
+  # Another dynamic enum
+  RootDescendantsEnum:
+    description: Any descendant of root term
+    reachable_from:
+      source_ontology: simpleobo:tests/data/test_ontology.obo
+      source_nodes:
+        - TEST:0000001  # root term
+      relationship_types:
+        - rdfs:subClassOf

@@ -1,0 +1,7 @@
+# Simple test data for linkml-validate integration
+- name: Alice
+  biological_process: BIOLOGICAL_PROCESS
+- name: Bob
+  biological_process: CELL_CYCLE
+- name: Charlie
+  biological_process: INVALID_VALUE  # This should fail validation

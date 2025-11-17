@@ -1,0 +1,11 @@
+# Simple configuration for testing linkml-validate with our plugins
+schema: examples/simple_schema.yaml
+target_class: Person
+
+data_sources:
+  - examples/simple_data.yaml
+
+plugins:
+  # Standard JSON Schema validation
+  JsonschemaValidationPlugin:
+    closed: true

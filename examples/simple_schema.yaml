@@ -1,0 +1,29 @@
+# Simple schema for testing linkml-validate integration
+id: https://example.org/simple-schema
+name: simple-schema
+
+prefixes:
+  GO: http://purl.obolibrary.org/obo/GO_
+  linkml: https://w3id.org/linkml/
+
+default_prefix: simple-schema
+default_range: string
+
+classes:
+  Person:
+    attributes:
+      name:
+        required: true
+      biological_process:
+        range: BiologicalProcessEnum
+        required: false
+
+enums:
+  BiologicalProcessEnum:
+    permissible_values:
+      BIOLOGICAL_PROCESS:
+        title: biological_process
+        meaning: GO:0008150
+      CELL_CYCLE:
+        title: cell cycle
+        meaning: GO:0007049

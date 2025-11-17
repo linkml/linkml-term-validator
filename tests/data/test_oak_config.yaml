@@ -1,0 +1,5 @@
+# OAK configuration for unit tests
+# Maps the TEST prefix to use our local test ontology
+
+ontology_adapters:
+  TEST: simpleobo:tests/data/test_ontology.obo

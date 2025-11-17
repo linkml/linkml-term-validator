@@ -1,0 +1,9 @@
+# Invalid test data for dynamic enum validation
+- id: sample1
+  process_type: TEST:0000001  # root term - NOT a biological_process!
+
+- id: sample2
+  process_type: TEST:0000002  # child term one - NOT under biological_process!
+
+- id: sample3
+  term: INVALID:0000001  # completely invalid term

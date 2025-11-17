@@ -1,0 +1,32 @@
+# Configuration for OAK (Ontology Access Kit) adapters
+# This file specifies how to access different ontologies for term validation
+
+ontology_adapters:
+  # Standard OBO ontologies via sqlite
+  # These use pre-downloaded sqlite databases from the OBO library
+  GO: sqlite:obo:go
+  CHEBI: sqlite:obo:chebi
+  UBERON: sqlite:obo:uberon
+  CL: sqlite:obo:cl
+  ENVO: sqlite:obo:envo
+  MONDO: sqlite:obo:mondo
+  HP: sqlite:obo:hp
+  PATO: sqlite:obo:pato
+
+  # OLS (Ontology Lookup Service) - use for ontologies not in sqlite
+  # Example:
+  # CUSTOM: ols:
+
+  # BioPortal adapter (requires API key in environment)
+  # Example:
+  # NCIT: bioportal:
+
+  # Skip validation for these prefixes (use empty string)
+  xsd: ""
+  rdf: ""
+  rdfs: ""
+  owl: ""
+
+  # Add your custom ontology mappings below:
+  # MY_ONTOLOGY: sqlite:obo:myont
+  # EXTERNAL_API: rest:custom:

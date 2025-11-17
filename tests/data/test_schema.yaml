@@ -1,0 +1,46 @@
+id: https://example.org/test-schema
+name: test-schema
+title: Test Schema for Term Validation
+description: A simple test schema with enum examples
+
+prefixes:
+  test: https://example.org/test/
+  GO: http://purl.obolibrary.org/obo/GO_
+  CHEBI: http://purl.obolibrary.org/obo/CHEBI_
+
+default_prefix: test
+
+enums:
+  BiologicalProcessEnum:
+    description: Examples of biological processes
+    permissible_values:
+      BIOLOGICAL_PROCESS:
+        title: biological process
+        description: A biological process
+        meaning: GO:0008150
+
+      CELL_CYCLE:
+        title: cell cycle
+        description: The progression of biochemical and morphological phases
+        meaning: GO:0007049
+
+  ChemicalEntityEnum:
+    description: Examples of chemical entities
+    permissible_values:
+      WATER:
+        title: water
+        description: An oxygen hydride
+        meaning: CHEBI:15377
+
+      GLUCOSE:
+        title: glucose
+        description: A monosaccharide
+        meaning: CHEBI:17234
+
+  SimpleEnum:
+    description: Enum without meanings
+    permissible_values:
+      OPTION_A:
+        description: First option
+      OPTION_B:
+        description: Second option

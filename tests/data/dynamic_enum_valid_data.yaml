@@ -1,0 +1,12 @@
+# Valid test data for dynamic enum validation
+# Note: reachable_from excludes source nodes, so we only use descendants
+
+- id: sample1
+  process_type: TEST:0000006  # cell_cycle (child of biological_process)
+  term: TEST:0000002  # child term one (child of root)
+
+- id: sample2
+  term: TEST:0000003  # child term two (child of root)
+
+- id: sample3
+  term: TEST:0000004  # grandchild term (grandchild of root)

@@ -1,0 +1,37 @@
+format-version: 1.2
+data-version: test/1.0
+ontology: test
+
+[Term]
+id: TEST:0000001
+name: root term
+def: "The root term for testing" []
+
+[Term]
+id: TEST:0000002
+name: child term one
+def: "First child term" []
+is_a: TEST:0000001 ! root term
+
+[Term]
+id: TEST:0000003
+name: child term two
+def: "Second child term" []
+is_a: TEST:0000001 ! root term
+
+[Term]
+id: TEST:0000004
+name: grandchild term
+def: "A grandchild term" []
+is_a: TEST:0000002 ! child term one
+
+[Term]
+id: TEST:0000005
+name: biological_process
+def: "A test biological process" []
+
+[Term]
+id: TEST:0000006
+name: cell_cycle
+def: "A test cell cycle" []
+is_a: TEST:0000005 ! biological_process
