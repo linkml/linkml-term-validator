@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+         <loc>https://linkml.github.io/linkml-term-validator/</loc>
+         <lastmod>2025-11-17</lastmod>
+    </url>
+    <url>
+         <loc>https://linkml.github.io/linkml-term-validator/anti-hallucination/</loc>
+         <lastmod>2025-11-17</lastmod>
+    </url>
+    <url>
+         <loc>https://linkml.github.io/linkml-term-validator/caching/</loc>
+         <lastmod>2025-11-17</lastmod>
+    </url>
+    <url>
+         <loc>https://linkml.github.io/linkml-term-validator/cli-reference/</loc>
+         <lastmod>2025-11-17</lastmod>
+    </url>
+    <url>
+         <loc>https://linkml.github.io/linkml-term-validator/configuration/</loc>
+         <lastmod>2025-11-17</lastmod>
+    </url>
+    <url>
+         <loc>https://linkml.github.io/linkml-term-validator/ontology-access/</loc>
+         <lastmod>2025-11-17</lastmod>
+    </url>
+    <url>
+         <loc>https://linkml.github.io/linkml-term-validator/plugin-reference/</loc>
+         <lastmod>2025-11-17</lastmod>
+    </url>
+    <url>
+         <loc>https://linkml.github.io/linkml-term-validator/validation-types/</loc>
+         <lastmod>2025-11-17</lastmod>
+    </url>
+</urlset>
