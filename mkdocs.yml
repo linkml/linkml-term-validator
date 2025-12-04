@@ -2,6 +2,8 @@
 site_name: "linkml-term-validator"
 theme:
   name: material
+  logo: assets/linkml-logo_color.png
+  favicon: assets/linkml-logo_color.png
   # palette:
   #  scheme: slate
   #  primary: cyan
@@ -33,9 +35,15 @@ nav:
   - How-To Guides:
       - Configuration: configuration.md
   - Reference:
+      - Schema Validation: schema-validation.md
+      - Data Validation (Dynamic Enums): data-validation.md
+      - Binding Validation: binding-validation.md
       - CLI Reference: cli-reference.md
       - Plugin Reference: plugin-reference.md
   - Explanation:
+      - Semantic Artefacts Primer: ontologies-primer.md
+      - Enumerations: enumerations.md
+      - Bindings Explained: bindings-explained.md
       - Validation Types: validation-types.md
       - Ontology Access: ontology-access.md
       - Caching: caching.md

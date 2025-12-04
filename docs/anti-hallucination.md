@@ -34,6 +34,9 @@ This dramatically reduces hallucinations because the AI must get **two interdepe
 ### 1. Define Schemas with Binding Constraints
 
 ```yaml
+prefixes:
+  rdfs: http://www.w3.org/2000/01/rdf-schema#
+
 classes:
   GeneAnnotation:
     slots:
@@ -50,6 +53,10 @@ classes:
     slots:
       - id        # AI must provide both
       - label     # fields correctly
+    slot_usage:
+      label:
+        implements:
+          - rdfs:label  # Explicit: this field should match ontology label
 
 enums:
   BiologicalProcessEnum:
@@ -60,6 +67,8 @@ enums:
       relationship_types:
         - rdfs:subClassOf
 ```
+
+The `implements: [rdfs:label]` declaration explicitly tells the validator that this field should be validated against the ontology's `rdfs:label`. This is more robust than relying on naming conventions.
 
 ### 2. Validate AI-Generated Outputs Before Committing
 

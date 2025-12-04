@@ -130,11 +130,10 @@ def validate_schema(
 
 @app.command()
 def validate_data(
-    data_path: Annotated[
-        Path,
+    data_paths: Annotated[
+        list[Path],
         typer.Argument(
-            help="Path to data file (YAML/JSON)",
-            exists=True,
+            help="Path(s) to data file(s) (YAML/JSON)",
         ),
     ],
     schema_path: Annotated[
@@ -205,11 +204,19 @@ def validate_data(
     - Dynamic enum definitions (reachable_from, matches, concepts)
     - Binding constraints on nested object fields
 
+    Accepts multiple data files - each is validated independently.
+
     Examples:
         linkml-term-validator validate-data data.yaml --schema schema.yaml
         linkml-term-validator validate-data data.yaml -s schema.yaml -t Person
-        linkml-term-validator validate-data data.yaml -s schema.yaml --labels
+        linkml-term-validator validate-data *.yaml -s schema.yaml --labels
     """
+    # Verify all data files exist
+    for data_path in data_paths:
+        if not data_path.exists():
+            typer.echo(f"❌ File not found: {data_path}", err=True)
+            raise typer.Exit(code=1)
+
     # Build plugin list based on options
     plugins = []
 
@@ -242,21 +249,46 @@ def validate_data(
         validation_plugins=plugins,
     )
 
-    # Load and validate data
-    loader = default_loader_for_file(data_path)
-    report = validator.validate_source(loader, target_class=target_class)
+    # Validate each data file
+    total_issues = 0
+    failed_files = []
 
-    # Print results
-    if len(report.results) == 0:
+    for data_path in data_paths:
+        loader = default_loader_for_file(data_path)
+        report = validator.validate_source(loader, target_class=target_class)
+
+        if len(report.results) == 0:
+            if len(data_paths) > 1:
+                typer.echo(f"✅ {data_path.name}")
+        else:
+            failed_files.append(data_path)
+            total_issues += len(report.results)
+            if len(data_paths) > 1:
+                typer.echo(f"\n❌ {data_path.name} - {len(report.results)} issue(s):")
+            else:
+                typer.echo(f"\n❌ Validation failed with {len(report.results)} issue(s):\n")
+            for result in report.results:
+                severity_emoji = "❌" if result.severity.name == "ERROR" else "⚠️ "
+                typer.echo(f"  {severity_emoji} {result.severity.name}: {result.message}")
+                if result.context:
+                    for ctx in result.context:
+                        typer.echo(f"      {ctx}")
+
+    # Output summary
+    if len(data_paths) > 1:
+        typer.echo("")
+        if failed_files:
+            typer.echo(
+                f"Summary: {len(failed_files)}/{len(data_paths)} files failed, "
+                f"{total_issues} total issue(s)"
+            )
+        else:
+            typer.echo(f"✅ All {len(data_paths)} files passed validation")
+    elif not failed_files:
+        # Single file success
         typer.echo("✅ Validation passed")
-    else:
-        typer.echo(f"\n❌ Validation failed with {len(report.results)} issue(s):\n")
-        for result in report.results:
-            severity_emoji = "❌" if result.severity.name == "ERROR" else "⚠️ "
-            typer.echo(f"{severity_emoji} {result.severity.name}: {result.message}")
-            if result.context:
-                for ctx in result.context:
-                    typer.echo(f"    {ctx}")
+
+    if failed_files:
         raise typer.Exit(code=1)
 
 
@@ -335,7 +367,7 @@ def validate_all(
     if schema_path:
         # Data validation mode - call validate_data directly
         validate_data(
-            data_path=input_path,
+            data_paths=[input_path],
             schema_path=schema_path,
             target_class=None,
             validate_bindings=True,
