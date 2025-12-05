@@ -166,17 +166,19 @@ Consider adding these to oak_config.yaml to enable validation.
 
 Validates data instances against dynamic enums and binding constraints.
 
+Accepts multiple data files - each is validated independently with a summary at the end.
+
 ### Syntax
 
 ```bash
-linkml-term-validator validate-data [OPTIONS] DATA_PATH
+linkml-term-validator validate-data [OPTIONS] DATA_PATHS...
 ```
 
 ### Arguments
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `DATA_PATH` | Path | Yes | Path to data file (`.yaml`, `.json`) |
+| `DATA_PATHS` | Path(s) | Yes | One or more paths to data files (`.yaml`, `.json`) |
 
 ### Options
 
@@ -238,6 +240,20 @@ linkml-term-validator validate-data data.yaml \
   --no-bindings
 ```
 
+**Validate multiple files:**
+
+```bash
+linkml-term-validator validate-data data1.yaml data2.yaml data3.yaml \
+  --schema schema.yaml
+```
+
+**Validate all YAML files (shell glob):**
+
+```bash
+linkml-term-validator validate-data data/*.yaml \
+  --schema schema.yaml
+```
+
 **Full validation with all options:**
 
 ```bash
@@ -252,15 +268,34 @@ linkml-term-validator validate-data data.yaml \
 
 ### Output
 
-**Success (no issues):**
+**Success (single file):**
 
 ```
-✅ Validation passed!
+✅ Validation passed
+```
 
-Validation Summary:
-  Dynamic enums validated: 5
-  Bindings validated: 3
-  Issues found: 0
+**Success (multiple files):**
+
+```
+✅ data1.yaml
+✅ data2.yaml
+✅ data3.yaml
+
+✅ All 3 files passed validation
+```
+
+**Partial failure (multiple files):**
+
+```
+✅ data1.yaml
+
+❌ data2.yaml - 2 issue(s):
+  ❌ ERROR: Value 'GO:0005575' not in enum 'BiologicalProcessEnum'
+  ❌ ERROR: Value 'CL:9999999' not in enum 'CellTypeEnum'
+
+✅ data3.yaml
+
+Summary: 1/3 files failed, 2 total issue(s)
 ```
 
 **Failure (dynamic enum violation):**

@@ -357,9 +357,66 @@ For each slot with binding constraints:
    - Range is typically a dynamic enum (e.g., only biological processes, only neuron types)
 
 2. **Label validation** (if `validate_labels=True`):
+   - Detects label fields via `slot.implements` (e.g., `implements: [rdfs:label]`)
+   - Falls back to convention (field named `label`) if no `implements` declared
    - Retrieves the canonical label from the ontology
    - Compares against the label provided in the data
    - Reports mismatches
+
+### Nested Structure Support
+
+The plugin **recursively validates bindings at all nesting levels**, not just the top-level target class. This is essential for schemas using the common patterns:
+
+- **Descriptor pattern**: Wrapper objects with ontology term references
+- **Annotation pattern**: Annotations with bound term fields
+- **Deeply nested structures**: e.g., `Disease → Pathophysiology → CellTypes → Term`
+
+**Example nested schema:**
+
+```yaml
+classes:
+  Disease:
+    attributes:
+      disease_term:
+        range: DiseaseDescriptor
+        inlined: true
+      pathophysiology:
+        range: Pathophysiology
+        multivalued: true
+        inlined_as_list: true
+
+  Pathophysiology:
+    attributes:
+      cell_types:
+        range: CellTypeDescriptor
+        multivalued: true
+        inlined_as_list: true
+
+  DiseaseDescriptor:
+    attributes:
+      term:
+        range: Term
+        bindings:
+          - binds_value_of: id
+            range: DiseaseTermEnum  # ← Validated!
+
+  CellTypeDescriptor:
+    attributes:
+      term:
+        range: Term
+        bindings:
+          - binds_value_of: id
+            range: CellTypeEnum  # ← Also validated!
+```
+
+Error messages include the full JSON path to the violation:
+
+```
+❌ ERROR: Value 'CL:9999999' not in enum 'CellTypeEnum'
+    path: pathophysiology[0].cell_types[1].term
+    slot: term
+    field: id
+```
 
 ### Validation Results
 
@@ -374,6 +431,9 @@ For each slot with binding constraints:
 **Schema:**
 
 ```yaml
+prefixes:
+  rdfs: http://www.w3.org/2000/01/rdf-schema#
+
 classes:
   GeneAnnotation:
     attributes:
@@ -391,6 +451,8 @@ classes:
         range: string
       label:
         range: string
+        implements:
+          - rdfs:label  # Explicit label field declaration
 
 enums:
   BiologicalProcessEnum:
