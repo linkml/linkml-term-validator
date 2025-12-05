@@ -8,13 +8,13 @@
       
       
       
-        <link rel="canonical" href="https://linkml.github.io/linkml-term-validator/validation-types/">
+        <link rel="canonical" href="https://linkml.github.io/linkml-term-validator/bindings-explained/">
       
       
-        <link rel="prev" href="../bindings-explained/">
+        <link rel="prev" href="../enumerations/">
       
       
-        <link rel="next" href="../ontology-access/">
+        <link rel="next" href="../validation-types/">
       
       
         
@@ -25,7 +25,7 @@
     
     
       
-        <title>Validation Types - linkml-term-validator</title>
+        <title>Bindings Explained - linkml-term-validator</title>
       
     
     
@@ -66,7 +66,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#validation-types" class="md-skip">
+        <a href="#bindings-constraining-complex-objects" class="md-skip">
           Skip to content
         </a>
       
@@ -101,7 +101,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Validation Types
+              Bindings Explained
             
           </span>
         </div>
@@ -819,34 +819,6 @@
                 
   
   
-  
-  
-    <li class="md-nav__item">
-      <a href="../bindings-explained/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Bindings Explained
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
     
   
   
@@ -866,7 +838,7 @@
   <span class="md-ellipsis">
     
   
-    Validation Types
+    Bindings Explained
   
 
     
@@ -884,7 +856,7 @@
   <span class="md-ellipsis">
     
   
-    Validation Types
+    Bindings Explained
   
 
     
@@ -910,55 +882,44 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#schema-validation-permissible-values" class="md-nav__link">
+  <a href="#the-problem-validating-nested-structures" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Schema Validation (Permissible Values)
+        The Problem: Validating Nested Structures
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Schema Validation (Permissible Values)">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-solution-bindings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Solution: Bindings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#anatomy-of-a-binding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Anatomy of a Binding
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Anatomy of a Binding">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#what-it-checks" class="md-nav__link">
+  <a href="#binding-properties" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What it checks
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#example" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Example
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#when-to-use" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        When to use
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#commands" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Commands
+        Binding Properties
       
     </span>
   </a>
@@ -971,22 +932,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#dynamic-enum-validation" class="md-nav__link">
+  <a href="#comparison-with-fhir-terminology-bindings" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Dynamic Enum Validation
+        Comparison with FHIR Terminology Bindings
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Dynamic Enum Validation">
+    <nav class="md-nav" aria-label="Comparison with FHIR Terminology Bindings">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#what-it-checks_1" class="md-nav__link">
+  <a href="#fhir-binding-strengths" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What it checks
+        FHIR Binding Strengths
       
     </span>
   </a>
@@ -994,10 +955,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#example_1" class="md-nav__link">
+  <a href="#fhir-codeableconcept" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Example
+        FHIR CodeableConcept
       
     </span>
   </a>
@@ -1005,32 +966,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#important-semantics" class="md-nav__link">
+  <a href="#key-insight-from-fhir" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Important semantics
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#when-to-use_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        When to use
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#commands_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Commands
+        Key Insight from FHIR
       
     </span>
   </a>
@@ -1043,22 +982,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#binding-validation" class="md-nav__link">
+  <a href="#use-cases-for-bindings" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Binding Validation
+        Use Cases for Bindings
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Binding Validation">
+    <nav class="md-nav" aria-label="Use Cases for Bindings">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#what-it-checks_2" class="md-nav__link">
+  <a href="#1-descriptor-pattern" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What it checks
+        1. Descriptor Pattern
       
     </span>
   </a>
@@ -1066,10 +1005,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#explicit-label-field-declaration" class="md-nav__link">
+  <a href="#2-multi-context-annotations" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Explicit Label Field Declaration
+        2. Multi-Context Annotations
       
     </span>
   </a>
@@ -1077,32 +1016,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#example_2" class="md-nav__link">
+  <a href="#3-deeply-nested-structures" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Example
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#when-to-use_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        When to use
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#commands_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Commands
+        3. Deeply Nested Structures
       
     </span>
   </a>
@@ -1115,10 +1032,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#label-matching" class="md-nav__link">
+  <a href="#label-validation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Label Matching
+        Label Validation
       
     </span>
   </a>
@@ -1126,22 +1043,83 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#severity-levels" class="md-nav__link">
+  <a href="#anti-hallucination-benefits" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Severity Levels
+        Anti-Hallucination Benefits
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Severity Levels">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validation-with-linkml-term-validator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation with linkml-term-validator
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Validation with linkml-term-validator">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#strict-mode" class="md-nav__link">
+  <a href="#cli" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Strict Mode
+        CLI
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#python-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Python API
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Patterns
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Common Patterns">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reusable-term-classes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reusable Term Classes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slot-usage-for-context-specific-bindings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Slot Usage for Context-Specific Bindings
       
     </span>
   </a>
@@ -1164,10 +1142,49 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#external-resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        External Resources
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../validation-types/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validation Types
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1291,55 +1308,44 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#schema-validation-permissible-values" class="md-nav__link">
+  <a href="#the-problem-validating-nested-structures" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Schema Validation (Permissible Values)
+        The Problem: Validating Nested Structures
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Schema Validation (Permissible Values)">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-solution-bindings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Solution: Bindings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#anatomy-of-a-binding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Anatomy of a Binding
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Anatomy of a Binding">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#what-it-checks" class="md-nav__link">
+  <a href="#binding-properties" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What it checks
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#example" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Example
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#when-to-use" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        When to use
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#commands" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Commands
+        Binding Properties
       
     </span>
   </a>
@@ -1352,22 +1358,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#dynamic-enum-validation" class="md-nav__link">
+  <a href="#comparison-with-fhir-terminology-bindings" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Dynamic Enum Validation
+        Comparison with FHIR Terminology Bindings
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Dynamic Enum Validation">
+    <nav class="md-nav" aria-label="Comparison with FHIR Terminology Bindings">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#what-it-checks_1" class="md-nav__link">
+  <a href="#fhir-binding-strengths" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What it checks
+        FHIR Binding Strengths
       
     </span>
   </a>
@@ -1375,10 +1381,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#example_1" class="md-nav__link">
+  <a href="#fhir-codeableconcept" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Example
+        FHIR CodeableConcept
       
     </span>
   </a>
@@ -1386,32 +1392,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#important-semantics" class="md-nav__link">
+  <a href="#key-insight-from-fhir" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Important semantics
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#when-to-use_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        When to use
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#commands_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Commands
+        Key Insight from FHIR
       
     </span>
   </a>
@@ -1424,22 +1408,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#binding-validation" class="md-nav__link">
+  <a href="#use-cases-for-bindings" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Binding Validation
+        Use Cases for Bindings
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Binding Validation">
+    <nav class="md-nav" aria-label="Use Cases for Bindings">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#what-it-checks_2" class="md-nav__link">
+  <a href="#1-descriptor-pattern" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What it checks
+        1. Descriptor Pattern
       
     </span>
   </a>
@@ -1447,10 +1431,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#explicit-label-field-declaration" class="md-nav__link">
+  <a href="#2-multi-context-annotations" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Explicit Label Field Declaration
+        2. Multi-Context Annotations
       
     </span>
   </a>
@@ -1458,32 +1442,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#example_2" class="md-nav__link">
+  <a href="#3-deeply-nested-structures" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Example
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#when-to-use_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        When to use
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#commands_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Commands
+        3. Deeply Nested Structures
       
     </span>
   </a>
@@ -1496,10 +1458,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#label-matching" class="md-nav__link">
+  <a href="#label-validation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Label Matching
+        Label Validation
       
     </span>
   </a>
@@ -1507,22 +1469,83 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#severity-levels" class="md-nav__link">
+  <a href="#anti-hallucination-benefits" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Severity Levels
+        Anti-Hallucination Benefits
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Severity Levels">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validation-with-linkml-term-validator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation with linkml-term-validator
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Validation with linkml-term-validator">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#strict-mode" class="md-nav__link">
+  <a href="#cli" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Strict Mode
+        CLI
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#python-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Python API
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Patterns
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Common Patterns">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reusable-term-classes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reusable Term Classes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slot-usage-for-context-specific-bindings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Slot Usage for Context-Specific Bindings
       
     </span>
   </a>
@@ -1539,6 +1562,17 @@
     <span class="md-ellipsis">
       
         See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#external-resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        External Resources
       
     </span>
   </a>
@@ -1565,228 +1599,288 @@
   
 
 
-<h1 id="validation-types">Validation Types</h1>
-<p>linkml-term-validator provides three distinct types of validation, each implemented as a composable LinkML ValidationPlugin.</p>
-<h2 id="schema-validation-permissible-values">Schema Validation (Permissible Values)</h2>
-<p><strong>Plugin</strong>: <code>PermissibleValueMeaningPlugin</code></p>
-<p>Validates that <code>meaning</code> fields in enum permissible values reference valid ontology terms with correct labels.</p>
-<h3 id="what-it-checks">What it checks</h3>
-<ul>
-<li>The ontology term exists in the source ontology</li>
-<li>The term's canonical label matches the expected label from the schema</li>
-<li>Expected labels can come from: permissible value name, <code>title</code>, <code>description</code>, <code>aliases</code>, or annotation values</li>
-</ul>
-<h3 id="example">Example</h3>
-<p><strong>Schema:</strong></p>
-<pre><code class="language-yaml">enums:
-  BiologicalProcessEnum:
-    permissible_values:
-      BIOLOGICAL_PROCESS:
-        title: biological process
-        meaning: GO:0008150  # ← Validated
-</code></pre>
-<p><strong>What gets validated:</strong></p>
-<ol>
-<li>Check that <code>GO:0008150</code> exists in the Gene Ontology</li>
-<li>Retrieve the canonical label from GO (should be "biological_process")</li>
-<li>Compare against expected labels: "BIOLOGICAL_PROCESS", "biological process"</li>
-<li>Report if there's a mismatch or if the term doesn't exist</li>
-</ol>
-<h3 id="when-to-use">When to use</h3>
-<ul>
-<li>Validating LinkML schemas before publishing</li>
-<li>CI/CD checks on schema files</li>
-<li>Catching typos in term references</li>
-</ul>
-<h3 id="commands">Commands</h3>
-<pre><code class="language-bash"># Basic validation
-linkml-term-validator validate-schema schema.yaml
-
-# With strict mode
-linkml-term-validator validate-schema --strict schema.yaml
-</code></pre>
-<h2 id="dynamic-enum-validation">Dynamic Enum Validation</h2>
-<p><strong>Plugin</strong>: <code>DynamicEnumPlugin</code></p>
-<p>Validates data values against dynamic enum constraints defined via <code>reachable_from</code>, <code>matches</code>, or <code>concepts</code>.</p>
-<p>Dynamic enums define valid values using ontology queries rather than explicit lists, enabling flexible, extensible validation.</p>
-<h3 id="what-it-checks_1">What it checks</h3>
-<ul>
-<li>Data values match the ontology query constraints</li>
-<li>For <code>reachable_from</code>: value is a descendant of specified source nodes</li>
-<li>For <code>matches</code>: value matches the specified pattern</li>
-<li>For <code>concepts</code>: value is one of the specified concepts</li>
-</ul>
-<h3 id="example_1">Example</h3>
-<p><strong>Schema:</strong></p>
-<pre><code class="language-yaml">enums:
-  NeuronTypeEnum:
-    description: Any neuron type
-    reachable_from:
-      source_ontology: sqlite:obo:cl
-      source_nodes:
-        - CL:0000540  # neuron
-      relationship_types:
-        - rdfs:subClassOf
-</code></pre>
-<p><strong>Data:</strong></p>
-<pre><code class="language-yaml">neurons:
-  - id: &quot;1&quot;
-    cell_type: CL:0000100  # Valid - is a descendant of CL:0000540
-  - id: &quot;2&quot;
-    cell_type: GO:0008150  # INVALID - not a neuron type
-</code></pre>
-<h3 id="important-semantics">Important semantics</h3>
-<ul>
-<li>Source nodes themselves are <strong>EXCLUDED</strong> by default</li>
-<li>Only descendants (via specified relationship types) are included</li>
-<li>Use actual descendant terms in your data, not the source node</li>
-</ul>
-<h3 id="when-to-use_1">When to use</h3>
-<ul>
-<li>Validating curated data files</li>
-<li>Ensuring data conforms to ontology-based constraints</li>
-<li>Flexible validation without hardcoding all valid values</li>
-</ul>
-<h3 id="commands_1">Commands</h3>
-<pre><code class="language-bash"># Validate data with dynamic enums
-linkml-term-validator validate-data data.yaml --schema schema.yaml
-
-# With specific target class
-linkml-term-validator validate-data data.yaml -s schema.yaml -t Person
-</code></pre>
-<h2 id="binding-validation">Binding Validation</h2>
-<p><strong>Plugin</strong>: <code>BindingValidationPlugin</code></p>
-<p>Validates that nested object fields satisfy binding range constraints.</p>
-<p>Bindings allow you to constrain the values of nested object fields based on dynamic enums, providing type safety for ontology references.</p>
-<h3 id="what-it-checks_2">What it checks</h3>
-<ul>
-<li>The value in the nested object's field matches the binding's range constraint</li>
-<li>Optionally: the label in the nested object matches the ontology's canonical label</li>
-<li><strong>Recursively validates all nested structures</strong> - bindings on deeply nested classes are validated with full JSON path tracking</li>
-</ul>
-<h3 id="explicit-label-field-declaration">Explicit Label Field Declaration</h3>
-<p>Use <code>implements</code> or <code>slot_uri</code> to explicitly declare which fields should be validated as labels:</p>
-<pre><code class="language-yaml">classes:
-  GOTerm:
-    attributes:
-      id:
-        identifier: true
-      name:
-        implements:
-          - rdfs:label  # Option 1: implements list
-      # OR
-      label:
-        slot_uri: rdfs:label  # Option 2: slot_uri
-</code></pre>
-<p>Supported label properties:</p>
-<ul>
-<li><code>rdfs:label</code> - Standard RDF label</li>
-<li><code>skos:prefLabel</code> - SKOS preferred label</li>
-<li><code>schema:name</code> - Schema.org name</li>
-<li><code>oboInOwl:hasExactSynonym</code> - OBO exact synonym</li>
-</ul>
-<p>If no <code>implements</code> or <code>slot_uri</code> is specified, the validator falls back to looking for a field named <code>label</code> (convention-based).</p>
-<h3 id="example_2">Example</h3>
-<p><strong>Schema:</strong></p>
+<h1 id="bindings-constraining-complex-objects">Bindings: Constraining Complex Objects</h1>
+<p>Bindings are a powerful LinkML feature that constrain fields within complex (nested) objects to specific value sets. This page explains the concept, draws parallels with FHIR terminology bindings, and shows how linkml-term-validator implements binding validation.</p>
+<h2 id="the-problem-validating-nested-structures">The Problem: Validating Nested Structures</h2>
+<p>Consider a schema for gene annotations:</p>
 <pre><code class="language-yaml">classes:
   GeneAnnotation:
-    slots:
-      - gene
-      - go_term
-    slot_usage:
-      go_term:
-        range: GOTerm
+    attributes:
+      gene:
+        range: string
+      ontology_term:
+        range: OntologyTerm
+        inlined: true
+
+  OntologyTerm:
+    attributes:
+      id:
+        range: string
+      label:
+        range: string
+</code></pre>
+<p>This allows any <code>OntologyTerm</code>:</p>
+<pre><code class="language-yaml">gene: BRCA1
+ontology_term:
+  id: GO:0007049       # Valid GO term
+  label: cell cycle
+
+gene: TP53
+ontology_term:
+  id: PIZZA:MARGHERITA  # Nonsense!
+  label: delicious
+</code></pre>
+<p><strong>Problem:</strong> The <code>OntologyTerm</code> class is generic—it accepts any CURIE. But for gene annotations, we want to restrict terms to the Gene Ontology.</p>
+<h2 id="the-solution-bindings">The Solution: Bindings</h2>
+<p>Bindings constrain a specific field within a complex object to an enum range:</p>
+<pre><code class="language-yaml">classes:
+  GeneAnnotation:
+    attributes:
+      gene:
+        range: string
+      ontology_term:
+        range: OntologyTerm
+        inlined: true
         bindings:
           - binds_value_of: id
-            range: BiologicalProcessEnum  # ← Binding constraint
-
-  GOTerm:
-    slots:
-      - id
-      - label
+            range: GOBiologicalProcessEnum
 
 enums:
-  BiologicalProcessEnum:
+  GOBiologicalProcessEnum:
     reachable_from:
-      source_ontology: sqlite:obo:go
+      source_ontology: obo:go
       source_nodes:
         - GO:0008150  # biological_process
       relationship_types:
         - rdfs:subClassOf
 </code></pre>
-<p><strong>Data:</strong></p>
-<pre><code class="language-yaml">annotations:
-  - gene: BRCA1
-    go_term:
-      id: GO:0007049  # Valid - is a biological process
-      label: cell cycle
+<p>Now the <code>id</code> field within <code>ontology_term</code> must be a GO biological process term.</p>
+<h2 id="anatomy-of-a-binding">Anatomy of a Binding</h2>
+<pre><code class="language-yaml">bindings:
+  - binds_value_of: id              # Which field to constrain
+    range: GOBiologicalProcessEnum  # The enum defining allowed values
+    obligation_level: RECOMMENDED   # How strictly to enforce
 </code></pre>
-<p><strong>What gets validated:</strong></p>
+<h3 id="binding-properties">Binding Properties</h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>binds_value_of</code></td>
+<td>The field path within the nested object to validate</td>
+</tr>
+<tr>
+<td><code>range</code></td>
+<td>The enum (static or dynamic) defining allowed values</td>
+</tr>
+<tr>
+<td><code>obligation_level</code></td>
+<td><code>REQUIRED</code>, <code>RECOMMENDED</code>, or <code>OPTIONAL</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="comparison-with-fhir-terminology-bindings">Comparison with FHIR Terminology Bindings</h2>
+<p>LinkML bindings are conceptually similar to <a href="https://build.fhir.org/terminologies.html">FHIR terminology bindings</a>, which connect data elements to controlled vocabularies.</p>
+<h3 id="fhir-binding-strengths">FHIR Binding Strengths</h3>
+<p>FHIR defines five binding strengths:</p>
+<table>
+<thead>
+<tr>
+<th>Strength</th>
+<th>Description</th>
+<th>LinkML Equivalent</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Required</strong></td>
+<td>Must use a code from the value set</td>
+<td><code>obligation_level: REQUIRED</code></td>
+</tr>
+<tr>
+<td><strong>Extensible</strong></td>
+<td>Should use value set codes if applicable</td>
+<td><code>obligation_level: RECOMMENDED</code></td>
+</tr>
+<tr>
+<td><strong>Preferred</strong></td>
+<td>Encouraged but not required</td>
+<td><code>obligation_level: RECOMMENDED</code></td>
+</tr>
+<tr>
+<td><strong>Example</strong></td>
+<td>Illustrative only</td>
+<td>No validation</td>
+</tr>
+</tbody>
+</table>
+<h3 id="fhir-codeableconcept">FHIR CodeableConcept</h3>
+<p>In FHIR, a <code>CodeableConcept</code> is similar to LinkML's pattern of an object with <code>id</code> and <code>label</code>:</p>
+<pre><code class="language-json">{
+  &quot;coding&quot;: [
+    {
+      &quot;system&quot;: &quot;http://snomed.info/sct&quot;,
+      &quot;code&quot;: &quot;386661006&quot;,
+      &quot;display&quot;: &quot;Fever&quot;
+    }
+  ],
+  &quot;text&quot;: &quot;Fever&quot;
+}
+</code></pre>
+<p>FHIR bindings constrain which codes are valid for a CodeableConcept in a given context—exactly what LinkML bindings do.</p>
+<h3 id="key-insight-from-fhir">Key Insight from FHIR</h3>
+<p>FHIR's documentation emphasizes: <em>"A binding strength of 'required' or 'extensible' does not indicate that ALL of the codes in the bound value set will be supported. It constrains the set of codes that are allowed to be shared."</em></p>
+<p>This is equally true in LinkML: bindings constrain what values are <strong>valid</strong>, not what values implementations must support.</p>
+<h2 id="use-cases-for-bindings">Use Cases for Bindings</h2>
+<h3 id="1-descriptor-pattern">1. Descriptor Pattern</h3>
+<p>Wrap ontology terms in descriptive objects:</p>
+<pre><code class="language-yaml">classes:
+  DiseaseDescriptor:
+    attributes:
+      preferred_term:
+        range: string
+      synonyms:
+        range: string
+        multivalued: true
+      term:
+        range: OntologyTerm
+        bindings:
+          - binds_value_of: id
+            range: DiseaseEnum
+</code></pre>
+<h3 id="2-multi-context-annotations">2. Multi-Context Annotations</h3>
+<p>Same class, different bindings in different contexts:</p>
+<pre><code class="language-yaml">classes:
+  Sample:
+    attributes:
+      tissue:
+        range: OntologyTerm
+        bindings:
+          - binds_value_of: id
+            range: AnatomyEnum
+
+      cell_type:
+        range: OntologyTerm
+        bindings:
+          - binds_value_of: id
+            range: CellTypeEnum
+</code></pre>
+<h3 id="3-deeply-nested-structures">3. Deeply Nested Structures</h3>
+<p>Bindings validate at all nesting levels:</p>
+<pre><code class="language-yaml">classes:
+  Study:
+    attributes:
+      samples:
+        range: Sample
+        multivalued: true
+
+  Sample:
+    attributes:
+      annotations:
+        range: Annotation
+        multivalued: true
+
+  Annotation:
+    attributes:
+      term:
+        range: OntologyTerm
+        bindings:
+          - binds_value_of: id
+            range: AnnotationTermEnum
+</code></pre>
+<h2 id="label-validation">Label Validation</h2>
+<p>Beyond validating the <code>id</code>, you may want to verify the <code>label</code> matches the ontology:</p>
+<pre><code class="language-yaml">classes:
+  OntologyTerm:
+    attributes:
+      id:
+        identifier: true
+      label:
+        implements:
+          - rdfs:label  # Declares this field holds the rdfs:label
+</code></pre>
+<p>With <code>--labels</code> flag, the validator checks that provided labels match the ontology's canonical labels.</p>
+<h2 id="anti-hallucination-benefits">Anti-Hallucination Benefits</h2>
+<p>Bindings are particularly valuable for validating AI-generated content. By requiring both:</p>
 <ol>
-<li>Check that <code>go_term.id</code> value (<code>GO:0007049</code>) satisfies the <code>BiologicalProcessEnum</code> constraint</li>
-<li>If <code>--labels</code> flag is used, also check that <code>go_term.label</code> matches the canonical label from GO</li>
+<li>A valid ontology term ID</li>
+<li>A matching label</li>
 </ol>
-<h3 id="when-to-use_2">When to use</h3>
-<ul>
-<li>Validating complex nested data structures</li>
-<li>Enforcing ontology constraints on object references</li>
-<li>Label validation for AI-generated data</li>
-</ul>
-<h3 id="commands_2">Commands</h3>
-<pre><code class="language-bash"># Validate bindings only
-linkml-term-validator validate-data data.yaml --schema schema.yaml
+<p>...you ensure the AI correctly retrieved real ontology data rather than hallucinating plausible-looking identifiers. See <a href="../anti-hallucination/">Anti-Hallucination Guardrails</a>.</p>
+<h2 id="validation-with-linkml-term-validator">Validation with linkml-term-validator</h2>
+<h3 id="cli">CLI</h3>
+<pre><code class="language-bash"># Validate bindings (and dynamic enums)
+linkml-term-validator validate-data data.yaml -s schema.yaml -t ClassName
 
 # Also validate labels match ontology
-linkml-term-validator validate-data data.yaml --schema schema.yaml --labels
+linkml-term-validator validate-data data.yaml -s schema.yaml -t ClassName --labels
 </code></pre>
-<h2 id="label-matching">Label Matching</h2>
-<p>When validating <code>meaning</code> fields, the validator compares the ontology's canonical label against multiple expected sources:</p>
-<ol>
-<li><strong>Permissible value name</strong> (e.g., <code>BIOLOGICAL_PROCESS</code>)</li>
-<li><strong>Title field</strong> (e.g., <code>title: biological process</code>)</li>
-<li><strong>Description field</strong></li>
-<li><strong>Aliases</strong> (e.g., <code>aliases: [biological_process, bio process]</code>)</li>
-<li><strong>Annotation values</strong> for tags like <code>label</code>, <code>display_name</code>, <code>synonym</code></li>
-</ol>
-<p>Labels are normalized before comparison:</p>
-<ul>
-<li>Lowercased</li>
-<li>Spaces/underscores treated as equivalent</li>
-<li>Multiple whitespace collapsed to single space</li>
-</ul>
-<p>This flexible matching reduces false positives from minor formatting differences.</p>
-<h2 id="severity-levels">Severity Levels</h2>
-<p>Validation results are reported with different severity levels:</p>
-<ul>
-<li><strong>ERROR</strong> - Serious issue that should block data/schema acceptance</li>
-<li>Configured prefix with label mismatch</li>
-<li>Missing term from configured ontology</li>
-<li>Dynamic enum constraint violation</li>
-<li>
-<p>Binding constraint violation</p>
-</li>
-<li>
-<p><strong>WARN</strong> - Potential issue that may need attention</p>
-</li>
-<li>Label mismatch in non-strict mode</li>
-<li>
-<p>Unconfigured prefix with label mismatch (when verbose)</p>
-</li>
-<li>
-<p><strong>INFO</strong> - Informational message</p>
-</li>
-<li>Unconfigured prefix encountered</li>
-<li>Unknown prefix summary</li>
-</ul>
-<h3 id="strict-mode">Strict Mode</h3>
-<p>Use <code>--strict</code> to treat all warnings as errors:</p>
-<pre><code class="language-bash">linkml-term-validator validate-schema --strict schema.yaml
+<h3 id="python-api">Python API</h3>
+<pre><code class="language-python">from linkml_term_validator.plugins import BindingValidationPlugin
+
+plugin = BindingValidationPlugin(
+    validate_labels=True,
+    oak_adapter_string=&quot;sqlite:obo:&quot;
+)
+</code></pre>
+<h2 id="common-patterns">Common Patterns</h2>
+<h3 id="reusable-term-classes">Reusable Term Classes</h3>
+<p>Define a generic term class, constrain via bindings:</p>
+<pre><code class="language-yaml">classes:
+  Term:
+    attributes:
+      id:
+        identifier: true
+      label:
+        implements:
+          - rdfs:label
+
+  GeneAnnotation:
+    attributes:
+      process:
+        range: Term
+        bindings:
+          - binds_value_of: id
+            range: BiologicalProcessEnum
+      location:
+        range: Term
+        bindings:
+          - binds_value_of: id
+            range: CellularComponentEnum
+</code></pre>
+<h3 id="slot-usage-for-context-specific-bindings">Slot Usage for Context-Specific Bindings</h3>
+<p>Override bindings in subclasses:</p>
+<pre><code class="language-yaml">classes:
+  Annotation:
+    attributes:
+      term:
+        range: Term
+
+  GeneAnnotation:
+    is_a: Annotation
+    slot_usage:
+      term:
+        bindings:
+          - binds_value_of: id
+            range: GOTermEnum
 </code></pre>
 <h2 id="see-also">See Also</h2>
 <ul>
-<li><a href="../configuration/">Configuration</a> - How to configure ontology adapters</li>
-<li><a href="../caching/">Caching</a> - Understanding the caching system</li>
-<li><a href="../anti-hallucination/">Anti-Hallucination</a> - Using validation for AI guardrails</li>
+<li><a href="../ontologies-primer/">Ontologies in LinkML</a> - Background on ontologies</li>
+<li><a href="../enumerations/">Enumerations</a> - Static and dynamic enums</li>
+<li><a href="../binding-validation/">Binding Validation Reference</a> - Detailed validation behavior</li>
+<li><a href="../anti-hallucination/">Anti-Hallucination Guardrails</a> - Using bindings for AI validation</li>
+</ul>
+<h2 id="external-resources">External Resources</h2>
+<ul>
+<li><a href="https://linkml.io/linkml-model/latest/docs/bindings/">LinkML Bindings Documentation</a></li>
+<li><a href="https://build.fhir.org/terminologies.html">FHIR Terminology Bindings</a></li>
+<li><a href="https://build.fhir.org/valueset-binding-strength.html">FHIR Binding Strength</a></li>
 </ul>
 
 

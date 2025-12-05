@@ -8,13 +8,13 @@
       
       
       
-        <link rel="canonical" href="https://linkml.github.io/linkml-term-validator/validation-types/">
+        <link rel="canonical" href="https://linkml.github.io/linkml-term-validator/enumerations/">
       
       
-        <link rel="prev" href="../bindings-explained/">
+        <link rel="prev" href="../ontologies-primer/">
       
       
-        <link rel="next" href="../ontology-access/">
+        <link rel="next" href="../bindings-explained/">
       
       
         
@@ -25,7 +25,7 @@
     
     
       
-        <title>Validation Types - linkml-term-validator</title>
+        <title>Enumerations - linkml-term-validator</title>
       
     
     
@@ -66,7 +66,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#validation-types" class="md-skip">
+        <a href="#enumerations-in-linkml-static-and-dynamic" class="md-skip">
           Skip to content
         </a>
       
@@ -101,7 +101,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Validation Types
+              Enumerations
             
           </span>
         </div>
@@ -791,10 +791,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../enumerations/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Enumerations
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -810,6 +837,214 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#static-enums" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Static Enums
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Static Enums">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-static-enum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic Static Enum
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#static-enum-with-ontology-mappings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Static Enum with Ontology Mappings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-to-use-static-enums" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to Use Static Enums
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#validation-of-static-enums" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation of Static Enums
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dynamic-enums" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dynamic Enums
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Dynamic Enums">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-dynamic-enum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic Dynamic Enum
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dynamic-enum-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dynamic Enum Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#common-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Patterns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-to-use-dynamic-enums" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to Use Dynamic Enums
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#validation-of-dynamic-enums" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation of Dynamic Enums
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#static-vs-dynamic-trade-offs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Static vs Dynamic: Trade-offs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#materializing-dynamic-enums" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Materializing Dynamic Enums
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#combining-static-and-dynamic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Combining Static and Dynamic
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#external-resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        External Resources
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -847,37 +1082,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Validation Types
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../validation-types/" class="md-nav__link">
         
   
   
@@ -893,281 +1101,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#schema-validation-permissible-values" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Schema Validation (Permissible Values)
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Schema Validation (Permissible Values)">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#what-it-checks" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What it checks
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#example" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Example
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#when-to-use" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        When to use
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#commands" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Commands
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#dynamic-enum-validation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Dynamic Enum Validation
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Dynamic Enum Validation">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#what-it-checks_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What it checks
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#example_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Example
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#important-semantics" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Important semantics
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#when-to-use_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        When to use
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#commands_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Commands
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#binding-validation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Binding Validation
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Binding Validation">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#what-it-checks_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What it checks
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#explicit-label-field-declaration" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Explicit Label Field Declaration
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#example_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Example
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#when-to-use_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        When to use
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#commands_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Commands
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#label-matching" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Label Matching
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#severity-levels" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Severity Levels
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Severity Levels">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#strict-mode" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Strict Mode
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#see-also" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        See Also
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1291,22 +1224,22 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#schema-validation-permissible-values" class="md-nav__link">
+  <a href="#static-enums" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Schema Validation (Permissible Values)
+        Static Enums
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Schema Validation (Permissible Values)">
+    <nav class="md-nav" aria-label="Static Enums">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#what-it-checks" class="md-nav__link">
+  <a href="#basic-static-enum" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What it checks
+        Basic Static Enum
       
     </span>
   </a>
@@ -1314,10 +1247,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#example" class="md-nav__link">
+  <a href="#static-enum-with-ontology-mappings" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Example
+        Static Enum with Ontology Mappings
       
     </span>
   </a>
@@ -1325,10 +1258,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#when-to-use" class="md-nav__link">
+  <a href="#when-to-use-static-enums" class="md-nav__link">
     <span class="md-ellipsis">
       
-        When to use
+        When to Use Static Enums
       
     </span>
   </a>
@@ -1336,10 +1269,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#commands" class="md-nav__link">
+  <a href="#validation-of-static-enums" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Commands
+        Validation of Static Enums
       
     </span>
   </a>
@@ -1352,22 +1285,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#dynamic-enum-validation" class="md-nav__link">
+  <a href="#dynamic-enums" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Dynamic Enum Validation
+        Dynamic Enums
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Dynamic Enum Validation">
+    <nav class="md-nav" aria-label="Dynamic Enums">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#what-it-checks_1" class="md-nav__link">
+  <a href="#basic-dynamic-enum" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What it checks
+        Basic Dynamic Enum
       
     </span>
   </a>
@@ -1375,10 +1308,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#example_1" class="md-nav__link">
+  <a href="#dynamic-enum-parameters" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Example
+        Dynamic Enum Parameters
       
     </span>
   </a>
@@ -1386,10 +1319,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#important-semantics" class="md-nav__link">
+  <a href="#common-patterns" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Important semantics
+        Common Patterns
       
     </span>
   </a>
@@ -1397,10 +1330,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#when-to-use_1" class="md-nav__link">
+  <a href="#when-to-use-dynamic-enums" class="md-nav__link">
     <span class="md-ellipsis">
       
-        When to use
+        When to Use Dynamic Enums
       
     </span>
   </a>
@@ -1408,10 +1341,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#commands_1" class="md-nav__link">
+  <a href="#validation-of-dynamic-enums" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Commands
+        Validation of Dynamic Enums
       
     </span>
   </a>
@@ -1424,82 +1357,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#binding-validation" class="md-nav__link">
+  <a href="#static-vs-dynamic-trade-offs" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Binding Validation
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Binding Validation">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#what-it-checks_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What it checks
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#explicit-label-field-declaration" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Explicit Label Field Declaration
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#example_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Example
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#when-to-use_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        When to use
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#commands_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Commands
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#label-matching" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Label Matching
+        Static vs Dynamic: Trade-offs
       
     </span>
   </a>
@@ -1507,30 +1368,24 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#severity-levels" class="md-nav__link">
+  <a href="#materializing-dynamic-enums" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Severity Levels
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Severity Levels">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#strict-mode" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Strict Mode
+        Materializing Dynamic Enums
       
     </span>
   </a>
   
 </li>
-        
-      </ul>
-    </nav>
+      
+        <li class="md-nav__item">
+  <a href="#combining-static-and-dynamic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Combining Static and Dynamic
+      
+    </span>
+  </a>
   
 </li>
       
@@ -1539,6 +1394,17 @@
     <span class="md-ellipsis">
       
         See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#external-resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        External Resources
       
     </span>
   </a>
@@ -1565,228 +1431,281 @@
   
 
 
-<h1 id="validation-types">Validation Types</h1>
-<p>linkml-term-validator provides three distinct types of validation, each implemented as a composable LinkML ValidationPlugin.</p>
-<h2 id="schema-validation-permissible-values">Schema Validation (Permissible Values)</h2>
-<p><strong>Plugin</strong>: <code>PermissibleValueMeaningPlugin</code></p>
-<p>Validates that <code>meaning</code> fields in enum permissible values reference valid ontology terms with correct labels.</p>
-<h3 id="what-it-checks">What it checks</h3>
-<ul>
-<li>The ontology term exists in the source ontology</li>
-<li>The term's canonical label matches the expected label from the schema</li>
-<li>Expected labels can come from: permissible value name, <code>title</code>, <code>description</code>, <code>aliases</code>, or annotation values</li>
-</ul>
-<h3 id="example">Example</h3>
-<p><strong>Schema:</strong></p>
+<h1 id="enumerations-in-linkml-static-and-dynamic">Enumerations in LinkML: Static and Dynamic</h1>
+<p>LinkML provides two approaches to constraining values: <strong>static enums</strong> with explicit permissible values, and <strong>dynamic enums</strong> that query ontologies at validation time. Understanding when to use each is key to effective schema design.</p>
+<h2 id="static-enums">Static Enums</h2>
+<p>Static enums define a fixed list of allowed values directly in the schema.</p>
+<h3 id="basic-static-enum">Basic Static Enum</h3>
 <pre><code class="language-yaml">enums:
-  BiologicalProcessEnum:
+  SampleStatusEnum:
     permissible_values:
-      BIOLOGICAL_PROCESS:
-        title: biological process
-        meaning: GO:0008150  # ← Validated
+      PENDING:
+      PROCESSING:
+      COMPLETED:
+      FAILED:
 </code></pre>
-<p><strong>What gets validated:</strong></p>
-<ol>
-<li>Check that <code>GO:0008150</code> exists in the Gene Ontology</li>
-<li>Retrieve the canonical label from GO (should be "biological_process")</li>
-<li>Compare against expected labels: "BIOLOGICAL_PROCESS", "biological process"</li>
-<li>Report if there's a mismatch or if the term doesn't exist</li>
-</ol>
-<h3 id="when-to-use">When to use</h3>
-<ul>
-<li>Validating LinkML schemas before publishing</li>
-<li>CI/CD checks on schema files</li>
-<li>Catching typos in term references</li>
-</ul>
-<h3 id="commands">Commands</h3>
-<pre><code class="language-bash"># Basic validation
-linkml-term-validator validate-schema schema.yaml
+<p>Data must match one of these exact strings:</p>
+<pre><code class="language-yaml"># Valid
+status: COMPLETED
 
-# With strict mode
-linkml-term-validator validate-schema --strict schema.yaml
+# Invalid - &quot;completed&quot; not in enum
+status: completed
 </code></pre>
-<h2 id="dynamic-enum-validation">Dynamic Enum Validation</h2>
-<p><strong>Plugin</strong>: <code>DynamicEnumPlugin</code></p>
-<p>Validates data values against dynamic enum constraints defined via <code>reachable_from</code>, <code>matches</code>, or <code>concepts</code>.</p>
-<p>Dynamic enums define valid values using ontology queries rather than explicit lists, enabling flexible, extensible validation.</p>
-<h3 id="what-it-checks_1">What it checks</h3>
-<ul>
-<li>Data values match the ontology query constraints</li>
-<li>For <code>reachable_from</code>: value is a descendant of specified source nodes</li>
-<li>For <code>matches</code>: value matches the specified pattern</li>
-<li>For <code>concepts</code>: value is one of the specified concepts</li>
-</ul>
-<h3 id="example_1">Example</h3>
-<p><strong>Schema:</strong></p>
-<pre><code class="language-yaml">enums:
-  NeuronTypeEnum:
-    description: Any neuron type
-    reachable_from:
-      source_ontology: sqlite:obo:cl
-      source_nodes:
-        - CL:0000540  # neuron
-      relationship_types:
-        - rdfs:subClassOf
-</code></pre>
-<p><strong>Data:</strong></p>
-<pre><code class="language-yaml">neurons:
-  - id: &quot;1&quot;
-    cell_type: CL:0000100  # Valid - is a descendant of CL:0000540
-  - id: &quot;2&quot;
-    cell_type: GO:0008150  # INVALID - not a neuron type
-</code></pre>
-<h3 id="important-semantics">Important semantics</h3>
-<ul>
-<li>Source nodes themselves are <strong>EXCLUDED</strong> by default</li>
-<li>Only descendants (via specified relationship types) are included</li>
-<li>Use actual descendant terms in your data, not the source node</li>
-</ul>
-<h3 id="when-to-use_1">When to use</h3>
-<ul>
-<li>Validating curated data files</li>
-<li>Ensuring data conforms to ontology-based constraints</li>
-<li>Flexible validation without hardcoding all valid values</li>
-</ul>
-<h3 id="commands_1">Commands</h3>
-<pre><code class="language-bash"># Validate data with dynamic enums
-linkml-term-validator validate-data data.yaml --schema schema.yaml
-
-# With specific target class
-linkml-term-validator validate-data data.yaml -s schema.yaml -t Person
-</code></pre>
-<h2 id="binding-validation">Binding Validation</h2>
-<p><strong>Plugin</strong>: <code>BindingValidationPlugin</code></p>
-<p>Validates that nested object fields satisfy binding range constraints.</p>
-<p>Bindings allow you to constrain the values of nested object fields based on dynamic enums, providing type safety for ontology references.</p>
-<h3 id="what-it-checks_2">What it checks</h3>
-<ul>
-<li>The value in the nested object's field matches the binding's range constraint</li>
-<li>Optionally: the label in the nested object matches the ontology's canonical label</li>
-<li><strong>Recursively validates all nested structures</strong> - bindings on deeply nested classes are validated with full JSON path tracking</li>
-</ul>
-<h3 id="explicit-label-field-declaration">Explicit Label Field Declaration</h3>
-<p>Use <code>implements</code> or <code>slot_uri</code> to explicitly declare which fields should be validated as labels:</p>
-<pre><code class="language-yaml">classes:
-  GOTerm:
-    attributes:
-      id:
-        identifier: true
-      name:
-        implements:
-          - rdfs:label  # Option 1: implements list
-      # OR
-      label:
-        slot_uri: rdfs:label  # Option 2: slot_uri
-</code></pre>
-<p>Supported label properties:</p>
-<ul>
-<li><code>rdfs:label</code> - Standard RDF label</li>
-<li><code>skos:prefLabel</code> - SKOS preferred label</li>
-<li><code>schema:name</code> - Schema.org name</li>
-<li><code>oboInOwl:hasExactSynonym</code> - OBO exact synonym</li>
-</ul>
-<p>If no <code>implements</code> or <code>slot_uri</code> is specified, the validator falls back to looking for a field named <code>label</code> (convention-based).</p>
-<h3 id="example_2">Example</h3>
-<p><strong>Schema:</strong></p>
-<pre><code class="language-yaml">classes:
-  GeneAnnotation:
-    slots:
-      - gene
-      - go_term
-    slot_usage:
-      go_term:
-        range: GOTerm
-        bindings:
-          - binds_value_of: id
-            range: BiologicalProcessEnum  # ← Binding constraint
-
-  GOTerm:
-    slots:
-      - id
-      - label
+<h3 id="static-enum-with-ontology-mappings">Static Enum with Ontology Mappings</h3>
+<p>The <code>meaning</code> property connects permissible values to ontology terms:</p>
+<pre><code class="language-yaml">prefixes:
+  GO: http://purl.obolibrary.org/obo/GO_
 
 enums:
   BiologicalProcessEnum:
+    permissible_values:
+      CELL_CYCLE:
+        title: cell cycle
+        meaning: GO:0007049
+      DNA_REPLICATION:
+        title: DNA replication
+        meaning: GO:0006260
+      APOPTOSIS:
+        title: apoptotic process
+        meaning: GO:0006915
+</code></pre>
+<p>This approach:</p>
+<ul>
+<li>Uses human-readable keys (<code>CELL_CYCLE</code>)</li>
+<li>Provides display titles (<code>cell cycle</code>)</li>
+<li>Links to authoritative ontology terms (<code>GO:0007049</code>)</li>
+</ul>
+<h3 id="when-to-use-static-enums">When to Use Static Enums</h3>
+<p>Static enums are appropriate when:</p>
+<table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Small, stable value sets</strong></td>
+<td>Status codes, priority levels</td>
+</tr>
+<tr>
+<td><strong>Domain-specific codes</strong></td>
+<td>Internal project identifiers</td>
+</tr>
+<tr>
+<td><strong>Curated subsets</strong></td>
+<td>Carefully selected ontology terms</td>
+</tr>
+<tr>
+<td><strong>Performance-critical</strong></td>
+<td>No runtime ontology lookup needed</td>
+</tr>
+</tbody>
+</table>
+<h3 id="validation-of-static-enums">Validation of Static Enums</h3>
+<p><strong>Schema validation</strong> (<code>PermissibleValueMeaningPlugin</code>) checks:</p>
+<ul>
+<li>Each <code>meaning</code> CURIE exists in the ontology</li>
+<li>The <code>title</code> matches the ontology's label (optional)</li>
+</ul>
+<pre><code class="language-bash">linkml-term-validator validate-schema schema.yaml
+</code></pre>
+<h2 id="dynamic-enums">Dynamic Enums</h2>
+<p>Dynamic enums define allowed values via ontology queries, evaluated at validation time.</p>
+<h3 id="basic-dynamic-enum">Basic Dynamic Enum</h3>
+<pre><code class="language-yaml">enums:
+  CellTypeEnum:
     reachable_from:
-      source_ontology: sqlite:obo:go
+      source_ontology: obo:cl
       source_nodes:
-        - GO:0008150  # biological_process
+        - CL:0000000  # cell
+      include_self: false
       relationship_types:
         - rdfs:subClassOf
 </code></pre>
-<p><strong>Data:</strong></p>
-<pre><code class="language-yaml">annotations:
-  - gene: BRCA1
-    go_term:
-      id: GO:0007049  # Valid - is a biological process
-      label: cell cycle
+<p>This allows any descendant of "cell" in the Cell Ontology—potentially thousands of terms—without listing each one.</p>
+<h3 id="dynamic-enum-parameters">Dynamic Enum Parameters</h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Description</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>source_ontology</code></td>
+<td>OAK adapter string</td>
+<td><code>obo:cl</code>, <code>sqlite:obo:go</code></td>
+</tr>
+<tr>
+<td><code>source_nodes</code></td>
+<td>Root term(s) for the query</td>
+<td><code>[CL:0000540]</code></td>
+</tr>
+<tr>
+<td><code>relationship_types</code></td>
+<td>Edge types to traverse</td>
+<td><code>[rdfs:subClassOf]</code></td>
+</tr>
+<tr>
+<td><code>include_self</code></td>
+<td>Include source nodes in results</td>
+<td><code>true</code> or <code>false</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="common-patterns">Common Patterns</h3>
+<p><strong>All subtypes of a term:</strong></p>
+<pre><code class="language-yaml">enums:
+  NeuronTypeEnum:
+    reachable_from:
+      source_ontology: obo:cl
+      source_nodes:
+        - CL:0000540  # neuron
+      include_self: false
+      relationship_types:
+        - rdfs:subClassOf
 </code></pre>
-<p><strong>What gets validated:</strong></p>
-<ol>
-<li>Check that <code>go_term.id</code> value (<code>GO:0007049</code>) satisfies the <code>BiologicalProcessEnum</code> constraint</li>
-<li>If <code>--labels</code> flag is used, also check that <code>go_term.label</code> matches the canonical label from GO</li>
-</ol>
-<h3 id="when-to-use_2">When to use</h3>
+<p><strong>Multiple source nodes:</strong></p>
+<pre><code class="language-yaml">enums:
+  CancerOrInfectiousDisease:
+    reachable_from:
+      source_ontology: obo:mondo
+      source_nodes:
+        - MONDO:0004992  # cancer
+        - MONDO:0005550  # infectious disease
+      relationship_types:
+        - rdfs:subClassOf
+</code></pre>
+<p><strong>Part-of relationships:</strong></p>
+<pre><code class="language-yaml">enums:
+  BrainPartEnum:
+    reachable_from:
+      source_ontology: obo:uberon
+      source_nodes:
+        - UBERON:0000955  # brain
+      relationship_types:
+        - BFO:0000050  # part-of
+</code></pre>
+<h3 id="when-to-use-dynamic-enums">When to Use Dynamic Enums</h3>
+<p>Dynamic enums are appropriate when:</p>
+<table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Large value sets</strong></td>
+<td>All cell types, all diseases</td>
+</tr>
+<tr>
+<td><strong>Evolving ontologies</strong></td>
+<td>New terms added regularly</td>
+</tr>
+<tr>
+<td><strong>Branch-based constraints</strong></td>
+<td>"Any GO biological process"</td>
+</tr>
+<tr>
+<td><strong>Avoiding maintenance</strong></td>
+<td>Don't want to update schema with each ontology release</td>
+</tr>
+</tbody>
+</table>
+<h3 id="validation-of-dynamic-enums">Validation of Dynamic Enums</h3>
+<p><strong>Data validation</strong> (<code>DynamicEnumPlugin</code>) checks:</p>
 <ul>
-<li>Validating complex nested data structures</li>
-<li>Enforcing ontology constraints on object references</li>
-<li>Label validation for AI-generated data</li>
+<li>The data value exists in the expanded enum</li>
+<li>Expansion queries the ontology via OAK</li>
 </ul>
-<h3 id="commands_2">Commands</h3>
-<pre><code class="language-bash"># Validate bindings only
-linkml-term-validator validate-data data.yaml --schema schema.yaml
+<pre><code class="language-bash">linkml-term-validator validate-data data.yaml -s schema.yaml -t ClassName
+</code></pre>
+<h2 id="static-vs-dynamic-trade-offs">Static vs Dynamic: Trade-offs</h2>
+<table>
+<thead>
+<tr>
+<th>Aspect</th>
+<th>Static Enum</th>
+<th>Dynamic Enum</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Schema size</strong></td>
+<td>Grows with values</td>
+<td>Constant (just the query)</td>
+</tr>
+<tr>
+<td><strong>Validation speed</strong></td>
+<td>Fast (string match)</td>
+<td>Slower (ontology query)</td>
+</tr>
+<tr>
+<td><strong>Maintenance</strong></td>
+<td>Manual updates</td>
+<td>Automatic with ontology</td>
+</tr>
+<tr>
+<td><strong>Offline use</strong></td>
+<td>Always works</td>
+<td>Needs ontology access</td>
+</tr>
+<tr>
+<td><strong>Explicit control</strong></td>
+<td>Full control over values</td>
+<td>Delegate to ontology</td>
+</tr>
+<tr>
+<td><strong>JSON Schema export</strong></td>
+<td>Direct</td>
+<td>Requires materialization</td>
+</tr>
+</tbody>
+</table>
+<h2 id="materializing-dynamic-enums">Materializing Dynamic Enums</h2>
+<p>For tools that don't support dynamic queries (like JSON Schema validators), you can materialize dynamic enums into static lists:</p>
+<pre><code class="language-bash"># Using OAK's vskit
+vskit expand -s schema.yaml -o schema_expanded.yaml
+</code></pre>
+<p>This creates a schema with static enums populated from the query results.</p>
+<h2 id="combining-static-and-dynamic">Combining Static and Dynamic</h2>
+<p>You can combine both approaches:</p>
+<pre><code class="language-yaml">enums:
+  # Static subset for common cases
+  CommonCellTypes:
+    permissible_values:
+      NEURON:
+        meaning: CL:0000540
+      HEPATOCYTE:
+        meaning: CL:0000182
+      CARDIOMYOCYTE:
+        meaning: CL:0000746
 
-# Also validate labels match ontology
-linkml-term-validator validate-data data.yaml --schema schema.yaml --labels
-</code></pre>
-<h2 id="label-matching">Label Matching</h2>
-<p>When validating <code>meaning</code> fields, the validator compares the ontology's canonical label against multiple expected sources:</p>
-<ol>
-<li><strong>Permissible value name</strong> (e.g., <code>BIOLOGICAL_PROCESS</code>)</li>
-<li><strong>Title field</strong> (e.g., <code>title: biological process</code>)</li>
-<li><strong>Description field</strong></li>
-<li><strong>Aliases</strong> (e.g., <code>aliases: [biological_process, bio process]</code>)</li>
-<li><strong>Annotation values</strong> for tags like <code>label</code>, <code>display_name</code>, <code>synonym</code></li>
-</ol>
-<p>Labels are normalized before comparison:</p>
-<ul>
-<li>Lowercased</li>
-<li>Spaces/underscores treated as equivalent</li>
-<li>Multiple whitespace collapsed to single space</li>
-</ul>
-<p>This flexible matching reduces false positives from minor formatting differences.</p>
-<h2 id="severity-levels">Severity Levels</h2>
-<p>Validation results are reported with different severity levels:</p>
-<ul>
-<li><strong>ERROR</strong> - Serious issue that should block data/schema acceptance</li>
-<li>Configured prefix with label mismatch</li>
-<li>Missing term from configured ontology</li>
-<li>Dynamic enum constraint violation</li>
-<li>
-<p>Binding constraint violation</p>
-</li>
-<li>
-<p><strong>WARN</strong> - Potential issue that may need attention</p>
-</li>
-<li>Label mismatch in non-strict mode</li>
-<li>
-<p>Unconfigured prefix with label mismatch (when verbose)</p>
-</li>
-<li>
-<p><strong>INFO</strong> - Informational message</p>
-</li>
-<li>Unconfigured prefix encountered</li>
-<li>Unknown prefix summary</li>
-</ul>
-<h3 id="strict-mode">Strict Mode</h3>
-<p>Use <code>--strict</code> to treat all warnings as errors:</p>
-<pre><code class="language-bash">linkml-term-validator validate-schema --strict schema.yaml
+  # Dynamic for full flexibility
+  AllCellTypes:
+    reachable_from:
+      source_ontology: obo:cl
+      source_nodes:
+        - CL:0000000
+      relationship_types:
+        - rdfs:subClassOf
 </code></pre>
 <h2 id="see-also">See Also</h2>
 <ul>
-<li><a href="../configuration/">Configuration</a> - How to configure ontology adapters</li>
-<li><a href="../caching/">Caching</a> - Understanding the caching system</li>
-<li><a href="../anti-hallucination/">Anti-Hallucination</a> - Using validation for AI guardrails</li>
+<li><a href="../ontologies-primer/">Ontologies in LinkML</a> - Background on ontologies</li>
+<li><a href="../bindings-explained/">Bindings Explained</a> - Constraining complex objects</li>
+<li><a href="../schema-validation/">Schema Validation Reference</a> - Validating static enum meanings</li>
+</ul>
+<h2 id="external-resources">External Resources</h2>
+<ul>
+<li><a href="https://linkml.io/linkml/schemas/enums.html">LinkML Semantic Enumerations</a></li>
+<li><a href="https://linkml.io/linkml/intro/tutorial06.html">LinkML Tutorial: Enumerations</a></li>
 </ul>
 
 

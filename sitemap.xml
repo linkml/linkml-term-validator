@@ -2,34 +2,58 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://linkml.github.io/linkml-term-validator/</loc>
-         <lastmod>2025-11-17</lastmod>
+         <lastmod>2025-12-05</lastmod>
     </url>
     <url>
          <loc>https://linkml.github.io/linkml-term-validator/anti-hallucination/</loc>
-         <lastmod>2025-11-17</lastmod>
+         <lastmod>2025-12-05</lastmod>
+    </url>
+    <url>
+         <loc>https://linkml.github.io/linkml-term-validator/binding-validation/</loc>
+         <lastmod>2025-12-05</lastmod>
+    </url>
+    <url>
+         <loc>https://linkml.github.io/linkml-term-validator/bindings-explained/</loc>
+         <lastmod>2025-12-05</lastmod>
     </url>
     <url>
          <loc>https://linkml.github.io/linkml-term-validator/caching/</loc>
-         <lastmod>2025-11-17</lastmod>
+         <lastmod>2025-12-05</lastmod>
     </url>
     <url>
          <loc>https://linkml.github.io/linkml-term-validator/cli-reference/</loc>
-         <lastmod>2025-11-17</lastmod>
+         <lastmod>2025-12-05</lastmod>
     </url>
     <url>
          <loc>https://linkml.github.io/linkml-term-validator/configuration/</loc>
-         <lastmod>2025-11-17</lastmod>
+         <lastmod>2025-12-05</lastmod>
+    </url>
+    <url>
+         <loc>https://linkml.github.io/linkml-term-validator/data-validation/</loc>
+         <lastmod>2025-12-05</lastmod>
+    </url>
+    <url>
+         <loc>https://linkml.github.io/linkml-term-validator/enumerations/</loc>
+         <lastmod>2025-12-05</lastmod>
+    </url>
+    <url>
+         <loc>https://linkml.github.io/linkml-term-validator/ontologies-primer/</loc>
+         <lastmod>2025-12-05</lastmod>
     </url>
     <url>
          <loc>https://linkml.github.io/linkml-term-validator/ontology-access/</loc>
-         <lastmod>2025-11-17</lastmod>
+         <lastmod>2025-12-05</lastmod>
     </url>
     <url>
          <loc>https://linkml.github.io/linkml-term-validator/plugin-reference/</loc>
-         <lastmod>2025-11-17</lastmod>
+         <lastmod>2025-12-05</lastmod>
+    </url>
+    <url>
+         <loc>https://linkml.github.io/linkml-term-validator/schema-validation/</loc>
+         <lastmod>2025-12-05</lastmod>
     </url>
     <url>
          <loc>https://linkml.github.io/linkml-term-validator/validation-types/</loc>
-         <lastmod>2025-11-17</lastmod>
+         <lastmod>2025-12-05</lastmod>
     </url>
 </urlset>

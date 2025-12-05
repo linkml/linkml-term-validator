@@ -8,13 +8,13 @@
       
       
       
-        <link rel="canonical" href="https://linkml.github.io/linkml-term-validator/plugin-reference/">
+        <link rel="canonical" href="https://linkml.github.io/linkml-term-validator/binding-validation/">
       
       
-        <link rel="prev" href="../cli-reference/">
+        <link rel="prev" href="../data-validation/">
       
       
-        <link rel="next" href="../ontologies-primer/">
+        <link rel="next" href="../cli-reference/">
       
       
         
@@ -25,7 +25,7 @@
     
     
       
-        <title>Plugin Reference - linkml-term-validator</title>
+        <title>Binding Validation - linkml-term-validator</title>
       
     
     
@@ -66,7 +66,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#plugin-reference" class="md-skip">
+        <a href="#binding-validation-reference" class="md-skip">
           Skip to content
         </a>
       
@@ -101,7 +101,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Plugin Reference
+              Binding Validation
             
           </span>
         </div>
@@ -625,10 +625,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../binding-validation/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Binding Validation
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -644,6 +671,426 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI Usage
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="CLI Usage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cli-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#binding-syntax" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Binding Syntax
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Binding Syntax">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-binding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic Binding
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#binding-properties" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Binding Properties
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#obligation-levels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Obligation Levels
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#label-field-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Label Field Detection
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Label Field Detection">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-using-implements-recommended" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Using implements (Recommended)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-using-slot_uri" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Using slot_uri
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#supported-label-properties" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported Label Properties
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-convention-based-fallback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Convention-Based (Fallback)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nested-structure-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Nested Structure Validation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Nested Structure Validation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example-deeply-nested-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example: Deeply Nested Structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multivalued-slots" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multivalued Slots
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#complete-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete Example
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Complete Example">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#valid-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Valid Data
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#invalid-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Invalid Data
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#validation-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation Commands
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#python-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Python API
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Python API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#plugin-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plugin Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#error-messages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error Messages
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Error Messages">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#binding-violation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Binding Violation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#label-mismatch-with-labels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Label Mismatch (with --labels)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nested-path-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Nested Path Example
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#anti-hallucination-use-case" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Anti-Hallucination Use Case
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#combining-with-dynamicenumplugin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Combining with DynamicEnumPlugin
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Patterns
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Common Patterns">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reusable-term-class" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reusable Term Class
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slot-usage-override" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Slot Usage Override
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -681,37 +1128,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Plugin Reference
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../plugin-reference/" class="md-nav__link">
         
   
   
@@ -727,369 +1147,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#permissiblevaluemeaningplugin" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        PermissibleValueMeaningPlugin
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="PermissibleValueMeaningPlugin">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#constructor" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Constructor
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#parameters" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Parameters
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#usage" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Usage
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#what-it-validates" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What It Validates
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#validation-results" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Validation Results
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#example" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Example
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#dynamicenumplugin" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        DynamicEnumPlugin
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="DynamicEnumPlugin">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#constructor_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Constructor
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#parameters_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Parameters
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#usage_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Usage
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#what-it-validates_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What It Validates
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#validation-results_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Validation Results
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#example_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Example
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#bindingvalidationplugin" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        BindingValidationPlugin
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="BindingValidationPlugin">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#constructor_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Constructor
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#parameters_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Parameters
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#usage_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Usage
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#what-it-validates_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What It Validates
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#nested-structure-support" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Nested Structure Support
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#validation-results_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Validation Results
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#example_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Example
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#composing-multiple-plugins" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Composing Multiple Plugins
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#integration-with-linkml-validate" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Integration with linkml-validate
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#advanced-usage" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Advanced Usage
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Advanced Usage">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#custom-validation-workflow" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Custom Validation Workflow
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#accessing-validator-state" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Accessing Validator State
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#testing-plugins" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Testing Plugins
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#see-also" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        See Also
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1379,77 +1436,33 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#permissiblevaluemeaningplugin" class="md-nav__link">
+  <a href="#overview" class="md-nav__link">
     <span class="md-ellipsis">
       
-        PermissibleValueMeaningPlugin
+        Overview
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="PermissibleValueMeaningPlugin">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI Usage
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="CLI Usage">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#constructor" class="md-nav__link">
+  <a href="#cli-options" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Constructor
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#parameters" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Parameters
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#usage" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Usage
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#what-it-validates" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What It Validates
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#validation-results" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Validation Results
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#example" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Example
+        CLI Options
       
     </span>
   </a>
@@ -1462,22 +1475,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#dynamicenumplugin" class="md-nav__link">
+  <a href="#binding-syntax" class="md-nav__link">
     <span class="md-ellipsis">
       
-        DynamicEnumPlugin
+        Binding Syntax
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="DynamicEnumPlugin">
+    <nav class="md-nav" aria-label="Binding Syntax">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#constructor_1" class="md-nav__link">
+  <a href="#basic-binding" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Constructor
+        Basic Binding
       
     </span>
   </a>
@@ -1485,10 +1498,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#parameters_1" class="md-nav__link">
+  <a href="#binding-properties" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Parameters
+        Binding Properties
       
     </span>
   </a>
@@ -1496,43 +1509,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#usage_1" class="md-nav__link">
+  <a href="#obligation-levels" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Usage
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#what-it-validates_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What It Validates
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#validation-results_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Validation Results
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#example_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Example
+        Obligation Levels
       
     </span>
   </a>
@@ -1545,22 +1525,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#bindingvalidationplugin" class="md-nav__link">
+  <a href="#label-field-detection" class="md-nav__link">
     <span class="md-ellipsis">
       
-        BindingValidationPlugin
+        Label Field Detection
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="BindingValidationPlugin">
+    <nav class="md-nav" aria-label="Label Field Detection">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#constructor_2" class="md-nav__link">
+  <a href="#1-using-implements-recommended" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Constructor
+        1. Using implements (Recommended)
       
     </span>
   </a>
@@ -1568,10 +1548,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#parameters_2" class="md-nav__link">
+  <a href="#2-using-slot_uri" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Parameters
+        2. Using slot_uri
       
     </span>
   </a>
@@ -1579,10 +1559,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#usage_2" class="md-nav__link">
+  <a href="#supported-label-properties" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Usage
+        Supported Label Properties
       
     </span>
   </a>
@@ -1590,43 +1570,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#what-it-validates_2" class="md-nav__link">
+  <a href="#3-convention-based-fallback" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What It Validates
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#nested-structure-support" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Nested Structure Support
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#validation-results_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Validation Results
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#example_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Example
+        3. Convention-Based (Fallback)
       
     </span>
   </a>
@@ -1639,44 +1586,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#composing-multiple-plugins" class="md-nav__link">
+  <a href="#nested-structure-validation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Composing Multiple Plugins
+        Nested Structure Validation
       
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#integration-with-linkml-validate" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Integration with linkml-validate
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#advanced-usage" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Advanced Usage
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Advanced Usage">
+    <nav class="md-nav" aria-label="Nested Structure Validation">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#custom-validation-workflow" class="md-nav__link">
+  <a href="#example-deeply-nested-structure" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Custom Validation Workflow
+        Example: Deeply Nested Structure
       
     </span>
   </a>
@@ -1684,10 +1609,38 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#accessing-validator-state" class="md-nav__link">
+  <a href="#multivalued-slots" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Accessing Validator State
+        Multivalued Slots
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#complete-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete Example
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Complete Example">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schema
       
     </span>
   </a>
@@ -1695,10 +1648,171 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#testing-plugins" class="md-nav__link">
+  <a href="#valid-data" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Testing Plugins
+        Valid Data
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#invalid-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Invalid Data
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#validation-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation Commands
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#python-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Python API
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Python API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#plugin-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plugin Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#error-messages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error Messages
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Error Messages">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#binding-violation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Binding Violation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#label-mismatch-with-labels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Label Mismatch (with --labels)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nested-path-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Nested Path Example
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#anti-hallucination-use-case" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Anti-Hallucination Use Case
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#combining-with-dynamicenumplugin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Combining with DynamicEnumPlugin
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Patterns
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Common Patterns">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reusable-term-class" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reusable Term Class
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slot-usage-override" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Slot Usage Override
       
     </span>
   </a>
@@ -1741,223 +1855,349 @@
   
 
 
-<h1 id="plugin-reference">Plugin Reference</h1>
-<p>This page provides complete API reference documentation for the three LinkML ValidationPlugin implementations provided by linkml-term-validator.</p>
-<p>All plugins are designed to work with the <a href="https://linkml.io/linkml/code/validator.html">LinkML Validator framework</a> and can be used standalone or composed together.</p>
-<h2 id="permissiblevaluemeaningplugin">PermissibleValueMeaningPlugin</h2>
-<p>Validates that <code>meaning</code> fields in enum permissible values reference valid ontology terms with correct labels.</p>
-<p><strong>Module:</strong> <code>linkml_term_validator.plugins.permissible_value_meaning_plugin</code></p>
-<h3 id="constructor">Constructor</h3>
-<pre><code class="language-python">from linkml_term_validator.plugins import PermissibleValueMeaningPlugin
-
-plugin = PermissibleValueMeaningPlugin(
-    oak_adapter_string=&quot;sqlite:obo:&quot;,
-    oak_config_path=None,
-    strict_mode=False,
-    cache_labels=True,
-    cache_dir=&quot;cache&quot;,
-)
-</code></pre>
-<h3 id="parameters">Parameters</h3>
-<table>
-<thead>
-<tr>
-<th>Parameter</th>
-<th>Type</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>oak_adapter_string</code></td>
-<td><code>str</code></td>
-<td><code>"sqlite:obo:"</code></td>
-<td>Default OAK adapter string for ontology access</td>
-</tr>
-<tr>
-<td><code>oak_config_path</code></td>
-<td><code>str \| None</code></td>
-<td><code>None</code></td>
-<td>Path to <code>oak_config.yaml</code> for per-prefix adapter configuration</td>
-</tr>
-<tr>
-<td><code>strict_mode</code></td>
-<td><code>bool</code></td>
-<td><code>False</code></td>
-<td>If <code>True</code>, treat all warnings as errors</td>
-</tr>
-<tr>
-<td><code>cache_labels</code></td>
-<td><code>bool</code></td>
-<td><code>True</code></td>
-<td>Enable file-based caching of ontology labels</td>
-</tr>
-<tr>
-<td><code>cache_dir</code></td>
-<td><code>str</code></td>
-<td><code>"cache"</code></td>
-<td>Directory for cache files</td>
-</tr>
-</tbody>
-</table>
-<h3 id="usage">Usage</h3>
-<p><strong>Basic usage:</strong></p>
-<pre><code class="language-python">from linkml.validator import Validator
-from linkml_term_validator.plugins import PermissibleValueMeaningPlugin
-
-# Create plugin
-plugin = PermissibleValueMeaningPlugin()
-
-# Create validator with plugin
-validator = Validator(
-    schema=&quot;schema.yaml&quot;,
-    validation_plugins=[plugin]
-)
-
-# Validate schema file
-report = validator.validate_file(&quot;schema.yaml&quot;)
-
-# Check results
-if len(report.results) == 0:
-    print(&quot;✅ All permissible values validated successfully&quot;)
-else:
-    for result in report.results:
-        print(f&quot;{result.severity.name}: {result.message}&quot;)
-</code></pre>
-<p><strong>With custom configuration:</strong></p>
-<pre><code class="language-python">plugin = PermissibleValueMeaningPlugin(
-    oak_config_path=&quot;oak_config.yaml&quot;,
-    strict_mode=True,
-    cache_dir=&quot;custom_cache&quot;
-)
-</code></pre>
-<p><strong>With OLS adapter:</strong></p>
-<pre><code class="language-python">plugin = PermissibleValueMeaningPlugin(
-    oak_adapter_string=&quot;ols:&quot;,
-    cache_labels=False  # Don't cache when using online service
-)
-</code></pre>
-<h3 id="what-it-validates">What It Validates</h3>
-<p>For each enum in the schema:</p>
+<h1 id="binding-validation-reference">Binding Validation Reference</h1>
+<p>This reference covers validation of <strong>binding constraints on nested objects</strong>—ensuring that fields within complex objects satisfy enum range constraints, with optional label validation.</p>
+<h2 id="overview">Overview</h2>
+<p>Binding validation uses the <strong>BindingValidationPlugin</strong> to validate that:</p>
 <ol>
-<li>Extracts all permissible values with <code>meaning</code> fields</li>
-<li>For each meaning CURIE (e.g., <code>GO:0008150</code>):</li>
-<li>Retrieves the canonical label from the ontology</li>
-<li>Compares against expected labels from the schema</li>
-<li>Reports mismatches or missing terms</li>
+<li>Fields within nested objects satisfy their binding range constraints</li>
+<li>(Optionally) Labels match the ontology's canonical labels</li>
 </ol>
-<p><strong>Expected labels are derived from:</strong></p>
-<ul>
-<li>Permissible value name (e.g., <code>BIOLOGICAL_PROCESS</code>)</li>
-<li><code>title</code> field</li>
-<li><code>description</code> field</li>
-<li><code>aliases</code> list</li>
-<li>Annotation values for tags like <code>label</code>, <code>display_name</code>, <code>synonym</code></li>
-</ul>
-<h3 id="validation-results">Validation Results</h3>
-<p>Results use LinkML's <code>ValidationResult</code> class with the following severity levels:</p>
+<p>Bindings are essential when your data uses complex objects (like <code>OntologyTerm</code> with <code>id</code> and <code>label</code>) rather than simple CURIE strings.</p>
+<h2 id="cli-usage">CLI Usage</h2>
+<pre><code class="language-bash"># Basic binding validation
+linkml-term-validator validate-data data.yaml --schema schema.yaml
+
+# With label validation (anti-hallucination)
+linkml-term-validator validate-data data.yaml -s schema.yaml --labels
+
+# With target class
+linkml-term-validator validate-data data.yaml -s schema.yaml -t GeneAnnotation --labels
+
+# With custom OAK configuration
+linkml-term-validator validate-data data.yaml -s schema.yaml --oak-config oak_config.yaml --labels
+</code></pre>
+<h3 id="cli-options">CLI Options</h3>
 <table>
 <thead>
 <tr>
-<th>Severity</th>
-<th>Condition</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>ERROR</code></td>
-<td>Label mismatch for configured prefix (or any prefix in strict mode)</td>
-</tr>
-<tr>
-<td><code>WARN</code></td>
-<td>Label mismatch for unconfigured prefix (non-strict mode)</td>
-</tr>
-<tr>
-<td><code>INFO</code></td>
-<td>Missing term from unconfigured prefix</td>
-</tr>
-</tbody>
-</table>
-<h3 id="example">Example</h3>
-<p><strong>Schema:</strong></p>
-<pre><code class="language-yaml">enums:
-  BiologicalProcessEnum:
-    permissible_values:
-      BIOLOGICAL_PROCESS:
-        title: biological process
-        meaning: GO:0008150
-      CELL_CYCLE:
-        title: cell cycle
-        meaning: GO:0007049
-</code></pre>
-<p><strong>Code:</strong></p>
-<pre><code class="language-python">from linkml.validator import Validator
-from linkml_term_validator.plugins import PermissibleValueMeaningPlugin
-
-plugin = PermissibleValueMeaningPlugin()
-validator = Validator(schema=&quot;schema.yaml&quot;, validation_plugins=[plugin])
-report = validator.validate_file(&quot;schema.yaml&quot;)
-
-print(f&quot;Validated {len(report.results)} permissible values&quot;)
-</code></pre>
-<h2 id="dynamicenumplugin">DynamicEnumPlugin</h2>
-<p>Validates data values against dynamic enum constraints defined via <code>reachable_from</code>, <code>matches</code>, or <code>concepts</code>.</p>
-<p><strong>Module:</strong> <code>linkml_term_validator.plugins.dynamic_enum_plugin</code></p>
-<h3 id="constructor_1">Constructor</h3>
-<pre><code class="language-python">from linkml_term_validator.plugins import DynamicEnumPlugin
-
-plugin = DynamicEnumPlugin(
-    oak_adapter_string=&quot;sqlite:obo:&quot;,
-    oak_config_path=None,
-    cache_labels=True,
-    cache_dir=&quot;cache&quot;,
-)
-</code></pre>
-<h3 id="parameters_1">Parameters</h3>
-<table>
-<thead>
-<tr>
-<th>Parameter</th>
-<th>Type</th>
-<th>Default</th>
+<th>Option</th>
 <th>Description</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>oak_adapter_string</code></td>
-<td><code>str</code></td>
-<td><code>"sqlite:obo:"</code></td>
-<td>Default OAK adapter string for ontology access</td>
+<td><code>--schema</code>, <code>-s</code></td>
+<td>Path to LinkML schema (required)</td>
 </tr>
 <tr>
-<td><code>oak_config_path</code></td>
-<td><code>str \| None</code></td>
-<td><code>None</code></td>
-<td>Path to <code>oak_config.yaml</code> for per-prefix adapter configuration</td>
+<td><code>--target-class</code>, <code>-t</code></td>
+<td>Target class for validation</td>
 </tr>
 <tr>
-<td><code>cache_labels</code></td>
-<td><code>bool</code></td>
-<td><code>True</code></td>
-<td>Enable file-based caching of ontology labels</td>
+<td><code>--labels</code></td>
+<td>Also validate labels against ontology</td>
 </tr>
 <tr>
-<td><code>cache_dir</code></td>
-<td><code>str</code></td>
-<td><code>"cache"</code></td>
-<td>Directory for cache files</td>
+<td><code>--oak-adapter</code></td>
+<td>OAK adapter string (default: <code>sqlite:obo:</code>)</td>
+</tr>
+<tr>
+<td><code>--oak-config</code></td>
+<td>Path to OAK configuration file</td>
+</tr>
+<tr>
+<td><code>--cache-dir</code></td>
+<td>Directory for cache files (default: <code>cache</code>)</td>
+</tr>
+<tr>
+<td><code>--verbose</code> / <code>-v</code></td>
+<td>Enable verbose output</td>
 </tr>
 </tbody>
 </table>
-<h3 id="usage_1">Usage</h3>
-<p><strong>Basic usage:</strong></p>
-<pre><code class="language-python">from linkml.validator import Validator
-from linkml_term_validator.plugins import DynamicEnumPlugin
+<h2 id="binding-syntax">Binding Syntax</h2>
+<h3 id="basic-binding">Basic Binding</h3>
+<pre><code class="language-yaml">classes:
+  GeneAnnotation:
+    attributes:
+      go_term:
+        range: OntologyTerm
+        bindings:
+          - binds_value_of: id              # Field to constrain
+            range: BiologicalProcessEnum    # Enum defining valid values
+</code></pre>
+<h3 id="binding-properties">Binding Properties</h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>binds_value_of</code></td>
+<td>Yes</td>
+<td>The field path within the nested object</td>
+</tr>
+<tr>
+<td><code>range</code></td>
+<td>Yes</td>
+<td>The enum (static or dynamic) defining allowed values</td>
+</tr>
+<tr>
+<td><code>obligation_level</code></td>
+<td>No</td>
+<td><code>REQUIRED</code>, <code>RECOMMENDED</code>, or <code>OPTIONAL</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="obligation-levels">Obligation Levels</h3>
+<table>
+<thead>
+<tr>
+<th>Level</th>
+<th>Description</th>
+<th>Validation Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>REQUIRED</code></td>
+<td>Must satisfy constraint</td>
+<td>ERROR on violation</td>
+</tr>
+<tr>
+<td><code>RECOMMENDED</code></td>
+<td>Should satisfy constraint</td>
+<td>WARN on violation</td>
+</tr>
+<tr>
+<td><code>OPTIONAL</code></td>
+<td>May satisfy constraint</td>
+<td>No validation</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-yaml">bindings:
+  - binds_value_of: id
+    range: BiologicalProcessEnum
+    obligation_level: REQUIRED     # Default if not specified
+</code></pre>
+<h2 id="label-field-detection">Label Field Detection</h2>
+<p>The plugin needs to know which field contains the label to validate. There are three mechanisms:</p>
+<h3 id="1-using-implements-recommended">1. Using <code>implements</code> (Recommended)</h3>
+<p>Use <code>implements</code> to declare the label field:</p>
+<pre><code class="language-yaml">classes:
+  OntologyTerm:
+    attributes:
+      id:
+        identifier: true
+      name:
+        implements:
+          - rdfs:label              # Declares this is the label field
+</code></pre>
+<h3 id="2-using-slot_uri">2. Using <code>slot_uri</code></h3>
+<p>Alternatively, use <code>slot_uri</code> to declare the field's semantic meaning:</p>
+<pre><code class="language-yaml">classes:
+  OntologyTerm:
+    attributes:
+      id:
+        identifier: true
+      label:
+        slot_uri: rdfs:label        # Also declares this is the label field
+</code></pre>
+<h3 id="supported-label-properties">Supported Label Properties</h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rdfs:label</code></td>
+<td>Standard RDF label</td>
+</tr>
+<tr>
+<td><code>skos:prefLabel</code></td>
+<td>SKOS preferred label</td>
+</tr>
+<tr>
+<td><code>schema:name</code></td>
+<td>Schema.org name</td>
+</tr>
+<tr>
+<td><code>oboInOwl:hasExactSynonym</code></td>
+<td>OBO exact synonym</td>
+</tr>
+</tbody>
+</table>
+<h3 id="3-convention-based-fallback">3. Convention-Based (Fallback)</h3>
+<p>If no <code>implements</code> or <code>slot_uri</code> is declared, the plugin falls back to looking for a field named <code>label</code>:</p>
+<pre><code class="language-yaml">classes:
+  OntologyTerm:
+    attributes:
+      id:
+        identifier: true
+      label:                        # Detected by convention
+        range: string
+</code></pre>
+<h2 id="nested-structure-validation">Nested Structure Validation</h2>
+<p>The plugin <strong>recursively validates all nesting levels</strong>, not just the top-level class. This is critical for real-world schemas.</p>
+<h3 id="example-deeply-nested-structure">Example: Deeply Nested Structure</h3>
+<p><strong>Schema:</strong></p>
+<pre><code class="language-yaml">classes:
+  Study:
+    attributes:
+      samples:
+        range: Sample
+        multivalued: true
+        inlined_as_list: true
 
-# Create plugin
-plugin = DynamicEnumPlugin()
+  Sample:
+    attributes:
+      annotations:
+        range: Annotation
+        multivalued: true
+        inlined_as_list: true
+
+  Annotation:
+    attributes:
+      term:
+        range: OntologyTerm
+        bindings:                   # ← Binding at nested level
+          - binds_value_of: id
+            range: AnnotationTermEnum
+</code></pre>
+<p><strong>Data:</strong></p>
+<pre><code class="language-yaml">samples:
+  - annotations:
+      - term:
+          id: GO:0007049           # ← Validated!
+          label: cell cycle
+</code></pre>
+<p><strong>Error message with path:</strong></p>
+<pre><code>ERROR: Value 'GO:9999999' not in enum 'AnnotationTermEnum'
+  path: samples[0].annotations[1].term
+  slot: term
+  field: id
+</code></pre>
+<h3 id="multivalued-slots">Multivalued Slots</h3>
+<p>Both the parent slot and the nested objects can be multivalued:</p>
+<pre><code class="language-yaml">classes:
+  Disease:
+    attributes:
+      affected_tissues:
+        range: TissueDescriptor
+        multivalued: true              # Multiple tissues
+        inlined_as_list: true
+        bindings:
+          - binds_value_of: id
+            range: AnatomyEnum
+</code></pre>
+<p>Each item in the list is validated independently:</p>
+<pre><code class="language-yaml">affected_tissues:
+  - id: UBERON:0000955              # brain - validated
+    label: brain
+  - id: UBERON:0000948              # heart - validated
+    label: heart
+  - id: PIZZA:MARGHERITA           # INVALID - not anatomy
+    label: delicious
+</code></pre>
+<h2 id="complete-example">Complete Example</h2>
+<h3 id="schema">Schema</h3>
+<pre><code class="language-yaml">id: https://example.org/annotation-schema
+name: annotation-schema
+prefixes:
+  GO: http://purl.obolibrary.org/obo/GO_
+  rdfs: http://www.w3.org/2000/01/rdf-schema#
+  linkml: https://w3id.org/linkml/
+
+classes:
+  GeneAnnotation:
+    attributes:
+      gene_id:
+        range: string
+        identifier: true
+      process:
+        range: GOTerm
+        bindings:
+          - binds_value_of: id
+            range: BiologicalProcessEnum
+      location:
+        range: GOTerm
+        bindings:
+          - binds_value_of: id
+            range: CellularComponentEnum
+
+  GOTerm:
+    attributes:
+      id:
+        identifier: true
+      label:
+        implements:
+          - rdfs:label
+
+enums:
+  BiologicalProcessEnum:
+    reachable_from:
+      source_ontology: sqlite:obo:go
+      source_nodes:
+        - GO:0008150              # biological_process
+      relationship_types:
+        - rdfs:subClassOf
+
+  CellularComponentEnum:
+    reachable_from:
+      source_ontology: sqlite:obo:go
+      source_nodes:
+        - GO:0005575              # cellular_component
+      relationship_types:
+        - rdfs:subClassOf
+</code></pre>
+<h3 id="valid-data">Valid Data</h3>
+<pre><code class="language-yaml">gene_id: BRCA1
+process:
+  id: GO:0007049                  # cell cycle - is a biological process
+  label: cell cycle
+location:
+  id: GO:0005634                  # nucleus - is a cellular component
+  label: nucleus
+</code></pre>
+<h3 id="invalid-data">Invalid Data</h3>
+<pre><code class="language-yaml">gene_id: BRCA1
+process:
+  id: GO:0005634                  # nucleus - WRONG! Not a process
+  label: nucleus
+location:
+  id: GO:0007049                  # cell cycle - WRONG! Not a component
+  label: cell cycle
+</code></pre>
+<h3 id="validation-commands">Validation Commands</h3>
+<pre><code class="language-bash"># Binding validation only
+linkml-term-validator validate-data annotations.yaml -s schema.yaml -t GeneAnnotation
+# Output: 2 binding errors (wrong enum values)
+
+# With label validation
+linkml-term-validator validate-data annotations.yaml -s schema.yaml -t GeneAnnotation --labels
+# Also validates that labels match ontology
+</code></pre>
+<h2 id="python-api">Python API</h2>
+<pre><code class="language-python">from linkml.validator import Validator
+from linkml_runtime.loaders import yaml_loader
+from linkml_term_validator.plugins import BindingValidationPlugin
+
+# Create plugin with label validation
+plugin = BindingValidationPlugin(
+    oak_adapter_string=&quot;sqlite:obo:&quot;,
+    validate_labels=True,          # Enable label checking
+    cache_labels=True,
+    cache_dir=&quot;cache&quot;,
+)
 
 # Create validator
 validator = Validator(
@@ -1965,107 +2205,19 @@ validator = Validator(
     validation_plugins=[plugin]
 )
 
-# Validate data file
-report = validator.validate_file(&quot;data.yaml&quot;)
+# Validate
+loader = yaml_loader.YamlLoader()
+report = validator.validate_source(
+    loader,
+    &quot;data.yaml&quot;,
+    target_class=&quot;GeneAnnotation&quot;
+)
 
 # Check results
-if len(report.results) == 0:
-    print(&quot;✅ All dynamic enum constraints satisfied&quot;)
-else:
-    for result in report.results:
-        print(f&quot;{result.severity.name}: {result.message}&quot;)
-</code></pre>
-<p><strong>With YamlLoader (recommended for YAML data):</strong></p>
-<pre><code class="language-python">from linkml.validator import Validator
-from linkml_runtime.loaders import yaml_loader
-from linkml_term_validator.plugins import DynamicEnumPlugin
-
-plugin = DynamicEnumPlugin()
-validator = Validator(schema=&quot;schema.yaml&quot;, validation_plugins=[plugin])
-
-loader = yaml_loader.YamlLoader()
-report = validator.validate_source(loader, &quot;data.yaml&quot;, target_class=&quot;Person&quot;)
-</code></pre>
-<h3 id="what-it-validates_1">What It Validates</h3>
-<p>For each slot in the data with a dynamic enum range:</p>
-<ol>
-<li>Checks if the value satisfies the enum constraint</li>
-<li>For <code>reachable_from</code>: validates value is a descendant of source nodes</li>
-<li>For <code>matches</code>: validates value matches the specified pattern</li>
-<li>For <code>concepts</code>: validates value is one of the specified concepts</li>
-</ol>
-<p><strong>Important semantics:</strong></p>
-<ul>
-<li>For <code>reachable_from</code>, source nodes themselves are <strong>EXCLUDED</strong> by default</li>
-<li>Only descendants (via specified relationship types) are included</li>
-</ul>
-<h3 id="validation-results_1">Validation Results</h3>
-<table>
-<thead>
-<tr>
-<th>Severity</th>
-<th>Condition</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>ERROR</code></td>
-<td>Value does not satisfy dynamic enum constraint</td>
-</tr>
-</tbody>
-</table>
-<h3 id="example_1">Example</h3>
-<p><strong>Schema:</strong></p>
-<pre><code class="language-yaml">classes:
-  Neuron:
-    attributes:
-      cell_type:
-        range: NeuronTypeEnum
-
-enums:
-  NeuronTypeEnum:
-    reachable_from:
-      source_ontology: sqlite:obo:cl
-      source_nodes:
-        - CL:0000540  # neuron
-      relationship_types:
-        - rdfs:subClassOf
-</code></pre>
-<p><strong>Data:</strong></p>
-<pre><code class="language-yaml">neurons:
-  - cell_type: CL:0000100  # Valid - descendant of CL:0000540
-  - cell_type: GO:0008150  # INVALID - not a neuron type
-</code></pre>
-<p><strong>Code:</strong></p>
-<pre><code class="language-python">from linkml.validator import Validator
-from linkml_runtime.loaders import yaml_loader
-from linkml_term_validator.plugins import DynamicEnumPlugin
-
-plugin = DynamicEnumPlugin()
-validator = Validator(schema=&quot;schema.yaml&quot;, validation_plugins=[plugin])
-
-loader = yaml_loader.YamlLoader()
-report = validator.validate_source(loader, &quot;neurons.yaml&quot;, target_class=&quot;Neuron&quot;)
-
-# Will show ERROR for GO:0008150
 for result in report.results:
     print(f&quot;{result.severity.name}: {result.message}&quot;)
 </code></pre>
-<h2 id="bindingvalidationplugin">BindingValidationPlugin</h2>
-<p>Validates that nested object fields satisfy binding range constraints, optionally checking labels match ontology.</p>
-<p><strong>Module:</strong> <code>linkml_term_validator.plugins.binding_validation_plugin</code></p>
-<h3 id="constructor_2">Constructor</h3>
-<pre><code class="language-python">from linkml_term_validator.plugins import BindingValidationPlugin
-
-plugin = BindingValidationPlugin(
-    oak_adapter_string=&quot;sqlite:obo:&quot;,
-    oak_config_path=None,
-    validate_labels=False,
-    cache_labels=True,
-    cache_dir=&quot;cache&quot;,
-)
-</code></pre>
-<h3 id="parameters_2">Parameters</h3>
+<h3 id="plugin-parameters">Plugin Parameters</h3>
 <table>
 <thead>
 <tr>
@@ -2080,402 +2232,130 @@ plugin = BindingValidationPlugin(
 <td><code>oak_adapter_string</code></td>
 <td><code>str</code></td>
 <td><code>"sqlite:obo:"</code></td>
-<td>Default OAK adapter string for ontology access</td>
+<td>Default OAK adapter</td>
 </tr>
 <tr>
 <td><code>oak_config_path</code></td>
 <td><code>str \| None</code></td>
 <td><code>None</code></td>
-<td>Path to <code>oak_config.yaml</code> for per-prefix adapter configuration</td>
+<td>Path to OAK config file</td>
 </tr>
 <tr>
 <td><code>validate_labels</code></td>
 <td><code>bool</code></td>
 <td><code>False</code></td>
-<td>If <code>True</code>, also validate that labels match ontology canonical labels</td>
+<td>Also validate labels</td>
 </tr>
 <tr>
 <td><code>cache_labels</code></td>
 <td><code>bool</code></td>
 <td><code>True</code></td>
-<td>Enable file-based caching of ontology labels</td>
+<td>Enable file-based caching</td>
 </tr>
 <tr>
 <td><code>cache_dir</code></td>
 <td><code>str</code></td>
 <td><code>"cache"</code></td>
-<td>Directory for cache files</td>
+<td>Cache directory</td>
 </tr>
 </tbody>
 </table>
-<h3 id="usage_2">Usage</h3>
-<p><strong>Basic usage (binding validation only):</strong></p>
-<pre><code class="language-python">from linkml.validator import Validator
-from linkml_term_validator.plugins import BindingValidationPlugin
-
-# Create plugin without label validation
-plugin = BindingValidationPlugin()
-
-validator = Validator(
-    schema=&quot;schema.yaml&quot;,
-    validation_plugins=[plugin]
-)
-
-report = validator.validate_file(&quot;data.yaml&quot;)
+<h2 id="error-messages">Error Messages</h2>
+<h3 id="binding-violation">Binding Violation</h3>
+<pre><code>ERROR: Value 'GO:0005634' not in enum 'BiologicalProcessEnum'
+  path: process
+  slot: process
+  field: id
 </code></pre>
-<p><strong>With label validation (anti-hallucination mode):</strong></p>
-<pre><code class="language-python"># Enable label validation for AI-generated data
+<h3 id="label-mismatch-with-labels">Label Mismatch (with <code>--labels</code>)</h3>
+<pre><code>ERROR: Label mismatch for GO:0007049
+  Expected (from data): &quot;Cell Cycle&quot;
+  Found (from ontology): &quot;cell cycle&quot;
+  path: process.label
+</code></pre>
+<h3 id="nested-path-example">Nested Path Example</h3>
+<pre><code>ERROR: Value 'GO:9999999' not in enum 'CellularComponentEnum'
+  path: samples[0].annotations[2].term
+  slot: term
+  field: id
+</code></pre>
+<h2 id="anti-hallucination-use-case">Anti-Hallucination Use Case</h2>
+<p>When validating AI-generated data, enable label validation to catch hallucinated terms:</p>
+<pre><code class="language-python"># AI might generate plausible-looking but wrong data:
+# {
+#   &quot;id&quot;: &quot;GO:0007049&quot;,
+#   &quot;label&quot;: &quot;DNA repair&quot;        # WRONG! Actual label is &quot;cell cycle&quot;
+# }
+
 plugin = BindingValidationPlugin(validate_labels=True)
-
-validator = Validator(schema=&quot;schema.yaml&quot;, validation_plugins=[plugin])
-report = validator.validate_file(&quot;ai_generated_data.yaml&quot;)
-
-# Will catch both binding violations AND label mismatches
-for result in report.results:
-    print(f&quot;{result.severity.name}: {result.message}&quot;)
+# This will catch the mismatch!
 </code></pre>
-<p><strong>With custom configuration:</strong></p>
-<pre><code class="language-python">plugin = BindingValidationPlugin(
-    oak_config_path=&quot;oak_config.yaml&quot;,
-    validate_labels=True,
-    cache_dir=&quot;custom_cache&quot;
-)
-</code></pre>
-<h3 id="what-it-validates_2">What It Validates</h3>
-<p>For each slot with binding constraints:</p>
-<ol>
-<li><strong>Binding constraint validation</strong> (always):</li>
-<li>Checks that the value in the nested object's field satisfies the binding's range constraint</li>
-<li>
-<p>Range is typically a dynamic enum (e.g., only biological processes, only neuron types)</p>
-</li>
-<li>
-<p><strong>Label validation</strong> (if <code>validate_labels=True</code>):</p>
-</li>
-<li>Detects label fields via <code>slot.implements</code> (e.g., <code>implements: [rdfs:label]</code>)</li>
-<li>Falls back to convention (field named <code>label</code>) if no <code>implements</code> declared</li>
-<li>Retrieves the canonical label from the ontology</li>
-<li>Compares against the label provided in the data</li>
-<li>Reports mismatches</li>
-</ol>
-<h3 id="nested-structure-support">Nested Structure Support</h3>
-<p>The plugin <strong>recursively validates bindings at all nesting levels</strong>, not just the top-level target class. This is essential for schemas using the common patterns:</p>
-<ul>
-<li><strong>Descriptor pattern</strong>: Wrapper objects with ontology term references</li>
-<li><strong>Annotation pattern</strong>: Annotations with bound term fields</li>
-<li><strong>Deeply nested structures</strong>: e.g., <code>Disease → Pathophysiology → CellTypes → Term</code></li>
-</ul>
-<p><strong>Example nested schema:</strong></p>
-<pre><code class="language-yaml">classes:
-  Disease:
-    attributes:
-      disease_term:
-        range: DiseaseDescriptor
-        inlined: true
-      pathophysiology:
-        range: Pathophysiology
-        multivalued: true
-        inlined_as_list: true
-
-  Pathophysiology:
-    attributes:
-      cell_types:
-        range: CellTypeDescriptor
-        multivalued: true
-        inlined_as_list: true
-
-  DiseaseDescriptor:
-    attributes:
-      term:
-        range: Term
-        bindings:
-          - binds_value_of: id
-            range: DiseaseTermEnum  # ← Validated!
-
-  CellTypeDescriptor:
-    attributes:
-      term:
-        range: Term
-        bindings:
-          - binds_value_of: id
-            range: CellTypeEnum  # ← Also validated!
-</code></pre>
-<p>Error messages include the full JSON path to the violation:</p>
-<pre><code>❌ ERROR: Value 'CL:9999999' not in enum 'CellTypeEnum'
-    path: pathophysiology[0].cell_types[1].term
-    slot: term
-    field: id
-</code></pre>
-<h3 id="validation-results_2">Validation Results</h3>
-<table>
-<thead>
-<tr>
-<th>Severity</th>
-<th>Condition</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>ERROR</code></td>
-<td>Binding constraint violated</td>
-</tr>
-<tr>
-<td><code>ERROR</code></td>
-<td>Label mismatch (if <code>validate_labels=True</code>)</td>
-</tr>
-<tr>
-<td><code>WARN</code></td>
-<td>Label mismatch for unconfigured prefix (if <code>validate_labels=True</code>)</td>
-</tr>
-</tbody>
-</table>
-<h3 id="example_2">Example</h3>
-<p><strong>Schema:</strong></p>
-<pre><code class="language-yaml">prefixes:
-  rdfs: http://www.w3.org/2000/01/rdf-schema#
-
-classes:
-  GeneAnnotation:
-    attributes:
-      gene:
-        range: string
-      go_term:
-        range: GOTerm
-        bindings:
-          - binds_value_of: id
-            range: BiologicalProcessEnum
-
-  GOTerm:
-    attributes:
-      id:
-        range: string
-      label:
-        range: string
-        implements:
-          - rdfs:label  # Explicit label field declaration
-
-enums:
-  BiologicalProcessEnum:
-    reachable_from:
-      source_ontology: sqlite:obo:go
-      source_nodes:
-        - GO:0008150  # biological_process
-      relationship_types:
-        - rdfs:subClassOf
-</code></pre>
-<p><strong>Data:</strong></p>
-<pre><code class="language-yaml">annotations:
-  - gene: BRCA1
-    go_term:
-      id: GO:0007049  # Valid - is a biological process
-      label: cell cycle
-  - gene: EGFR
-    go_term:
-      id: GO:0005575  # INVALID - cellular_component, not a process
-      label: cellular_component
-</code></pre>
-<p><strong>Code:</strong></p>
+<p>See <a href="../anti-hallucination/">Anti-Hallucination Guardrails</a> for more details.</p>
+<h2 id="combining-with-dynamicenumplugin">Combining with DynamicEnumPlugin</h2>
+<p>For comprehensive validation, use both plugins:</p>
 <pre><code class="language-python">from linkml.validator import Validator
-from linkml_runtime.loaders import yaml_loader
-from linkml_term_validator.plugins import BindingValidationPlugin
-
-# With label validation enabled
-plugin = BindingValidationPlugin(validate_labels=True)
-validator = Validator(schema=&quot;schema.yaml&quot;, validation_plugins=[plugin])
-
-loader = yaml_loader.YamlLoader()
-report = validator.validate_source(
-    loader,
-    &quot;annotations.yaml&quot;,
-    target_class=&quot;GeneAnnotation&quot;
-)
-
-# Will show ERROR for GO:0005575 (wrong category)
-# Will also validate that labels match ontology
-for result in report.results:
-    print(f&quot;{result.severity.name}: {result.message}&quot;)
-</code></pre>
-<h2 id="composing-multiple-plugins">Composing Multiple Plugins</h2>
-<p>You can use multiple plugins together for comprehensive validation:</p>
-<pre><code class="language-python">from linkml.validator import Validator
-from linkml.validator.plugins import JsonschemaValidationPlugin
 from linkml_term_validator.plugins import (
     DynamicEnumPlugin,
     BindingValidationPlugin,
 )
 
-# Build validation pipeline
 plugins = [
-    JsonschemaValidationPlugin(closed=True),  # Structural validation
-    DynamicEnumPlugin(),                       # Dynamic enum validation
-    BindingValidationPlugin(validate_labels=True),  # Binding + label validation
+    DynamicEnumPlugin(),                      # Direct enum slots
+    BindingValidationPlugin(validate_labels=True),  # Nested object bindings
 ]
 
-# Create validator with all plugins
-validator = Validator(
-    schema=&quot;schema.yaml&quot;,
-    validation_plugins=plugins
-)
-
-# Validate data
-report = validator.validate_file(&quot;data.yaml&quot;)
-
-# Check results
-if len(report.results) == 0:
-    print(&quot;✅ All validations passed&quot;)
-else:
-    # Group results by severity
-    errors = [r for r in report.results if r.severity.name == &quot;ERROR&quot;]
-    warnings = [r for r in report.results if r.severity.name == &quot;WARN&quot;]
-
-    print(f&quot;Errors: {len(errors)}&quot;)
-    print(f&quot;Warnings: {len(warnings)}&quot;)
-
-    for result in report.results:
-        print(f&quot;{result.severity.name}: {result.message}&quot;)
+validator = Validator(schema=&quot;schema.yaml&quot;, validation_plugins=plugins)
 </code></pre>
-<h2 id="integration-with-linkml-validate">Integration with linkml-validate</h2>
-<p>All plugins can be used with the standard <code>linkml-validate</code> command via configuration files.</p>
-<p><strong>Configuration file:</strong></p>
-<pre><code class="language-yaml"># validation_config.yaml
-schema: schema.yaml
-target_class: Person
+<ul>
+<li><strong>DynamicEnumPlugin</strong>: Validates slots that directly use dynamic enum ranges</li>
+<li><strong>BindingValidationPlugin</strong>: Validates fields within nested objects via bindings</li>
+</ul>
+<h2 id="common-patterns">Common Patterns</h2>
+<h3 id="reusable-term-class">Reusable Term Class</h3>
+<pre><code class="language-yaml">classes:
+  Term:
+    attributes:
+      id:
+        identifier: true
+      label:
+        implements:
+          - rdfs:label
 
-data_sources:
-  - data.yaml
-
-plugins:
-  # Standard LinkML validation
-  JsonschemaValidationPlugin:
-    closed: true
-
-  # Dynamic enum validation
-  &quot;linkml_term_validator.plugins.DynamicEnumPlugin&quot;:
-    oak_adapter_string: &quot;sqlite:obo:&quot;
-    cache_labels: true
-    cache_dir: cache
-
-  # Binding validation with label checking
-  &quot;linkml_term_validator.plugins.BindingValidationPlugin&quot;:
-    oak_adapter_string: &quot;sqlite:obo:&quot;
-    validate_labels: true
-    cache_labels: true
-    cache_dir: cache
+  GeneAnnotation:
+    attributes:
+      process:
+        range: Term
+        bindings:
+          - binds_value_of: id
+            range: ProcessEnum
+      component:
+        range: Term
+        bindings:
+          - binds_value_of: id
+            range: ComponentEnum
 </code></pre>
-<p><strong>Run validation:</strong></p>
-<pre><code class="language-bash">linkml-validate --config validation_config.yaml
-</code></pre>
-<h2 id="advanced-usage">Advanced Usage</h2>
-<h3 id="custom-validation-workflow">Custom Validation Workflow</h3>
-<pre><code class="language-python">from linkml.validator import Validator
-from linkml_runtime.loaders import yaml_loader
-from linkml_term_validator.plugins import (
-    DynamicEnumPlugin,
-    BindingValidationPlugin,
-)
+<h3 id="slot-usage-override">Slot Usage Override</h3>
+<p>Override bindings in subclasses:</p>
+<pre><code class="language-yaml">classes:
+  Annotation:
+    attributes:
+      term:
+        range: Term
 
-# Build custom validation pipeline
-def validate_ai_generated_data(data_path, schema_path):
-    &quot;&quot;&quot;Validate AI-generated data with anti-hallucination checks.&quot;&quot;&quot;
-
-    plugins = [
-        DynamicEnumPlugin(oak_adapter_string=&quot;sqlite:obo:&quot;),
-        BindingValidationPlugin(
-            validate_labels=True,  # Enable label checking
-            oak_adapter_string=&quot;sqlite:obo:&quot;
-        ),
-    ]
-
-    validator = Validator(schema=schema_path, validation_plugins=plugins)
-    loader = yaml_loader.YamlLoader()
-
-    report = validator.validate_source(
-        loader,
-        data_path,
-        target_class=&quot;GeneAnnotation&quot;
-    )
-
-    # Fail fast on any errors
-    if len(report.results) &gt; 0:
-        errors = [r for r in report.results if r.severity.name == &quot;ERROR&quot;]
-        if errors:
-            raise ValueError(f&quot;Validation failed with {len(errors)} error(s)&quot;)
-
-    return report
-
-# Use in AI pipeline
-try:
-    report = validate_ai_generated_data(
-        &quot;ai_output.yaml&quot;,
-        &quot;schema.yaml&quot;
-    )
-    print(&quot;✅ AI-generated data validated successfully&quot;)
-except ValueError as e:
-    print(f&quot;❌ {e}&quot;)
-    # Retry AI generation or fail
-</code></pre>
-<h3 id="accessing-validator-state">Accessing Validator State</h3>
-<pre><code class="language-python">from linkml_term_validator.plugins import DynamicEnumPlugin
-
-plugin = DynamicEnumPlugin()
-
-# Access the OAK validator (for advanced use cases)
-oak_validator = plugin.get_validator()
-
-# Check unknown prefixes encountered during validation
-unknown_prefixes = oak_validator.get_unknown_prefixes()
-if unknown_prefixes:
-    print(&quot;Unknown prefixes encountered:&quot;)
-    for prefix in unknown_prefixes:
-        print(f&quot;  - {prefix}&quot;)
-</code></pre>
-<h3 id="testing-plugins">Testing Plugins</h3>
-<pre><code class="language-python">import pytest
-from linkml.validator import Validator
-from linkml_term_validator.plugins import DynamicEnumPlugin
-
-def test_dynamic_enum_validation():
-    &quot;&quot;&quot;Test dynamic enum validation with local OBO file.&quot;&quot;&quot;
-
-    plugin = DynamicEnumPlugin(
-        oak_config_path=&quot;tests/data/test_oak_config.yaml&quot;
-    )
-
-    validator = Validator(
-        schema=&quot;tests/data/dynamic_enum_schema.yaml&quot;,
-        validation_plugins=[plugin]
-    )
-
-    report = validator.validate_file(&quot;tests/data/valid_data.yaml&quot;)
-
-    # Should have no errors
-    assert len(report.results) == 0
-
-def test_invalid_dynamic_enum():
-    &quot;&quot;&quot;Test that invalid values are caught.&quot;&quot;&quot;
-
-    plugin = DynamicEnumPlugin(
-        oak_config_path=&quot;tests/data/test_oak_config.yaml&quot;
-    )
-
-    validator = Validator(
-        schema=&quot;tests/data/dynamic_enum_schema.yaml&quot;,
-        validation_plugins=[plugin]
-    )
-
-    report = validator.validate_file(&quot;tests/data/invalid_data.yaml&quot;)
-
-    # Should have errors
-    errors = [r for r in report.results if r.severity.name == &quot;ERROR&quot;]
-    assert len(errors) &gt; 0
+  GeneAnnotation:
+    is_a: Annotation
+    slot_usage:
+      term:
+        bindings:
+          - binds_value_of: id
+            range: GOTermEnum
 </code></pre>
 <h2 id="see-also">See Also</h2>
 <ul>
-<li><a href="../cli-reference/">CLI Reference</a> - Command-line usage</li>
-<li><a href="../configuration/">Configuration</a> - Configuring OAK adapters</li>
-<li><a href="../validation-types/">Validation Types</a> - Understanding validation types</li>
-<li><a href="../anti-hallucination/">Anti-Hallucination Guardrails</a> - Preventing AI hallucinations</li>
-<li><a href="notebooks/03_python_api.ipynb">Tutorials</a> - Interactive Python API tutorial</li>
+<li><a href="../bindings-explained/">Bindings Explained</a> - Conceptual overview</li>
+<li><a href="../data-validation/">Data Validation</a> - Dynamic enum validation</li>
+<li><a href="../anti-hallucination/">Anti-Hallucination Guardrails</a> - AI validation</li>
+<li><a href="../plugin-reference/">Plugin Reference</a> - Complete API reference</li>
 </ul>
 
 

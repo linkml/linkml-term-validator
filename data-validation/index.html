@@ -8,13 +8,13 @@
       
       
       
-        <link rel="canonical" href="https://linkml.github.io/linkml-term-validator/cli-reference/">
+        <link rel="canonical" href="https://linkml.github.io/linkml-term-validator/data-validation/">
       
       
-        <link rel="prev" href="../binding-validation/">
+        <link rel="prev" href="../schema-validation/">
       
       
-        <link rel="next" href="../plugin-reference/">
+        <link rel="next" href="../binding-validation/">
       
       
         
@@ -25,7 +25,7 @@
     
     
       
-        <title>CLI Reference - linkml-term-validator</title>
+        <title>Data Validation (Dynamic Enums) - linkml-term-validator</title>
       
     
     
@@ -66,7 +66,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#cli-reference" class="md-skip">
+        <a href="#data-validation-reference-dynamic-enums" class="md-skip">
           Skip to content
         </a>
       
@@ -101,7 +101,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              CLI Reference
+              Data Validation (Dynamic Enums)
             
           </span>
         </div>
@@ -597,10 +597,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../data-validation/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Validation (Dynamic Enums)
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -616,6 +643,382 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI Usage
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="CLI Usage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cli-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dynamic-enum-syntax" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dynamic Enum Syntax
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Dynamic Enum Syntax">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reachable_from-ontology-traversal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        reachable_from - Ontology Traversal
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="reachable_from - Ontology Traversal">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#important-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Important Semantics
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#matches-pattern-matching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        matches - Pattern Matching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concepts-explicit-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        concepts - Explicit List
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validation-process" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation Process
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Examples">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#complete-schema-and-data-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete Schema and Data Example
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multiple-source-nodes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multiple Source Nodes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#part-of-relationships" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part-of Relationships
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#combined-relationships" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Combined Relationships
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#python-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Python API
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Python API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#plugin-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plugin Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#error-messages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error Messages
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Error Messages">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#value-not-in-enum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Value Not in Enum
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#source-node-used-directly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source Node Used Directly
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-considerations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Considerations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance Considerations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#caching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Caching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ontology-download" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ontology Download
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Common Issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ontology-not-found" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        "Ontology not found"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slow-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Slow Validation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multivalued-slots" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multivalued Slots
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -653,37 +1056,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    CLI Reference
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../cli-reference/" class="md-nav__link">
         
   
   
@@ -699,436 +1075,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#overview" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Overview
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#installation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Installation
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#global-options" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Global Options
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#validate-schema" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        validate-schema
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="validate-schema">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#syntax" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Syntax
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#arguments" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Arguments
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#options" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Options
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#examples" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Examples
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#output" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Output
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#exit-codes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Exit Codes
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#validate-data" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        validate-data
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="validate-data">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#syntax_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Syntax
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#arguments_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Arguments
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#options_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Options
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#examples_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Examples
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#output_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Output
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#exit-codes_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Exit Codes
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#common-workflows" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Common Workflows
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Common Workflows">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#cicd-validation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        CI/CD Validation
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#local-development" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Local Development
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#debugging" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Debugging
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#configuration-files" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Configuration Files
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Configuration Files">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#oak_configyaml" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        oak_config.yaml
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#shell-completion" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Shell Completion
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Shell Completion">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#bash" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Bash
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#zsh" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Zsh
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#fish" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Fish
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#environment-variables" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Environment Variables
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Troubleshooting
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Troubleshooting">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#command-not-found" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Command not found
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#unknown-prefixes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Unknown prefixes
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#slow-validation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Slow validation
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#stale-cache" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Stale cache
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#see-also" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        See Also
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1457,44 +1403,62 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#installation" class="md-nav__link">
+  <a href="#cli-usage" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Installation
+        CLI Usage
       
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#global-options" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Global Options
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#validate-schema" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        validate-schema
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="validate-schema">
+    <nav class="md-nav" aria-label="CLI Usage">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#syntax" class="md-nav__link">
+  <a href="#cli-options" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Syntax
+        CLI Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dynamic-enum-syntax" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dynamic Enum Syntax
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Dynamic Enum Syntax">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reachable_from-ontology-traversal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        reachable_from - Ontology Traversal
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="reachable_from - Ontology Traversal">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
       
     </span>
   </a>
@@ -1502,10 +1466,26 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#arguments" class="md-nav__link">
+  <a href="#important-semantics" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Arguments
+        Important Semantics
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#matches-pattern-matching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        matches - Pattern Matching
       
     </span>
   </a>
@@ -1513,17 +1493,33 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#options" class="md-nav__link">
+  <a href="#concepts-explicit-list" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Options
+        concepts - Explicit List
       
     </span>
   </a>
   
 </li>
         
-          <li class="md-nav__item">
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validation-process" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation Process
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#examples" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1532,13 +1528,14 @@
     </span>
   </a>
   
-</li>
+    <nav class="md-nav" aria-label="Examples">
+      <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#output" class="md-nav__link">
+  <a href="#complete-schema-and-data-example" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Output
+        Complete Schema and Data Example
       
     </span>
   </a>
@@ -1546,10 +1543,32 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#exit-codes" class="md-nav__link">
+  <a href="#multiple-source-nodes" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Exit Codes
+        Multiple Source Nodes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#part-of-relationships" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part-of Relationships
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#combined-relationships" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Combined Relationships
       
     </span>
   </a>
@@ -1562,77 +1581,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#validate-data" class="md-nav__link">
+  <a href="#python-api" class="md-nav__link">
     <span class="md-ellipsis">
       
-        validate-data
+        Python API
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="validate-data">
+    <nav class="md-nav" aria-label="Python API">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#syntax_1" class="md-nav__link">
+  <a href="#plugin-parameters" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Syntax
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#arguments_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Arguments
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#options_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Options
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#examples_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Examples
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#output_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Output
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#exit-codes_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Exit Codes
+        Plugin Parameters
       
     </span>
   </a>
@@ -1645,22 +1609,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#common-workflows" class="md-nav__link">
+  <a href="#error-messages" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Common Workflows
+        Error Messages
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Common Workflows">
+    <nav class="md-nav" aria-label="Error Messages">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#cicd-validation" class="md-nav__link">
+  <a href="#value-not-in-enum" class="md-nav__link">
     <span class="md-ellipsis">
       
-        CI/CD Validation
+        Value Not in Enum
       
     </span>
   </a>
@@ -1668,21 +1632,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#local-development" class="md-nav__link">
+  <a href="#source-node-used-directly" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Local Development
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#debugging" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Debugging
+        Source Node Used Directly
       
     </span>
   </a>
@@ -1695,22 +1648,33 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#configuration-files" class="md-nav__link">
+  <a href="#performance-considerations" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Configuration Files
+        Performance Considerations
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Configuration Files">
+    <nav class="md-nav" aria-label="Performance Considerations">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#oak_configyaml" class="md-nav__link">
+  <a href="#caching" class="md-nav__link">
     <span class="md-ellipsis">
       
-        oak_config.yaml
+        Caching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ontology-download" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ontology Download
       
     </span>
   </a>
@@ -1723,94 +1687,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#shell-completion" class="md-nav__link">
+  <a href="#common-issues" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Shell Completion
+        Common Issues
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Shell Completion">
+    <nav class="md-nav" aria-label="Common Issues">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#bash" class="md-nav__link">
+  <a href="#ontology-not-found" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Bash
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#zsh" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Zsh
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#fish" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Fish
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#environment-variables" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Environment Variables
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Troubleshooting
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Troubleshooting">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#command-not-found" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Command not found
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#unknown-prefixes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Unknown prefixes
+        "Ontology not found"
       
     </span>
   </a>
@@ -1821,7 +1713,7 @@
   <a href="#slow-validation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Slow validation
+        Slow Validation
       
     </span>
   </a>
@@ -1829,10 +1721,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#stale-cache" class="md-nav__link">
+  <a href="#multivalued-slots" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Stale cache
+        Multivalued Slots
       
     </span>
   </a>
@@ -1875,24 +1767,24 @@
   
 
 
-<h1 id="cli-reference">CLI Reference</h1>
-<p>Complete command-line interface reference for linkml-term-validator.</p>
+<h1 id="data-validation-reference-dynamic-enums">Data Validation Reference (Dynamic Enums)</h1>
+<p>This reference covers validation of <strong>data values against dynamic enums</strong>—ensuring that data values satisfy ontology-based constraints defined via <code>reachable_from</code>, <code>matches</code>, or <code>concepts</code>.</p>
 <h2 id="overview">Overview</h2>
-<p>linkml-term-validator provides a single command <code>linkml-term-validator</code> with two subcommands:</p>
-<ul>
-<li><code>validate-schema</code> - Validate schema permissible values</li>
-<li><code>validate-data</code> - Validate data against dynamic enums and bindings</li>
-</ul>
-<h2 id="installation">Installation</h2>
-<pre><code class="language-bash">pip install linkml-term-validator
+<p>Data validation uses the <strong>DynamicEnumPlugin</strong> to validate that data values satisfy dynamic enum constraints. Unlike static enums where valid values are listed explicitly, dynamic enums define valid values via ontology queries evaluated at validation time.</p>
+<h2 id="cli-usage">CLI Usage</h2>
+<pre><code class="language-bash"># Basic data validation
+linkml-term-validator validate-data data.yaml --schema schema.yaml
+
+# With target class
+linkml-term-validator validate-data data.yaml -s schema.yaml -t Person
+
+# With custom OAK configuration
+linkml-term-validator validate-data data.yaml -s schema.yaml --oak-config oak_config.yaml
+
+# Multiple data files
+linkml-term-validator validate-data data1.yaml data2.yaml -s schema.yaml
 </code></pre>
-<p>Or with <code>uv</code>:</p>
-<pre><code class="language-bash">uv add linkml-term-validator
-</code></pre>
-<h2 id="global-options">Global Options</h2>
-<p>These options apply to all subcommands:</p>
-<pre><code class="language-bash">linkml-term-validator [OPTIONS] COMMAND [ARGS]
-</code></pre>
+<h3 id="cli-options">CLI Options</h3>
 <table>
 <thead>
 <tr>
@@ -1902,40 +1794,251 @@
 </thead>
 <tbody>
 <tr>
-<td><code>--help</code></td>
-<td>Show help message and exit</td>
+<td><code>--schema</code>, <code>-s</code></td>
+<td>Path to LinkML schema (required)</td>
+</tr>
+<tr>
+<td><code>--target-class</code>, <code>-t</code></td>
+<td>Target class for validation</td>
+</tr>
+<tr>
+<td><code>--oak-adapter</code></td>
+<td>OAK adapter string (default: <code>sqlite:obo:</code>)</td>
+</tr>
+<tr>
+<td><code>--oak-config</code></td>
+<td>Path to OAK configuration file</td>
+</tr>
+<tr>
+<td><code>--cache-dir</code></td>
+<td>Directory for cache files (default: <code>cache</code>)</td>
+</tr>
+<tr>
+<td><code>--verbose</code> / <code>-v</code></td>
+<td>Enable verbose output</td>
 </tr>
 </tbody>
 </table>
-<h2 id="validate-schema">validate-schema</h2>
-<p>Validates that <code>meaning</code> fields in enum permissible values reference valid ontology terms with correct labels.</p>
-<h3 id="syntax">Syntax</h3>
-<pre><code class="language-bash">linkml-term-validator validate-schema [OPTIONS] SCHEMA_PATH
+<h2 id="dynamic-enum-syntax">Dynamic Enum Syntax</h2>
+<h3 id="reachable_from-ontology-traversal"><code>reachable_from</code> - Ontology Traversal</h3>
+<p>The most common pattern—allows any term reachable from source nodes via specified relationships:</p>
+<pre><code class="language-yaml">enums:
+  NeuronTypeEnum:
+    reachable_from:
+      source_ontology: sqlite:obo:cl
+      source_nodes:
+        - CL:0000540           # neuron
+      relationship_types:
+        - rdfs:subClassOf
+      include_self: false      # Default: false
 </code></pre>
-<h3 id="arguments">Arguments</h3>
+<h4 id="parameters">Parameters</h4>
 <table>
 <thead>
 <tr>
-<th>Argument</th>
-<th>Type</th>
+<th>Parameter</th>
 <th>Required</th>
 <th>Description</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>SCHEMA_PATH</code></td>
-<td>Path</td>
+<td><code>source_ontology</code></td>
 <td>Yes</td>
-<td>Path to LinkML schema file (<code>.yaml</code>)</td>
+<td>OAK adapter string (e.g., <code>sqlite:obo:cl</code>, <code>obo:go</code>)</td>
+</tr>
+<tr>
+<td><code>source_nodes</code></td>
+<td>Yes</td>
+<td>Root term(s) for traversal</td>
+</tr>
+<tr>
+<td><code>relationship_types</code></td>
+<td>Yes</td>
+<td>Edge types to traverse</td>
+</tr>
+<tr>
+<td><code>include_self</code></td>
+<td>No</td>
+<td>Include source nodes in results (default: <code>false</code>)</td>
 </tr>
 </tbody>
 </table>
-<h3 id="options">Options</h3>
+<h4 id="important-semantics">Important Semantics</h4>
+<p><strong>Source nodes are EXCLUDED by default.</strong> This means:</p>
+<pre><code class="language-yaml"># This enum allows descendants of CL:0000540, but NOT CL:0000540 itself
+enums:
+  NeuronTypeEnum:
+    reachable_from:
+      source_nodes:
+        - CL:0000540  # neuron
+</code></pre>
+<pre><code class="language-yaml"># Valid data - a specific neuron type (descendant)
+cell_type: CL:0000117  # CNS neuron - is-a neuron
+
+# INVALID - the source node itself
+cell_type: CL:0000540  # neuron - excluded by default!
+</code></pre>
+<p>To include the source node, set <code>include_self: true</code>:</p>
+<pre><code class="language-yaml">enums:
+  NeuronOrSubtype:
+    reachable_from:
+      source_nodes:
+        - CL:0000540
+      include_self: true      # Now CL:0000540 is also valid
+</code></pre>
+<h3 id="matches-pattern-matching"><code>matches</code> - Pattern Matching</h3>
+<p>Allows values matching a regex pattern:</p>
+<pre><code class="language-yaml">enums:
+  GOTermPattern:
+    matches:
+      source_ontology: sqlite:obo:go
+      pattern: &quot;GO:[0-9]{7}&quot;   # GO term format
+</code></pre>
+<h3 id="concepts-explicit-list"><code>concepts</code> - Explicit List</h3>
+<p>Allows a specific set of concepts (similar to static enum but defined differently):</p>
+<pre><code class="language-yaml">enums:
+  SpecificTerms:
+    concepts:
+      - CL:0000540   # neuron
+      - CL:0000746   # cardiomyocyte
+      - CL:0000182   # hepatocyte
+</code></pre>
+<h2 id="validation-process">Validation Process</h2>
+<p>For each slot in the data with a dynamic enum range:</p>
+<ol>
+<li><strong>Extract the enum definition</strong> from the schema</li>
+<li><strong>Evaluate the constraint</strong>:</li>
+<li>For <code>reachable_from</code>: Query the ontology for descendants</li>
+<li>For <code>matches</code>: Apply regex to the value</li>
+<li>For <code>concepts</code>: Check membership</li>
+<li><strong>Report violations</strong> as ERROR severity</li>
+</ol>
+<h2 id="examples">Examples</h2>
+<h3 id="complete-schema-and-data-example">Complete Schema and Data Example</h3>
+<p><strong>Schema (<code>schema.yaml</code>):</strong></p>
+<pre><code class="language-yaml">id: https://example.org/cell-schema
+name: cell-schema
+prefixes:
+  CL: http://purl.obolibrary.org/obo/CL_
+  linkml: https://w3id.org/linkml/
+
+classes:
+  CellAnnotation:
+    attributes:
+      id:
+        range: string
+        identifier: true
+      cell_type:
+        range: NeuronTypeEnum      # Uses dynamic enum
+
+enums:
+  NeuronTypeEnum:
+    description: Any type of neuron
+    reachable_from:
+      source_ontology: sqlite:obo:cl
+      source_nodes:
+        - CL:0000540              # neuron
+      relationship_types:
+        - rdfs:subClassOf
+</code></pre>
+<p><strong>Valid data (<code>valid_data.yaml</code>):</strong></p>
+<pre><code class="language-yaml">- id: cell-001
+  cell_type: CL:0000117           # CNS neuron - valid
+
+- id: cell-002
+  cell_type: CL:0000111           # peripheral neuron - valid
+</code></pre>
+<p><strong>Invalid data (<code>invalid_data.yaml</code>):</strong></p>
+<pre><code class="language-yaml">- id: cell-001
+  cell_type: CL:0000540           # neuron - INVALID (source node excluded)
+
+- id: cell-002
+  cell_type: GO:0008150           # biological_process - INVALID (wrong ontology)
+
+- id: cell-003
+  cell_type: CL:0000746           # cardiomyocyte - INVALID (not a neuron)
+</code></pre>
+<p><strong>Validation:</strong></p>
+<pre><code class="language-bash">linkml-term-validator validate-data valid_data.yaml -s schema.yaml -t CellAnnotation
+# ✅ Valid
+
+linkml-term-validator validate-data invalid_data.yaml -s schema.yaml -t CellAnnotation
+# ❌ 3 errors
+</code></pre>
+<h3 id="multiple-source-nodes">Multiple Source Nodes</h3>
+<p>Allow terms from multiple branches:</p>
+<pre><code class="language-yaml">enums:
+  CancerOrInfectiousDisease:
+    reachable_from:
+      source_ontology: sqlite:obo:mondo
+      source_nodes:
+        - MONDO:0004992           # cancer
+        - MONDO:0005550           # infectious disease
+      relationship_types:
+        - rdfs:subClassOf
+</code></pre>
+<h3 id="part-of-relationships">Part-of Relationships</h3>
+<p>Use <code>BFO:0000050</code> (part-of) instead of <code>rdfs:subClassOf</code>:</p>
+<pre><code class="language-yaml">enums:
+  BrainPartEnum:
+    reachable_from:
+      source_ontology: sqlite:obo:uberon
+      source_nodes:
+        - UBERON:0000955          # brain
+      relationship_types:
+        - BFO:0000050             # part-of
+</code></pre>
+<h3 id="combined-relationships">Combined Relationships</h3>
+<p>Query multiple relationship types:</p>
+<pre><code class="language-yaml">enums:
+  BrainStructureEnum:
+    reachable_from:
+      source_ontology: sqlite:obo:uberon
+      source_nodes:
+        - UBERON:0000955          # brain
+      relationship_types:
+        - rdfs:subClassOf         # subtypes
+        - BFO:0000050             # parts
+</code></pre>
+<h2 id="python-api">Python API</h2>
+<pre><code class="language-python">from linkml.validator import Validator
+from linkml_runtime.loaders import yaml_loader
+from linkml_term_validator.plugins import DynamicEnumPlugin
+
+# Create plugin
+plugin = DynamicEnumPlugin(
+    oak_adapter_string=&quot;sqlite:obo:&quot;,
+    cache_labels=True,
+    cache_dir=&quot;cache&quot;,
+)
+
+# Create validator
+validator = Validator(
+    schema=&quot;schema.yaml&quot;,
+    validation_plugins=[plugin]
+)
+
+# Validate with YamlLoader
+loader = yaml_loader.YamlLoader()
+report = validator.validate_source(
+    loader,
+    &quot;data.yaml&quot;,
+    target_class=&quot;CellAnnotation&quot;
+)
+
+# Check results
+if len(report.results) == 0:
+    print(&quot;All dynamic enum constraints satisfied&quot;)
+else:
+    for result in report.results:
+        print(f&quot;{result.severity.name}: {result.message}&quot;)
+</code></pre>
+<h3 id="plugin-parameters">Plugin Parameters</h3>
 <table>
 <thead>
 <tr>
-<th>Option</th>
+<th>Parameter</th>
 <th>Type</th>
 <th>Default</th>
 <th>Description</th>
@@ -1943,497 +2046,97 @@
 </thead>
 <tbody>
 <tr>
-<td><code>--config PATH</code></td>
-<td>Path</td>
-<td>None</td>
-<td>Path to OAK config file (<code>oak_config.yaml</code>) for per-prefix adapter configuration</td>
-</tr>
-<tr>
-<td><code>--adapter TEXT</code></td>
-<td>String</td>
+<td><code>oak_adapter_string</code></td>
+<td><code>str</code></td>
 <td><code>"sqlite:obo:"</code></td>
-<td>Default OAK adapter string (e.g., <code>sqlite:obo:</code>, <code>ols:</code>, <code>bioportal:</code>)</td>
+<td>Default OAK adapter</td>
 </tr>
 <tr>
-<td><code>--cache-dir PATH</code></td>
-<td>Path</td>
-<td><code>cache</code></td>
-<td>Directory for caching ontology labels</td>
-</tr>
-<tr>
-<td><code>--no-cache</code></td>
-<td>Flag</td>
-<td>False</td>
-<td>Disable file-based caching</td>
-</tr>
-<tr>
-<td><code>--strict</code></td>
-<td>Flag</td>
-<td>False</td>
-<td>Treat warnings as errors</td>
-</tr>
-<tr>
-<td><code>--verbose</code></td>
-<td>Flag</td>
-<td>False</td>
-<td>Show detailed validation information</td>
-</tr>
-<tr>
-<td><code>--help</code></td>
-<td>Flag</td>
-<td>-</td>
-<td>Show help message and exit</td>
-</tr>
-</tbody>
-</table>
-<h3 id="examples">Examples</h3>
-<p><strong>Basic validation:</strong></p>
-<pre><code class="language-bash">linkml-term-validator validate-schema schema.yaml
-</code></pre>
-<p><strong>With custom config:</strong></p>
-<pre><code class="language-bash">linkml-term-validator validate-schema --config oak_config.yaml schema.yaml
-</code></pre>
-<p><strong>Strict mode (warnings become errors):</strong></p>
-<pre><code class="language-bash">linkml-term-validator validate-schema --strict schema.yaml
-</code></pre>
-<p><strong>Using OLS instead of SQLite:</strong></p>
-<pre><code class="language-bash">linkml-term-validator validate-schema --adapter ols: schema.yaml
-</code></pre>
-<p><strong>Disable caching:</strong></p>
-<pre><code class="language-bash">linkml-term-validator validate-schema --no-cache schema.yaml
-</code></pre>
-<p><strong>Verbose output:</strong></p>
-<pre><code class="language-bash">linkml-term-validator validate-schema --verbose schema.yaml
-</code></pre>
-<p><strong>Custom cache directory:</strong></p>
-<pre><code class="language-bash">linkml-term-validator validate-schema --cache-dir /tmp/ontology-cache schema.yaml
-</code></pre>
-<h3 id="output">Output</h3>
-<p><strong>Success (no issues):</strong></p>
-<pre><code>✅ Validation passed!
-
-Validation Summary:
-  Enums checked: 2
-  Permissible values checked: 4
-  Meanings validated: 4
-  Issues found: 0
-</code></pre>
-<p><strong>Failure (with issues):</strong></p>
-<pre><code>❌ ERROR: Label mismatch for GO:0008150
-    Enum: BiologicalProcessEnum
-    Permissible value: BIOLOGICAL_PROCESS
-    Expected label: biological process
-    Found label: biological_process
-
-Validation Summary:
-  Enums checked: 2
-  Permissible values checked: 4
-  Meanings validated: 4
-  Issues found: 1
-    Errors: 1
-    Warnings: 0
-</code></pre>
-<p><strong>With unknown prefixes:</strong></p>
-<pre><code>✅ Validation passed!
-
-Validation Summary:
-  Enums checked: 2
-  Permissible values checked: 5
-  Meanings validated: 4
-  Issues found: 0
-
-⚠️  Unknown prefixes encountered (validation skipped):
-  - MY_CUSTOM
-  - INTERNAL
-
-Consider adding these to oak_config.yaml to enable validation.
-</code></pre>
-<h3 id="exit-codes">Exit Codes</h3>
-<table>
-<thead>
-<tr>
-<th>Code</th>
-<th>Meaning</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>0</td>
-<td>Success - no validation errors</td>
-</tr>
-<tr>
-<td>1</td>
-<td>Failure - validation errors found</td>
-</tr>
-</tbody>
-</table>
-<h2 id="validate-data">validate-data</h2>
-<p>Validates data instances against dynamic enums and binding constraints.</p>
-<p>Accepts multiple data files - each is validated independently with a summary at the end.</p>
-<h3 id="syntax_1">Syntax</h3>
-<pre><code class="language-bash">linkml-term-validator validate-data [OPTIONS] DATA_PATHS...
-</code></pre>
-<h3 id="arguments_1">Arguments</h3>
-<table>
-<thead>
-<tr>
-<th>Argument</th>
-<th>Type</th>
-<th>Required</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>DATA_PATHS</code></td>
-<td>Path(s)</td>
-<td>Yes</td>
-<td>One or more paths to data files (<code>.yaml</code>, <code>.json</code>)</td>
-</tr>
-</tbody>
-</table>
-<h3 id="options_1">Options</h3>
-<table>
-<thead>
-<tr>
-<th>Option</th>
-<th>Type</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>--schema PATH</code></td>
-<td>Path</td>
-<td><strong>Required</strong></td>
-<td>Path to LinkML schema file</td>
-</tr>
-<tr>
-<td><code>--target-class TEXT</code></td>
-<td>String</td>
-<td>None</td>
-<td>Target class name to validate against</td>
-</tr>
-<tr>
-<td><code>--config PATH</code></td>
-<td>Path</td>
-<td>None</td>
+<td><code>oak_config_path</code></td>
+<td><code>str \| None</code></td>
+<td><code>None</code></td>
 <td>Path to OAK config file</td>
 </tr>
 <tr>
-<td><code>--adapter TEXT</code></td>
-<td>String</td>
-<td><code>"sqlite:obo:"</code></td>
-<td>Default OAK adapter string</td>
+<td><code>cache_labels</code></td>
+<td><code>bool</code></td>
+<td><code>True</code></td>
+<td>Enable file-based caching</td>
 </tr>
 <tr>
-<td><code>--cache-dir PATH</code></td>
-<td>Path</td>
-<td><code>cache</code></td>
-<td>Directory for caching ontology labels</td>
-</tr>
-<tr>
-<td><code>--no-cache</code></td>
-<td>Flag</td>
-<td>False</td>
-<td>Disable file-based caching</td>
-</tr>
-<tr>
-<td><code>--labels</code></td>
-<td>Flag</td>
-<td>False</td>
-<td>Validate that labels match ontology canonical labels</td>
-</tr>
-<tr>
-<td><code>--no-dynamic-enums</code></td>
-<td>Flag</td>
-<td>False</td>
-<td>Skip dynamic enum validation</td>
-</tr>
-<tr>
-<td><code>--no-bindings</code></td>
-<td>Flag</td>
-<td>False</td>
-<td>Skip binding constraint validation</td>
-</tr>
-<tr>
-<td><code>--verbose</code></td>
-<td>Flag</td>
-<td>False</td>
-<td>Show detailed validation information</td>
-</tr>
-<tr>
-<td><code>--help</code></td>
-<td>Flag</td>
-<td>-</td>
-<td>Show help message and exit</td>
+<td><code>cache_dir</code></td>
+<td><code>str</code></td>
+<td><code>"cache"</code></td>
+<td>Cache directory</td>
 </tr>
 </tbody>
 </table>
-<h3 id="examples_1">Examples</h3>
-<p><strong>Basic validation:</strong></p>
-<pre><code class="language-bash">linkml-term-validator validate-data data.yaml --schema schema.yaml
+<h2 id="error-messages">Error Messages</h2>
+<h3 id="value-not-in-enum">Value Not in Enum</h3>
+<pre><code>ERROR: Value 'GO:0008150' is not valid for enum 'NeuronTypeEnum'
+  slot: cell_type
+  instance_index: 1
 </code></pre>
-<p><strong>With target class:</strong></p>
-<pre><code class="language-bash">linkml-term-validator validate-data data.yaml --schema schema.yaml --target-class Person
+<p><strong>Cause:</strong> The value doesn't satisfy the <code>reachable_from</code> constraint—it's not a descendant of any source node.</p>
+<h3 id="source-node-used-directly">Source Node Used Directly</h3>
+<pre><code>ERROR: Value 'CL:0000540' is not valid for enum 'NeuronTypeEnum'
+  slot: cell_type
 </code></pre>
-<p><strong>With label validation:</strong></p>
-<pre><code class="language-bash">linkml-term-validator validate-data data.yaml --schema schema.yaml --labels
+<p><strong>Cause:</strong> The source node is used directly, but <code>include_self</code> is <code>false</code> (default).</p>
+<p><strong>Solution:</strong> Either:
+1. Use a descendant term instead
+2. Set <code>include_self: true</code> in the enum definition</p>
+<h2 id="performance-considerations">Performance Considerations</h2>
+<h3 id="caching">Caching</h3>
+<p>The plugin uses two-level caching:</p>
+<ol>
+<li><strong>In-memory cache</strong>: Speeds up repeated queries in the same session</li>
+<li><strong>File-based cache</strong>: Persists between sessions (stored in <code>cache_dir</code>)</li>
+</ol>
+<p>For large-scale validation, consider:</p>
+<pre><code class="language-python">plugin = DynamicEnumPlugin(
+    cache_labels=True,
+    cache_dir=&quot;cache&quot;      # Persistent cache directory
+)
 </code></pre>
-<p><strong>With custom config:</strong></p>
-<pre><code class="language-bash">linkml-term-validator validate-data data.yaml \
-  --schema schema.yaml \
-  --config oak_config.yaml
+<h3 id="ontology-download">Ontology Download</h3>
+<p>On first use, <code>sqlite:obo:</code> adapters download ontology databases. This may take time but only happens once:</p>
+<pre><code>Downloading GO database... (first run only)
 </code></pre>
-<p><strong>Only validate bindings (skip dynamic enums):</strong></p>
-<pre><code class="language-bash">linkml-term-validator validate-data data.yaml \
-  --schema schema.yaml \
-  --no-dynamic-enums
+<p>For offline use, pre-download ontologies:</p>
+<pre><code class="language-bash"># Pre-download with OAK
+runoak -i sqlite:obo:go info GO:0008150
+runoak -i sqlite:obo:cl info CL:0000540
 </code></pre>
-<p><strong>Only validate dynamic enums (skip bindings):</strong></p>
-<pre><code class="language-bash">linkml-term-validator validate-data data.yaml \
-  --schema schema.yaml \
-  --no-bindings
+<h2 id="common-issues">Common Issues</h2>
+<h3 id="ontology-not-found">"Ontology not found"</h3>
+<pre><code>ERROR: Could not load ontology for prefix 'CUSTOM'
 </code></pre>
-<p><strong>Validate multiple files:</strong></p>
-<pre><code class="language-bash">linkml-term-validator validate-data data1.yaml data2.yaml data3.yaml \
-  --schema schema.yaml
-</code></pre>
-<p><strong>Validate all YAML files (shell glob):</strong></p>
-<pre><code class="language-bash">linkml-term-validator validate-data data/*.yaml \
-  --schema schema.yaml
-</code></pre>
-<p><strong>Full validation with all options:</strong></p>
-<pre><code class="language-bash">linkml-term-validator validate-data data.yaml \
-  --schema schema.yaml \
-  --target-class GeneAnnotation \
-  --config oak_config.yaml \
-  --cache-dir cache \
-  --labels \
-  --verbose
-</code></pre>
-<h3 id="output_1">Output</h3>
-<p><strong>Success (single file):</strong></p>
-<pre><code>✅ Validation passed
-</code></pre>
-<p><strong>Success (multiple files):</strong></p>
-<pre><code>✅ data1.yaml
-✅ data2.yaml
-✅ data3.yaml
-
-✅ All 3 files passed validation
-</code></pre>
-<p><strong>Partial failure (multiple files):</strong></p>
-<pre><code>✅ data1.yaml
-
-❌ data2.yaml - 2 issue(s):
-  ❌ ERROR: Value 'GO:0005575' not in enum 'BiologicalProcessEnum'
-  ❌ ERROR: Value 'CL:9999999' not in enum 'CellTypeEnum'
-
-✅ data3.yaml
-
-Summary: 1/3 files failed, 2 total issue(s)
-</code></pre>
-<p><strong>Failure (dynamic enum violation):</strong></p>
-<pre><code>❌ ERROR: Value 'GO:0005575' does not satisfy dynamic enum constraint
-    Class: GeneAnnotation
-    Slot: go_term.id
-    Enum: BiologicalProcessEnum
-    Expected: Descendant of GO:0008150 (biological_process)
-    Found: GO:0005575 (cellular_component)
-
-Validation Summary:
-  Dynamic enums validated: 5
-  Bindings validated: 3
-  Issues found: 1
-    Errors: 1
-</code></pre>
-<p><strong>Failure (label mismatch with --labels):</strong></p>
-<pre><code>❌ ERROR: Label mismatch for GO:0007049
-    Class: GeneAnnotation
-    Slot: go_term.label
-    Expected label: cell cycle
-    Found label: cell-division cycle
-
-Validation Summary:
-  Dynamic enums validated: 5
-  Bindings validated: 3
-  Label validations: 3
-  Issues found: 1
-    Errors: 1
-</code></pre>
-<h3 id="exit-codes_1">Exit Codes</h3>
-<table>
-<thead>
-<tr>
-<th>Code</th>
-<th>Meaning</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>0</td>
-<td>Success - no validation errors</td>
-</tr>
-<tr>
-<td>1</td>
-<td>Failure - validation errors found</td>
-</tr>
-</tbody>
-</table>
-<h2 id="common-workflows">Common Workflows</h2>
-<h3 id="cicd-validation">CI/CD Validation</h3>
-<p><strong>Schema validation in CI:</strong></p>
-<pre><code class="language-bash">#!/bin/bash
-set -e  # Exit on error
-
-echo &quot;Validating LinkML schemas...&quot;
-linkml-term-validator validate-schema \
-  --strict \
-  --config oak_config.yaml \
-  --cache-dir cache \
-  src/schema/main.yaml
-
-echo &quot;✅ Schema validation passed&quot;
-</code></pre>
-<p><strong>Data validation in CI:</strong></p>
-<pre><code class="language-bash">#!/bin/bash
-set -e
-
-echo &quot;Validating curated data...&quot;
-linkml-term-validator validate-data \
-  data/curated/*.yaml \
-  --schema src/schema/main.yaml \
-  --config oak_config.yaml \
-  --labels \
-  --cache-dir cache
-
-echo &quot;✅ Data validation passed&quot;
-</code></pre>
-<h3 id="local-development">Local Development</h3>
-<p><strong>Quick schema check:</strong></p>
-<pre><code class="language-bash">linkml-term-validator validate-schema schema.yaml
-</code></pre>
-<p><strong>Validate with fresh cache:</strong></p>
-<pre><code class="language-bash">rm -rf cache/
-linkml-term-validator validate-schema schema.yaml
-</code></pre>
-<p><strong>Test with OLS (no local downloads):</strong></p>
-<pre><code class="language-bash">linkml-term-validator validate-schema --adapter ols: --no-cache schema.yaml
-</code></pre>
-<h3 id="debugging">Debugging</h3>
-<p><strong>Verbose output:</strong></p>
-<pre><code class="language-bash">linkml-term-validator validate-schema --verbose schema.yaml
-</code></pre>
-<p><strong>Check specific data file:</strong></p>
-<pre><code class="language-bash">linkml-term-validator validate-data \
-  data/problematic.yaml \
-  --schema schema.yaml \
-  --verbose
-</code></pre>
-<h2 id="configuration-files">Configuration Files</h2>
-<h3 id="oak_configyaml">oak_config.yaml</h3>
-<p>Controls which ontology adapters to use for different prefixes:</p>
+<p><strong>Solution:</strong> Configure the prefix in <code>oak_config.yaml</code>:</p>
 <pre><code class="language-yaml">ontology_adapters:
-  GO: sqlite:obo:go
-  CHEBI: sqlite:obo:chebi
-  UBERON: sqlite:obo:uberon
-
-  # Skip validation
-  linkml: &quot;&quot;
-  schema: &quot;&quot;
+  CUSTOM: simpleobo:path/to/custom.obo
 </code></pre>
-<p>Use with:</p>
-<pre><code class="language-bash">linkml-term-validator validate-schema --config oak_config.yaml schema.yaml
-</code></pre>
-<p>See <a href="../configuration/">Configuration</a> for details.</p>
-<h2 id="shell-completion">Shell Completion</h2>
-<h3 id="bash">Bash</h3>
-<pre><code class="language-bash"># Add to ~/.bashrc
-eval &quot;$(_LINKML_TERM_VALIDATOR_COMPLETE=bash_source linkml-term-validator)&quot;
-</code></pre>
-<h3 id="zsh">Zsh</h3>
-<pre><code class="language-bash"># Add to ~/.zshrc
-eval &quot;$(_LINKML_TERM_VALIDATOR_COMPLETE=zsh_source linkml-term-validator)&quot;
-</code></pre>
-<h3 id="fish">Fish</h3>
-<pre><code class="language-bash"># Add to ~/.config/fish/config.fish
-_LINKML_TERM_VALIDATOR_COMPLETE=fish_source linkml-term-validator | source
-</code></pre>
-<h2 id="environment-variables">Environment Variables</h2>
-<table>
-<thead>
-<tr>
-<th>Variable</th>
-<th>Description</th>
-<th>Default</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>BIOPORTAL_API_KEY</code></td>
-<td>API key for BioPortal adapter</td>
-<td>None</td>
-</tr>
-<tr>
-<td><code>OAK_CACHE_DIR</code></td>
-<td>Default cache directory for OAK</td>
-<td><code>~/.data/oaklib</code></td>
-</tr>
-</tbody>
-</table>
-<h2 id="troubleshooting">Troubleshooting</h2>
-<h3 id="command-not-found">Command not found</h3>
-<p><strong>Problem:</strong></p>
-<pre><code class="language-bash">linkml-term-validator: command not found
-</code></pre>
-<p><strong>Solution:</strong>
-Ensure the package is installed and your PATH is configured:</p>
-<pre><code class="language-bash">pip install linkml-term-validator
-which linkml-term-validator
-</code></pre>
-<h3 id="unknown-prefixes">Unknown prefixes</h3>
-<p><strong>Problem:</strong></p>
-<pre><code>⚠️  Unknown prefixes encountered (validation skipped):
-  - MY_ONTOLOGY
-</code></pre>
-<p><strong>Solution:</strong>
-Add the prefix to your <code>oak_config.yaml</code>:</p>
-<pre><code class="language-yaml">ontology_adapters:
-  MY_ONTOLOGY: sqlite:obo:my_ontology
-</code></pre>
-<p>Or use a local OBO file:</p>
-<pre><code class="language-yaml">ontology_adapters:
-  MY_ONTOLOGY: simpleobo:path/to/ontology.obo
-</code></pre>
-<h3 id="slow-validation">Slow validation</h3>
-<p><strong>Problem:</strong>
-Validation takes a long time on first run.</p>
-<p><strong>Solution:</strong>
-This is expected when using <code>sqlite:obo:</code> adapter for the first time. OAK is downloading and building the ontology database. Subsequent runs will be fast due to caching.</p>
-<p>To speed up development:
-- Use <code>simpleobo:</code> adapter with local OBO files for testing
-- Cache the <code>cache/</code> directory in CI/CD
-- Use <code>ols:</code> adapter to avoid local downloads (slower per query but no initial download)</p>
-<h3 id="stale-cache">Stale cache</h3>
-<p><strong>Problem:</strong>
-Validation shows old labels even though ontology has been updated.</p>
-<p><strong>Solution:</strong>
-Clear the cache:</p>
-<pre><code class="language-bash">rm -rf cache/
-linkml-term-validator validate-schema schema.yaml
-</code></pre>
-<p>Or disable caching:</p>
-<pre><code class="language-bash">linkml-term-validator validate-schema --no-cache schema.yaml
+<h3 id="slow-validation">Slow Validation</h3>
+<p><strong>Cause:</strong> Large ontology queries or network latency.</p>
+<p><strong>Solutions:</strong>
+1. Enable caching (<code>cache_labels=True</code>)
+2. Use <code>sqlite:obo:</code> adapters instead of <code>ols:</code>
+3. Pre-download ontologies</p>
+<h3 id="multivalued-slots">Multivalued Slots</h3>
+<p>Dynamic enum validation works with multivalued slots:</p>
+<pre><code class="language-yaml">classes:
+  CellCollection:
+    attributes:
+      cell_types:
+        range: CellTypeEnum
+        multivalued: true       # Each value is validated
 </code></pre>
 <h2 id="see-also">See Also</h2>
 <ul>
-<li><a href="../configuration/">Configuration</a> - Detailed configuration options</li>
-<li><a href="../plugin-reference/">Plugin Reference</a> - Python API documentation</li>
-<li><a href="notebooks/01_getting_started.ipynb">Tutorials</a> - Interactive tutorials</li>
-<li><a href="../validation-types/">Validation Types</a> - Understanding validation types</li>
-<li><a href="../anti-hallucination/">Anti-Hallucination Guardrails</a> - Preventing AI hallucinations</li>
+<li><a href="../enumerations/">Enumerations</a> - Understanding dynamic enum concepts</li>
+<li><a href="../binding-validation/">Binding Validation</a> - Validating complex objects</li>
+<li><a href="../configuration/">Configuration</a> - OAK adapter configuration</li>
+<li><a href="../plugin-reference/">Plugin Reference</a> - Complete API reference</li>
 </ul>
 
 
