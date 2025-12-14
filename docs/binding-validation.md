@@ -34,10 +34,22 @@ linkml-term-validator validate-data data.yaml -s schema.yaml --oak-config oak_co
 | `--schema`, `-s` | Path to LinkML schema (required) |
 | `--target-class`, `-t` | Target class for validation |
 | `--labels` | Also validate labels against ontology |
+| `--lenient` | Don't fail when term IDs are not found in ontology |
 | `--oak-adapter` | OAK adapter string (default: `sqlite:obo:`) |
 | `--oak-config` | Path to OAK configuration file |
 | `--cache-dir` | Directory for cache files (default: `cache`) |
 | `--verbose` / `-v` | Enable verbose output |
+
+### Strict Mode (Default)
+
+By default, the validator operates in **strict mode**, which fails validation when:
+
+1. A term ID is not found in a configured ontology
+2. A term ID is outside the dynamic enum closure
+
+This catches fabricated/hallucinated term IDs that don't actually exist.
+
+Use `--lenient` to disable strict existence checking (closure validation still applies).
 
 ## Binding Syntax
 
@@ -346,18 +358,43 @@ for result in report.results:
 | `oak_adapter_string` | `str` | `"sqlite:obo:"` | Default OAK adapter |
 | `oak_config_path` | `str \| None` | `None` | Path to OAK config file |
 | `validate_labels` | `bool` | `False` | Also validate labels |
+| `strict` | `bool` | `True` | Fail when term IDs not found in configured ontologies |
 | `cache_labels` | `bool` | `True` | Enable file-based caching |
 | `cache_dir` | `str` | `"cache"` | Cache directory |
 
 ## Error Messages
 
-### Binding Violation
+### Binding Violation (Static Enum)
 
 ```
 ERROR: Value 'GO:0005634' not in enum 'BiologicalProcessEnum'
   path: process
   slot: process
   field: id
+```
+
+### Binding Violation (Dynamic Enum Closure)
+
+When the term exists but is outside the ontology closure:
+
+```
+ERROR: Value 'GO:0005634' not in dynamic enum (expanded from ontology) 'BiologicalProcessEnum'
+  path: process
+  slot: process
+  field: id
+  allowed_values: 29688 terms
+```
+
+### Term Not Found (Strict Mode)
+
+When a term ID doesn't exist in a configured ontology:
+
+```
+ERROR: Term 'GO:9999999' not found in ontology
+  path: process
+  slot: process
+  field: id
+  prefix: GO (configured in oak_config)
 ```
 
 ### Label Mismatch (with `--labels`)

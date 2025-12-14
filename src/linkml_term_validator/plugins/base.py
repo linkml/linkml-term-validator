@@ -1,13 +1,28 @@
-"""Base plugin with shared OAK adapter and caching logic."""
+"""Base plugin with shared OAK adapter and caching logic.
+
+This module provides the base class for ontology validation plugins,
+including shared functionality for OAK adapter management, caching,
+and dynamic enum expansion.
+
+Example:
+    >>> from linkml_term_validator.plugins import BindingValidationPlugin
+    >>> plugin = BindingValidationPlugin()
+    >>> plugin._get_prefix("GO:0008150")
+    'GO'
+    >>> plugin._get_prefix("invalid-no-colon")
+    >>> plugin.normalize_string("Hello, World!")
+    'hello world'
+"""
 
 import csv
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from linkml.validator.plugins import ValidationPlugin  # type: ignore[import-untyped]
 from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]
+from linkml_runtime.linkml_model import EnumDefinition
 from oaklib import get_adapter
 from ruamel.yaml import YAML
 
@@ -266,3 +281,217 @@ class BaseOntologyPlugin(ValidationPlugin):
         Subclasses can override to perform cleanup.
         """
         pass
+
+    # =========================================================================
+    # Dynamic Enum Expansion
+    # =========================================================================
+
+    def is_dynamic_enum(self, enum_def: EnumDefinition) -> bool:
+        """Check if an enum uses dynamic definition (reachable_from, matches, etc.).
+
+        Dynamic enums are defined using ontology queries rather than static
+        permissible values. They need to be expanded at validation time.
+
+        Args:
+            enum_def: Enum definition to check
+
+        Returns:
+            True if enum is dynamic (uses reachable_from, matches, concepts, etc.)
+
+        Example:
+            >>> from linkml_runtime.linkml_model import EnumDefinition
+            >>> from linkml_term_validator.plugins import BindingValidationPlugin
+            >>> plugin = BindingValidationPlugin()
+
+            A static enum (only permissible_values):
+            >>> static_enum = EnumDefinition(name="StaticEnum")
+            >>> plugin.is_dynamic_enum(static_enum)
+            False
+
+            A dynamic enum would have reachable_from, matches, or concepts set.
+        """
+        return bool(
+            enum_def.reachable_from
+            or enum_def.matches
+            or enum_def.concepts
+            or enum_def.include
+            or enum_def.inherits
+        )
+
+    def expand_enum(self, enum_def: EnumDefinition, schema_view: Any = None) -> set[str]:
+        """Expand a dynamic enum definition to a set of allowed values.
+
+        This method materializes dynamic enums by querying the ontology
+        and collecting all terms that match the enum's constraints.
+
+        Args:
+            enum_def: Enum definition to expand
+            schema_view: SchemaView for resolving inherited enums (optional)
+
+        Returns:
+            Set of allowed CURIE strings
+
+        Example:
+            >>> from linkml_runtime.linkml_model import EnumDefinition
+            >>> from linkml_term_validator.plugins import BindingValidationPlugin
+            >>> plugin = BindingValidationPlugin()
+
+            Static enum with permissible values:
+            >>> static = EnumDefinition(
+            ...     name="TestEnum",
+            ...     permissible_values={"A": {"meaning": "TEST:001"}, "B": {"meaning": "TEST:002"}}
+            ... )
+            >>> sorted(plugin.expand_enum(static))
+            ['A', 'B', 'TEST:001', 'TEST:002']
+        """
+        values: set[str] = set()
+
+        # Handle reachable_from
+        if enum_def.reachable_from:
+            values.update(self._expand_reachable_from(enum_def.reachable_from))
+
+        # Handle matches
+        if enum_def.matches:
+            values.update(self._expand_matches(enum_def.matches))
+
+        # Handle concepts
+        if enum_def.concepts:
+            values.update(enum_def.concepts)
+
+        # Handle include (union)
+        if enum_def.include:
+            for include_expr in enum_def.include:
+                values.update(self._expand_enum_expression(include_expr))
+
+        # Handle minus (set difference)
+        if enum_def.minus:
+            for minus_expr in enum_def.minus:
+                values -= self._expand_enum_expression(minus_expr)
+
+        # Handle inherits
+        if enum_def.inherits and schema_view is not None:
+            for parent_enum_name in enum_def.inherits:
+                parent_enum = schema_view.get_enum(parent_enum_name)
+                if parent_enum:
+                    values.update(self.expand_enum(parent_enum, schema_view))
+
+        # Also include static permissible_values if present
+        if enum_def.permissible_values:
+            for pv_name, pv in enum_def.permissible_values.items():
+                # Add the PV name
+                values.add(pv_name)
+                # Add the meaning if present
+                if pv.meaning:
+                    values.add(pv.meaning)
+
+        return values
+
+    def _expand_enum_expression(self, expr: Any) -> set[str]:
+        """Expand an enum expression (for include/minus).
+
+        Args:
+            expr: Enum expression object
+
+        Returns:
+            Set of CURIEs
+        """
+        values: set[str] = set()
+
+        if hasattr(expr, "reachable_from") and expr.reachable_from:
+            values.update(self._expand_reachable_from(expr.reachable_from))
+
+        if hasattr(expr, "matches") and expr.matches:
+            values.update(self._expand_matches(expr.matches))
+
+        if hasattr(expr, "concepts") and expr.concepts:
+            values.update(expr.concepts)
+
+        if hasattr(expr, "permissible_values") and expr.permissible_values:
+            for pv_name, pv in expr.permissible_values.items():
+                values.add(pv_name)
+                if pv.meaning:
+                    values.add(pv.meaning)
+
+        return values
+
+    def _expand_reachable_from(self, query: Any) -> set[str]:
+        """Expand reachable_from query using OAK.
+
+        Uses OAK's ancestors/descendants methods to traverse the ontology
+        graph and collect reachable terms.
+
+        Args:
+            query: ReachabilityQuery object with source_nodes, relationship_types, etc.
+
+        Returns:
+            Set of reachable CURIEs
+
+        Example:
+            Given a simple ontology with:
+            - TEST:0000001 (root)
+              - TEST:0000002 (child, is_a root)
+
+            A reachable_from query starting from TEST:0000001 would return
+            its descendants (TEST:0000002) and optionally itself if include_self=True.
+        """
+        values: set[str] = set()
+
+        # Get adapter for source ontology
+        if not query.source_nodes:
+            return values
+
+        first_node = query.source_nodes[0]
+        prefix = self._get_prefix(first_node)
+        if not prefix:
+            return values
+
+        adapter = self._get_adapter(prefix)
+        if not adapter:
+            return values
+
+        # Get relationship types (predicates)
+        predicates = query.relationship_types if query.relationship_types else ["rdfs:subClassOf"]
+
+        # Use OAK to get descendants or ancestors
+        for source_node in query.source_nodes:
+            try:
+                if query.traverse_up:
+                    # Get ancestors
+                    ancestors_result = adapter.ancestors(  # type: ignore[attr-defined]
+                        source_node,
+                        predicates=predicates,
+                        reflexive=query.include_self if hasattr(query, "include_self") else False,
+                    )
+                    if ancestors_result:
+                        values.update(ancestors_result)
+                else:
+                    # Get descendants (default)
+                    descendants_result = adapter.descendants(  # type: ignore[attr-defined]
+                        source_node,
+                        predicates=predicates,
+                        reflexive=query.include_self if hasattr(query, "include_self") else True,
+                    )
+                    if descendants_result:
+                        values.update(descendants_result)
+            except Exception:
+                # If OAK query fails, skip this source node
+                pass
+
+        return values
+
+    def _expand_matches(self, query: Any) -> set[str]:
+        """Expand matches query using pattern matching.
+
+        Args:
+            query: MatchQuery object
+
+        Returns:
+            Set of matching CURIEs
+
+        Note:
+            This is a placeholder - full implementation would require
+            iterating through all terms in an ontology.
+        """
+        # This would require querying the ontology for all terms matching a pattern
+        # For now, return empty set - this is a more advanced feature
+        return set()

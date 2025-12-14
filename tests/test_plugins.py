@@ -380,6 +380,311 @@ enums:
     assert any("disease_term.term" in ctx for ctx in results[0].context)
 
 
+def test_binding_plugin_strict_mode_fails_on_nonexistent_term(plugin_cache_dir, tmp_path):
+    """Test that strict mode (default) fails when term ID not found in configured ontology."""
+    from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]
+    from linkml_runtime import SchemaView
+    from pathlib import Path
+
+    # Use test oak_config that maps TEST prefix
+    oak_config_path = Path(__file__).parent / "data" / "test_oak_config.yaml"
+
+    schema_path = tmp_path / "strict_test_schema.yaml"
+    schema_path.write_text("""
+id: https://example.org/test
+name: test_strict
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  TEST: http://example.org/TEST_
+
+default_prefix: test_strict
+default_range: string
+
+classes:
+  Annotation:
+    attributes:
+      id:
+        identifier: true
+      term:
+        range: Term
+        inlined: true
+        bindings:
+          - binds_value_of: id
+            range: TestEnum
+
+  Term:
+    attributes:
+      id:
+        description: CURIE
+      label:
+        description: Label
+
+enums:
+  TestEnum:
+    reachable_from:
+      source_ontology: simpleobo:tests/data/test_ontology.obo
+      source_nodes:
+        - TEST:0000001
+      include_self: true
+""")
+
+    # Strict mode (default)
+    plugin = BindingValidationPlugin(
+        validate_labels=False,
+        strict=True,
+        cache_dir=plugin_cache_dir,
+        oak_config_path=oak_config_path,
+    )
+
+    schema_view = SchemaView(str(schema_path))
+    context = ValidationContext(
+        schema=schema_view.schema,
+        target_class="Annotation",
+    )
+    plugin.pre_process(context)
+
+    # Test with NON-EXISTENT term ID (strict should fail)
+    instance_nonexistent = {
+        "id": "ann1",
+        "term": {
+            "id": "TEST:ZZZZZZZ",  # This ID does not exist in ontology
+            "label": "Fake Term",
+        }
+    }
+    results = list(plugin.process(instance_nonexistent, context))
+    assert len(results) >= 1, f"Expected at least 1 error for non-existent term, got: {results}"
+    assert any("not found in ontology" in r.message for r in results), f"Expected 'not found' error, got: {results}"
+    assert any("TEST:ZZZZZZZ" in r.message for r in results)
+
+
+def test_binding_plugin_lenient_mode_skips_nonexistent_term(plugin_cache_dir, tmp_path):
+    """Test that lenient mode skips validation when term ID not found."""
+    from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]
+    from linkml_runtime import SchemaView
+    from pathlib import Path
+
+    oak_config_path = Path(__file__).parent / "data" / "test_oak_config.yaml"
+
+    schema_path = tmp_path / "lenient_test_schema.yaml"
+    schema_path.write_text("""
+id: https://example.org/test
+name: test_lenient
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  TEST: http://example.org/TEST_
+
+default_prefix: test_lenient
+default_range: string
+
+classes:
+  Annotation:
+    attributes:
+      id:
+        identifier: true
+      term:
+        range: Term
+        inlined: true
+        bindings:
+          - binds_value_of: id
+            range: TestEnum
+
+  Term:
+    attributes:
+      id:
+        description: CURIE
+      label:
+        description: Label
+
+enums:
+  TestEnum:
+    reachable_from:
+      source_ontology: simpleobo:tests/data/test_ontology.obo
+      source_nodes:
+        - TEST:0000001
+      include_self: true
+""")
+
+    # Lenient mode (strict=False)
+    plugin = BindingValidationPlugin(
+        validate_labels=False,
+        strict=False,
+        cache_dir=plugin_cache_dir,
+        oak_config_path=oak_config_path,
+    )
+
+    schema_view = SchemaView(str(schema_path))
+    context = ValidationContext(
+        schema=schema_view.schema,
+        target_class="Annotation",
+    )
+    plugin.pre_process(context)
+
+    # Test with NON-EXISTENT term ID (lenient should pass)
+    instance_nonexistent = {
+        "id": "ann1",
+        "term": {
+            "id": "TEST:ZZZZZZZ",  # Non-existent ID
+            "label": "Fake Term",
+        }
+    }
+    results = list(plugin.process(instance_nonexistent, context))
+    # Should have no "term not found" errors in lenient mode
+    term_not_found_errors = [r for r in results if "not found in ontology" in r.message]
+    assert len(term_not_found_errors) == 0, f"Expected no 'term not found' errors in lenient mode, got: {term_not_found_errors}"
+
+
+def test_binding_plugin_strict_skips_unconfigured_prefix(plugin_cache_dir, tmp_path):
+    """Test that strict mode does NOT fail for unconfigured prefixes (only configured ones)."""
+    from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]
+    from linkml_runtime import SchemaView
+    from pathlib import Path
+
+    oak_config_path = Path(__file__).parent / "data" / "test_oak_config.yaml"
+
+    schema_path = tmp_path / "unconfigured_prefix_schema.yaml"
+    schema_path.write_text("""
+id: https://example.org/test
+name: test_unconfigured
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  UNKNOWN: http://example.org/UNKNOWN_
+
+default_prefix: test_unconfigured
+default_range: string
+
+classes:
+  Annotation:
+    attributes:
+      id:
+        identifier: true
+      term:
+        range: Term
+        inlined: true
+        bindings:
+          - binds_value_of: id
+            range: UnknownEnum
+
+  Term:
+    attributes:
+      id:
+        description: CURIE
+      label:
+        description: Label
+
+enums:
+  UnknownEnum:
+    permissible_values:
+      ITEM_A:
+        meaning: UNKNOWN:001
+""")
+
+    # Strict mode
+    plugin = BindingValidationPlugin(
+        validate_labels=False,
+        strict=True,
+        cache_dir=plugin_cache_dir,
+        oak_config_path=oak_config_path,
+    )
+
+    schema_view = SchemaView(str(schema_path))
+    context = ValidationContext(
+        schema=schema_view.schema,
+        target_class="Annotation",
+    )
+    plugin.pre_process(context)
+
+    # Test with an UNKNOWN prefix term (should NOT fail - prefix not configured)
+    instance = {
+        "id": "ann1",
+        "term": {
+            "id": "UNKNOWN:001",  # Prefix not in oak_config
+            "label": "Unknown Term",
+        }
+    }
+    results = list(plugin.process(instance, context))
+    # Should have no "term not found" errors for unconfigured prefix
+    term_not_found_errors = [r for r in results if "not found in ontology" in r.message]
+    assert len(term_not_found_errors) == 0, f"Expected no 'term not found' for unconfigured prefix, got: {term_not_found_errors}"
+
+
+def test_binding_plugin_strict_passes_existing_term(plugin_cache_dir, tmp_path):
+    """Test that strict mode passes for terms that actually exist."""
+    from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]
+    from linkml_runtime import SchemaView
+    from pathlib import Path
+
+    oak_config_path = Path(__file__).parent / "data" / "test_oak_config.yaml"
+
+    schema_path = tmp_path / "existing_term_schema.yaml"
+    schema_path.write_text("""
+id: https://example.org/test
+name: test_existing
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  TEST: http://example.org/TEST_
+
+default_prefix: test_existing
+default_range: string
+
+classes:
+  Annotation:
+    attributes:
+      id:
+        identifier: true
+      term:
+        range: Term
+        inlined: true
+        bindings:
+          - binds_value_of: id
+            range: TestEnum
+
+  Term:
+    attributes:
+      id:
+        description: CURIE
+      label:
+        description: Label
+
+enums:
+  TestEnum:
+    reachable_from:
+      source_ontology: simpleobo:tests/data/test_ontology.obo
+      source_nodes:
+        - TEST:0000001
+      include_self: true
+""")
+
+    plugin = BindingValidationPlugin(
+        validate_labels=False,
+        strict=True,
+        cache_dir=plugin_cache_dir,
+        oak_config_path=oak_config_path,
+    )
+
+    schema_view = SchemaView(str(schema_path))
+    context = ValidationContext(
+        schema=schema_view.schema,
+        target_class="Annotation",
+    )
+    plugin.pre_process(context)
+
+    # Test with EXISTING term ID (should pass)
+    instance_existing = {
+        "id": "ann1",
+        "term": {
+            "id": "TEST:0000002",  # This exists in test_ontology.obo
+            "label": "child term one",
+        }
+    }
+    results = list(plugin.process(instance_existing, context))
+    term_not_found_errors = [r for r in results if "not found in ontology" in r.message]
+    assert len(term_not_found_errors) == 0, f"Expected no 'term not found' errors for existing term, got: {term_not_found_errors}"
+
+
 def test_binding_plugin_validates_deeply_nested_bindings(plugin_cache_dir, tmp_path):
     """Test that BindingValidationPlugin handles deeply nested structures."""
     from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]
@@ -513,3 +818,345 @@ enums:
     paths = [ctx for r in results for ctx in r.context if ctx.startswith("path:")]
     assert "path: sections[0].annotations[1].term" in paths
     assert "path: sections[1].annotations[0].term" in paths
+
+
+# =============================================================================
+# Tests for Binding + Dynamic Enum Closure Validation
+# =============================================================================
+
+
+def test_binding_with_dynamic_enum_validates_closure(plugin_cache_dir, tmp_path):
+    """Test that bindings with dynamic enums properly validate ontology closure.
+
+    This tests the fix for the gap where dynamic enum closure validation
+    was not being applied to bindings (only to direct slot ranges).
+
+    Uses the local test ontology with structure:
+    - TEST:0000005 (biological_process)
+      └── TEST:0000006 (cell_cycle)
+    - TEST:0000001 (root)
+      ├── TEST:0000002 (child term one)
+      │   └── TEST:0000004 (grandchild)
+      └── TEST:0000003 (child term two)
+    """
+    from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]
+    from linkml_runtime import SchemaView
+    from pathlib import Path
+
+    oak_config_path = Path(__file__).parent / "data" / "test_oak_config.yaml"
+
+    # Schema with binding to a dynamic enum (reachable_from biological_process)
+    schema_path = tmp_path / "binding_dynamic_enum_schema.yaml"
+    schema_path.write_text("""
+id: https://example.org/test
+name: test_binding_dynamic
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  TEST: http://example.org/TEST_
+
+default_prefix: test_binding_dynamic
+default_range: string
+
+classes:
+  Annotation:
+    attributes:
+      id:
+        identifier: true
+      process:
+        range: ProcessTerm
+        inlined: true
+        bindings:
+          - binds_value_of: id
+            range: BioProcessEnum
+
+  ProcessTerm:
+    attributes:
+      id:
+        description: CURIE for the process
+      label:
+        description: Human-readable label
+
+enums:
+  BioProcessEnum:
+    description: Biological processes (descendants of TEST:0000005)
+    reachable_from:
+      source_ontology: simpleobo:tests/data/test_ontology.obo
+      source_nodes:
+        - TEST:0000005  # biological_process
+      relationship_types:
+        - rdfs:subClassOf
+      include_self: true
+""")
+
+    plugin = BindingValidationPlugin(
+        validate_labels=False,
+        strict=True,
+        cache_dir=plugin_cache_dir,
+        oak_config_path=oak_config_path,
+    )
+
+    schema_view = SchemaView(str(schema_path))
+    context = ValidationContext(
+        schema=schema_view.schema,
+        target_class="Annotation",
+    )
+    plugin.pre_process(context)
+
+    # Verify enum was expanded
+    assert "BioProcessEnum" in plugin.expanded_enums
+    allowed = plugin.expanded_enums["BioProcessEnum"]
+    assert "TEST:0000005" in allowed  # biological_process (include_self=true)
+    assert "TEST:0000006" in allowed  # cell_cycle (child)
+
+    # Test 1: Valid term IN closure (cell_cycle is under biological_process)
+    valid_instance = {
+        "id": "ann1",
+        "process": {
+            "id": "TEST:0000006",  # cell_cycle - IN closure
+            "label": "cell_cycle",
+        }
+    }
+    results = list(plugin.process(valid_instance, context))
+    closure_errors = [r for r in results if "not in dynamic enum" in r.message]
+    assert len(closure_errors) == 0, f"Expected no closure errors for valid term, got: {closure_errors}"
+
+    # Test 2: Term EXISTS but NOT in closure (child term one is under root, not bio_process)
+    invalid_closure = {
+        "id": "ann2",
+        "process": {
+            "id": "TEST:0000002",  # child term one - NOT in biological_process closure
+            "label": "child term one",
+        }
+    }
+    results = list(plugin.process(invalid_closure, context))
+    closure_errors = [r for r in results if "not in dynamic enum" in r.message]
+    assert len(closure_errors) == 1, f"Expected 1 closure error, got: {closure_errors}"
+    assert "TEST:0000002" in closure_errors[0].message
+    assert "BioProcessEnum" in closure_errors[0].message
+
+    # Test 3: Fabricated term (doesn't exist at all)
+    fabricated = {
+        "id": "ann3",
+        "process": {
+            "id": "TEST:ZZZZZZZ",  # Doesn't exist
+            "label": "Fake",
+        }
+    }
+    results = list(plugin.process(fabricated, context))
+    # Should get both closure error AND term not found error (strict mode)
+    closure_errors = [r for r in results if "not in dynamic enum" in r.message]
+    existence_errors = [r for r in results if "not found in ontology" in r.message]
+    assert len(closure_errors) >= 1, "Expected closure error for fabricated term"
+    assert len(existence_errors) >= 1, "Expected existence error for fabricated term"
+
+
+def test_binding_with_dynamic_enum_multiple_source_nodes(plugin_cache_dir, tmp_path):
+    """Test dynamic enum bindings with multiple source nodes."""
+    from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]
+    from linkml_runtime import SchemaView
+    from pathlib import Path
+
+    oak_config_path = Path(__file__).parent / "data" / "test_oak_config.yaml"
+
+    # Schema with multiple source nodes (union of descendants)
+    schema_path = tmp_path / "multi_source_binding_schema.yaml"
+    schema_path.write_text("""
+id: https://example.org/test
+name: test_multi_source
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  TEST: http://example.org/TEST_
+
+default_prefix: test_multi_source
+default_range: string
+
+classes:
+  Annotation:
+    attributes:
+      id:
+        identifier: true
+      term:
+        range: Term
+        inlined: true
+        bindings:
+          - binds_value_of: id
+            range: MultiSourceEnum
+
+  Term:
+    attributes:
+      id:
+      label:
+
+enums:
+  MultiSourceEnum:
+    description: Terms under child_one OR child_two
+    reachable_from:
+      source_ontology: simpleobo:tests/data/test_ontology.obo
+      source_nodes:
+        - TEST:0000002  # child term one
+        - TEST:0000003  # child term two
+      relationship_types:
+        - rdfs:subClassOf
+""")
+
+    plugin = BindingValidationPlugin(
+        validate_labels=False,
+        cache_dir=plugin_cache_dir,
+        oak_config_path=oak_config_path,
+    )
+
+    schema_view = SchemaView(str(schema_path))
+    context = ValidationContext(
+        schema=schema_view.schema,
+        target_class="Annotation",
+    )
+    plugin.pre_process(context)
+
+    # Verify expanded enum includes descendants of both sources
+    assert "MultiSourceEnum" in plugin.expanded_enums
+    allowed = plugin.expanded_enums["MultiSourceEnum"]
+    # Grandchild is descendant of child_one
+    assert "TEST:0000004" in allowed
+
+    # Valid: grandchild term (under child_one)
+    valid_instance = {
+        "id": "ann1",
+        "term": {"id": "TEST:0000004", "label": "grandchild term"}
+    }
+    results = list(plugin.process(valid_instance, context))
+    closure_errors = [r for r in results if "not in dynamic enum" in r.message]
+    assert len(closure_errors) == 0
+
+    # Invalid: biological_process (not under either source)
+    invalid_instance = {
+        "id": "ann2",
+        "term": {"id": "TEST:0000005", "label": "biological_process"}
+    }
+    results = list(plugin.process(invalid_instance, context))
+    closure_errors = [r for r in results if "not in dynamic enum" in r.message]
+    assert len(closure_errors) == 1
+
+
+def test_binding_with_static_enum_still_works(plugin_cache_dir, tmp_path):
+    """Test that static enums (no reachable_from) still work with bindings."""
+    from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]
+    from linkml_runtime import SchemaView
+
+    schema_path = tmp_path / "static_enum_binding_schema.yaml"
+    schema_path.write_text("""
+id: https://example.org/test
+name: test_static
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  TEST: http://example.org/TEST_
+
+default_prefix: test_static
+default_range: string
+
+classes:
+  Annotation:
+    attributes:
+      id:
+        identifier: true
+      term:
+        range: Term
+        inlined: true
+        bindings:
+          - binds_value_of: id
+            range: StaticEnum
+
+  Term:
+    attributes:
+      id:
+      label:
+
+enums:
+  StaticEnum:
+    permissible_values:
+      ITEM_A:
+        meaning: TEST:0001
+      ITEM_B:
+        meaning: TEST:0002
+""")
+
+    plugin = BindingValidationPlugin(
+        validate_labels=False,
+        cache_dir=plugin_cache_dir,
+    )
+
+    schema_view = SchemaView(str(schema_path))
+    context = ValidationContext(
+        schema=schema_view.schema,
+        target_class="Annotation",
+    )
+    plugin.pre_process(context)
+
+    # Static enum should NOT be in expanded_enums
+    assert "StaticEnum" not in plugin.expanded_enums
+
+    # Valid: TEST:0001 is a meaning in the static enum
+    valid_instance = {
+        "id": "ann1",
+        "term": {"id": "TEST:0001", "label": "Item A"}
+    }
+    results = list(plugin.process(valid_instance, context))
+    enum_errors = [r for r in results if "not in enum" in r.message]
+    assert len(enum_errors) == 0
+
+    # Invalid: TEST:9999 is not in the static enum
+    invalid_instance = {
+        "id": "ann2",
+        "term": {"id": "TEST:9999", "label": "Invalid"}
+    }
+    results = list(plugin.process(invalid_instance, context))
+    enum_errors = [r for r in results if "not in enum" in r.message]
+    assert len(enum_errors) == 1
+    assert "TEST:9999" in enum_errors[0].message
+
+
+def test_base_plugin_is_dynamic_enum():
+    """Test is_dynamic_enum method on base plugin."""
+    from linkml_runtime.linkml_model import EnumDefinition
+    from linkml_runtime.linkml_model.meta import ReachabilityQuery
+
+    plugin = BindingValidationPlugin()
+
+    # Static enum (only permissible values)
+    static = EnumDefinition(name="Static")
+    assert plugin.is_dynamic_enum(static) is False
+
+    # Dynamic enum with reachable_from
+    dynamic_rf = EnumDefinition(name="DynamicRF")
+    dynamic_rf.reachable_from = ReachabilityQuery(source_nodes=["GO:0008150"])
+    assert plugin.is_dynamic_enum(dynamic_rf) is True
+
+    # Dynamic enum with concepts
+    dynamic_concepts = EnumDefinition(name="DynamicConcepts", concepts=["A", "B"])
+    assert plugin.is_dynamic_enum(dynamic_concepts) is True
+
+
+def test_base_plugin_expand_enum_with_permissible_values():
+    """Test expand_enum with static permissible values."""
+    from linkml_runtime.linkml_model import EnumDefinition, PermissibleValue
+
+    plugin = BindingValidationPlugin()
+
+    # Enum with permissible values
+    enum_def = EnumDefinition(
+        name="TestEnum",
+        permissible_values={
+            "A": PermissibleValue(text="A", meaning="TEST:001"),
+            "B": PermissibleValue(text="B", meaning="TEST:002"),
+            "C": PermissibleValue(text="C"),  # No meaning
+        }
+    )
+
+    expanded = plugin.expand_enum(enum_def)
+    assert "A" in expanded
+    assert "B" in expanded
+    assert "C" in expanded
+    assert "TEST:001" in expanded
+    assert "TEST:002" in expanded

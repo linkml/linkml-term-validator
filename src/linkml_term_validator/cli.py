@@ -174,6 +174,13 @@ def validate_data(
             help="Validate labels match ontology",
         ),
     ] = False,
+    lenient: Annotated[
+        bool,
+        typer.Option(
+            "--lenient/--no-lenient",
+            help="Lenient mode: don't fail when term IDs are not found in ontology",
+        ),
+    ] = False,
     adapter: Annotated[
         str,
         typer.Option(
@@ -234,6 +241,7 @@ def validate_data(
             BindingValidationPlugin(
                 oak_adapter_string=adapter,
                 validate_labels=validate_labels,
+                strict=not lenient,
                 cache_dir=cache_dir,
                 oak_config_path=config,
             )
@@ -325,6 +333,13 @@ def validate_all(
             help="Treat all warnings as errors (schema validation)",
         ),
     ] = False,
+    lenient: Annotated[
+        bool,
+        typer.Option(
+            "--lenient/--no-lenient",
+            help="Lenient mode: don't fail when term IDs are not found (data validation)",
+        ),
+    ] = False,
     cache_dir: Annotated[
         Path,
         typer.Option(
@@ -373,6 +388,7 @@ def validate_all(
             validate_bindings=True,
             validate_dynamic_enums=True,
             validate_labels=False,
+            lenient=lenient,
             adapter=adapter,
             cache_dir=cache_dir,
             config=config,

@@ -1,4 +1,40 @@
-"""Plugin for validating bindings in nested objects."""
+"""Plugin for validating bindings in nested objects.
+
+This module provides the BindingValidationPlugin which validates data against
+binding constraints on nested object fields. Bindings allow restricting specific
+fields within complex objects to enum values, including dynamic enums defined
+using ontology queries.
+
+Example:
+    Basic plugin usage:
+
+    >>> from linkml_term_validator.plugins import BindingValidationPlugin
+    >>> plugin = BindingValidationPlugin(strict=True)
+    >>> plugin.strict
+    True
+    >>> plugin.validate_labels
+    False
+    >>> plugin.expanded_enums
+    {}
+
+    The plugin validates bindings defined in schemas like:
+
+    .. code-block:: yaml
+
+        classes:
+          Annotation:
+            slots:
+              - term
+            slot_usage:
+              term:
+                range: Term
+                bindings:
+                  - binds_value_of: id
+                    range: GOTermEnum
+
+    For dynamic enums (reachable_from), the plugin expands the ontology
+    query and validates that values fall within the closure.
+"""
 
 from collections.abc import Iterator
 from pathlib import Path
@@ -56,6 +92,7 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         self,
         oak_adapter_string: str = "sqlite:obo:",
         validate_labels: bool = False,
+        strict: bool = True,
         cache_labels: bool = True,
         cache_dir: Path | str = Path("cache"),
         oak_config_path: Optional[Path | str] = None,
@@ -65,6 +102,7 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         Args:
             oak_adapter_string: Default OAK adapter string (e.g., "sqlite:obo:")
             validate_labels: If True, also validate that labels match ontology
+            strict: If True (default), fail when term IDs are not found in configured ontologies
             cache_labels: Whether to cache ontology labels to disk
             cache_dir: Directory for label cache files
             oak_config_path: Path to oak_config.yaml for per-prefix adapters
@@ -76,25 +114,42 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             oak_config_path=oak_config_path,
         )
         self.validate_labels = validate_labels
+        self.strict = strict
         self.schema_view = None
         # Map (class_name, slot_name) -> [EnumBinding]
         self.bindings_map: dict[tuple[str, str], list] = {}
         # Map class_name -> {slot_name: set of properties (from implements and slot_uri)}
         self.slot_properties_map: dict[str, dict[str, set[str]]] = {}
+        # Map enum_name -> set of expanded values (for dynamic enums)
+        self.expanded_enums: dict[str, set[str]] = {}
 
     def pre_process(self, context: ValidationContext) -> None:
-        """Extract all bindings and slot properties from schema before processing."""
+        """Extract all bindings, slot properties, and expand dynamic enums.
+
+        This method is called before processing any instances. It:
+        1. Collects all binding constraints from the schema
+        2. Collects slot properties for label detection
+        3. Expands all dynamic enums referenced by bindings
+        """
         self.schema_view = context.schema_view
 
         # Walk schema and collect all bindings and slot properties
         if self.schema_view is None:
             return
+
+        # Track which enums are referenced by bindings
+        referenced_enums: set[str] = set()
+
         for cls in self.schema_view.all_classes().values():
             class_properties: dict[str, set[str]] = {}
             for slot in self.schema_view.class_induced_slots(cls.name):
                 if slot.bindings:
                     key = (cls.name, slot.name)
                     self.bindings_map[key] = slot.bindings
+                    # Track referenced enums
+                    for binding in slot.bindings:
+                        if binding.range:
+                            referenced_enums.add(binding.range)
                 # Collect implements and slot_uri for label detection
                 slot_props: set[str] = set()
                 if slot.implements:
@@ -105,6 +160,12 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                     class_properties[slot.name] = slot_props
             if class_properties:
                 self.slot_properties_map[cls.name] = class_properties
+
+        # Expand all dynamic enums referenced by bindings
+        for enum_name in referenced_enums:
+            enum_def = self.schema_view.get_enum(enum_name)
+            if enum_def and self.is_dynamic_enum(enum_def):
+                self.expanded_enums[enum_name] = self.expand_enum(enum_def, self.schema_view)
 
     def process(self, instance: dict, context: ValidationContext) -> Iterator[ValidationResult]:
         """Validate binding constraints on nested fields.
@@ -263,6 +324,17 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                 path=path,
             )
 
+        # Check term existence for configured prefixes (strict mode)
+        if self.strict and isinstance(field_value, str):
+            yield from self._validate_term_exists(
+                field_value=field_value,
+                field_path=field_path,
+                slot_name=slot_name,
+                instance=instance,
+                target_class=target_class,
+                path=path,
+            )
+
         # Optionally validate label matches ontology
         if self.validate_labels and isinstance(value, dict):
             # Get the range class to find label slots
@@ -355,7 +427,11 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         target_class: str,
         path: str = "",
     ) -> Iterator[ValidationResult]:
-        """Validate field value against enum.
+        """Validate field value against enum (static or dynamic).
+
+        For static enums, validates against permissible values.
+        For dynamic enums (reachable_from, matches, concepts), validates
+        against the expanded set of terms from the ontology.
 
         Args:
             field_value: Value to validate
@@ -375,40 +451,91 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         if not enum_def:
             return
 
-        # Skip validation for dynamic enums (those with reachable_from constraints)
-        # Dynamic enums are validated by the DynamicEnumPlugin instead
-        if enum_def.reachable_from or getattr(enum_def, 'matches', None) or getattr(enum_def, 'concepts', None):
-            return
+        # Check if this is a dynamic enum with pre-expanded values
+        is_dynamic = enum_name in self.expanded_enums
+        if is_dynamic:
+            valid_values = self.expanded_enums[enum_name]
+        else:
+            # Get permissible values for static enum
+            valid_values = set()
 
-        # Get permissible values
-        valid_values = set()
+            if enum_def.permissible_values:
+                # Add PV names
+                valid_values.update(enum_def.permissible_values.keys())
 
-        if enum_def.permissible_values:
-            # Add PV names
-            valid_values.update(enum_def.permissible_values.keys())
+                # Add meanings
+                for pv in enum_def.permissible_values.values():
+                    if pv.meaning:
+                        valid_values.add(pv.meaning)
 
-            # Add meanings
-            for pv in enum_def.permissible_values.values():
-                if pv.meaning:
-                    valid_values.add(pv.meaning)
-
-        # Skip validation if no permissible values defined (likely a dynamic enum)
+        # Skip validation if no values defined
         if not valid_values:
             return
 
         # Check if value is valid
         if field_value not in valid_values:
+            enum_type = "dynamic enum (expanded from ontology)" if is_dynamic else "enum"
             yield ValidationResult(
                 type="binding_validation",
                 severity=Severity.ERROR,
-                message=f"Value '{field_value}' not in enum '{enum_name}'",
+                message=f"Value '{field_value}' not in {enum_type} '{enum_name}'",
                 instance=instance,
                 instantiates=target_class,
                 context=[
                     f"path: {path}",
                     f"slot: {slot_name}",
                     f"field: {field_path}",
-                    f"allowed_values: {len(valid_values)} values",
+                    f"allowed_values: {len(valid_values)} terms",
+                ],
+            )
+
+    def _validate_term_exists(
+        self,
+        field_value: str,
+        field_path: str,
+        slot_name: str,
+        instance: dict,
+        target_class: str,
+        path: str = "",
+    ) -> Iterator[ValidationResult]:
+        """Validate that a term ID exists in the ontology.
+
+        Only validates terms with prefixes that are configured in oak_config.yaml.
+        Terms with unknown prefixes are skipped (handled separately via unknown prefix warnings).
+
+        Args:
+            field_value: CURIE to check (e.g., "HP:0000001")
+            field_path: Path to the field within the binding
+            slot_name: Name of the slot
+            instance: Full instance
+            target_class: Name of the class
+            path: JSON path to this location
+
+        Yields:
+            ValidationResult if term not found in configured ontology
+        """
+        prefix = self._get_prefix(field_value)
+        if not prefix:
+            return
+
+        # Only check existence for configured prefixes
+        if not self._is_prefix_configured(prefix):
+            return
+
+        # Try to get the label - if None, term doesn't exist
+        ontology_label = self.get_ontology_label(field_value)
+        if ontology_label is None:
+            yield ValidationResult(
+                type="term_not_found",
+                severity=Severity.ERROR,
+                message=f"Term '{field_value}' not found in ontology",
+                instance=instance,
+                instantiates=target_class,
+                context=[
+                    f"path: {path}",
+                    f"slot: {slot_name}",
+                    f"field: {field_path}",
+                    f"prefix: {prefix} (configured in oak_config)",
                 ],
             )
 
