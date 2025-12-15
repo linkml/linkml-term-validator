@@ -2,13 +2,20 @@
 
 The validator uses **multi-level caching** to speed up repeated validations and avoid redundant ontology queries.
 
+## Cache Types
+
+There are two types of caches:
+
+1. **Label cache** - Maps CURIEs to their canonical labels (for label validation)
+2. **Enum cache** - Stores expanded dynamic enum values (for closure validation)
+
 ## In-Memory Cache
 
-During a single validation run, ontology labels are cached in memory. If multiple permissible values reference the same term, it's only looked up once.
+During a single validation run, ontology labels and enum values are cached in memory. If multiple fields reference the same term or enum, lookups are only done once.
 
 This cache exists only for the duration of the validation process and is discarded afterward.
 
-## File-Based Cache
+## Label Cache (File-Based)
 
 Labels are persisted to CSV files in the cache directory (default: `./cache`):
 
@@ -22,15 +29,77 @@ cache/
     └── terms.csv      # UBERON term labels
 ```
 
-### Cache File Format
-
-Cache files use a simple CSV format:
+### Label Cache Format
 
 ```csv
 curie,label,retrieved_at
 GO:0008150,biological_process,2025-11-15T10:30:00
 GO:0007049,cell cycle,2025-11-15T10:30:01
 ```
+
+## Enum Cache (Dynamic Enums)
+
+Dynamic enums (those using `reachable_from`, `matches`, or `concepts`) can be cached to avoid expensive ontology traversals. Enum caches are stored in:
+
+```
+cache/
+└── enums/
+    ├── biologicalprocessenum_abc123.csv
+    ├── cellularcomponentenum_def456.csv
+    └── ...
+```
+
+### Enum Cache Format
+
+```csv
+curie
+GO:0008150
+GO:0007049
+GO:0006260
+```
+
+The cache filename includes a hash of the enum definition, so changes to source nodes or relationship types automatically invalidate the cache.
+
+## Enum Caching Strategies
+
+The validator supports two strategies for caching dynamic enum values:
+
+### Progressive Caching (Default)
+
+**Progressive caching** validates terms lazily:
+
+1. Check in-memory cache
+2. Check file cache
+3. Query ontology directly (is this term a descendant of the source nodes?)
+4. If valid, add to cache for future lookups
+
+**Benefits:**
+- Scales well for large ontologies (SNOMED with 100k+ terms)
+- Cache grows organically with actual usage
+- Faster startup (no upfront expansion)
+- Supports "lazy list" style enums (e.g., any valid chemical SMILES)
+
+**Trade-offs:**
+- First validation of each term requires ontology query
+- Cache is append-only (may contain terms no longer in use)
+
+### Greedy Caching
+
+**Greedy caching** expands the entire enum upfront:
+
+1. On first access, query ontology for ALL descendants
+2. Cache the complete set
+3. Subsequent lookups are simple set membership checks
+
+**Benefits:**
+- Deterministic - same results every time
+- No per-term ontology queries after initial expansion
+- Good for smaller, frequently-validated enums
+
+**Trade-offs:**
+- Slow startup for large ontologies
+- Memory-intensive for large closures
+- May cache terms never actually used
 
 ## Cache Behavior
 
@@ -49,17 +118,46 @@ linkml-term-validator validate-schema --cache-dir /path/to/cache schema.yaml
 
 # Disable caching
 linkml-term-validator validate-schema --no-cache schema.yaml
+
+# Use greedy caching strategy (expand all upfront)
+linkml-term-validator validate-data data.yaml -s schema.yaml --cache-strategy greedy
+
+# Use progressive caching strategy (default, lazy validation)
+linkml-term-validator validate-data data.yaml -s schema.yaml --cache-strategy progressive
 ```
 
 ### Python API
 
 ```python
-from linkml_term_validator.plugins import DynamicEnumPlugin
+from linkml_term_validator.plugins import DynamicEnumPlugin, BindingValidationPlugin
+from linkml_term_validator.models import CacheStrategy
 
+# Progressive caching (default) - recommended for large ontologies
 plugin = DynamicEnumPlugin(
     cache_dir="/path/to/cache",
-    cache_labels=True  # Enable/disable file-based caching
+    cache_labels=True,
+    cache_strategy=CacheStrategy.PROGRESSIVE,
 )
+
+# Greedy caching - expand all upfront
+plugin = BindingValidationPlugin(
+    cache_dir="/path/to/cache",
+    cache_labels=True,
+    cache_strategy=CacheStrategy.GREEDY,
+)
+```
+
+### YAML Configuration (oak_config.yaml)
+
+```yaml
+# Set cache strategy globally
+cache_strategy: progressive  # or "greedy"
+
+# Configure ontology adapters
+ontology_adapters:
+  GO: sqlite:obo:go
+  HP: sqlite:obo:hp
+  CL: sqlite:obo:cl
 ```
 
 ### linkml-validate Configuration
@@ -70,7 +168,21 @@ plugins:
     oak_adapter_string: "sqlite:obo:"
     cache_labels: true
     cache_dir: cache
+    cache_strategy: progressive  # or "greedy"
 ```
+
+## Choosing a Cache Strategy
+
+| Use Case | Recommended Strategy |
+|----------|---------------------|
+| Large ontologies (SNOMED, NCBI Taxonomy) | Progressive |
+| Small, stable enums (< 1000 terms) | Greedy |
+| First-time validation of new dataset | Progressive |
+| Repeated validation of same dataset | Either (after initial cache) |
+| CI/CD pipelines | Greedy (deterministic) |
+| Interactive development | Progressive (faster startup) |
+
+**Rule of thumb**: Start with progressive (the default). Switch to greedy only if you need deterministic behavior or are validating the same small dataset repeatedly.
 
 ## When to Clear Cache
 

@@ -16,7 +16,7 @@ from linkml.validator import Validator  # type: ignore[import-untyped]
 from linkml.validator.loaders import default_loader_for_file  # type: ignore[import-untyped]
 from typing_extensions import Annotated
 
-from linkml_term_validator.models import ValidationConfig
+from linkml_term_validator.models import CacheStrategy, ValidationConfig
 from linkml_term_validator.plugins import (
     BindingValidationPlugin,
     DynamicEnumPlugin,
@@ -204,6 +204,13 @@ def validate_data(
             help="Path to oak_config.yaml",
         ),
     ] = None,
+    cache_strategy: Annotated[
+        str,
+        typer.Option(
+            "--cache-strategy",
+            help="Caching strategy for dynamic enums: 'progressive' (lazy, default) or 'greedy' (expand upfront)",
+        ),
+    ] = "progressive",
 ):
     """Validate data against dynamic enums and binding constraints.
 
@@ -224,6 +231,9 @@ def validate_data(
             typer.echo(f"❌ File not found: {data_path}", err=True)
             raise typer.Exit(code=1)
 
+    # Parse cache strategy
+    strategy = CacheStrategy(cache_strategy)
+
     # Build plugin list based on options
     plugins = []
 
@@ -233,6 +243,7 @@ def validate_data(
                 oak_adapter_string=adapter,
                 cache_dir=cache_dir,
                 oak_config_path=config,
+                cache_strategy=strategy,
             )
         )
 
@@ -244,6 +255,7 @@ def validate_data(
                 strict=not lenient,
                 cache_dir=cache_dir,
                 oak_config_path=config,
+                cache_strategy=strategy,
             )
         )
 
@@ -363,6 +375,13 @@ def validate_all(
             help="Verbose output",
         ),
     ] = False,
+    cache_strategy: Annotated[
+        str,
+        typer.Option(
+            "--cache-strategy",
+            help="Caching strategy for dynamic enums: 'progressive' (lazy, default) or 'greedy' (expand upfront)",
+        ),
+    ] = "progressive",
 ):
     """Validate schemas or data (auto-detect mode).
 
@@ -392,6 +411,7 @@ def validate_all(
             adapter=adapter,
             cache_dir=cache_dir,
             config=config,
+            cache_strategy=cache_strategy,
         )
     else:
         # Schema validation mode (backward compatible) - call validate_schema directly

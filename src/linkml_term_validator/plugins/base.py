@@ -15,10 +15,11 @@ Example:
 """
 
 import csv
+import hashlib
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from linkml.validator.plugins import ValidationPlugin  # type: ignore[import-untyped]
 from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]
@@ -26,7 +27,7 @@ from linkml_runtime.linkml_model import EnumDefinition
 from oaklib import get_adapter
 from ruamel.yaml import YAML
 
-from linkml_term_validator.models import ValidationConfig
+from linkml_term_validator.models import CacheStrategy, ValidationConfig
 
 
 class BaseOntologyPlugin(ValidationPlugin):
@@ -45,6 +46,7 @@ class BaseOntologyPlugin(ValidationPlugin):
         cache_labels: bool = True,
         cache_dir: Path | str = Path("cache"),
         oak_config_path: Optional[Path | str] = None,
+        cache_strategy: Literal["progressive", "greedy"] | CacheStrategy = CacheStrategy.PROGRESSIVE,
     ):
         """Initialize base ontology plugin.
 
@@ -53,7 +55,12 @@ class BaseOntologyPlugin(ValidationPlugin):
             cache_labels: Whether to cache ontology labels to disk
             cache_dir: Directory for label cache files
             oak_config_path: Path to oak_config.yaml for per-prefix adapters
+            cache_strategy: Caching strategy for dynamic enums - "progressive" (default) or "greedy"
         """
+        # Convert string to enum if needed
+        if isinstance(cache_strategy, str):
+            cache_strategy = CacheStrategy(cache_strategy)
+
         self.config = ValidationConfig(
             oak_adapter_string=oak_adapter_string,
             cache_labels=cache_labels,
@@ -61,20 +68,30 @@ class BaseOntologyPlugin(ValidationPlugin):
             oak_config_path=(
                 Path(oak_config_path) if isinstance(oak_config_path, str) else oak_config_path
             ),
+            cache_strategy=cache_strategy,
         )
 
         # In-memory caches
         self._label_cache: dict[str, Optional[str]] = {}
         self._adapter_cache: dict[str, object | None] = {}
+        self._enum_cache: dict[str, set[str]] = {}  # enum_name -> expanded/cached values
         self._unknown_prefixes: set[str] = set()
 
-        # Load OAK config if provided
+        # Load OAK config if provided (may override cache_strategy)
         self._oak_config: dict[str, str] = {}
         if self.config.oak_config_path and self.config.oak_config_path.exists():
             self._load_oak_config()
 
+    @property
+    def cache_strategy(self) -> CacheStrategy:
+        """Get the cache strategy for dynamic enums."""
+        return self.config.cache_strategy
+
     def _load_oak_config(self) -> None:
-        """Load OAK configuration from YAML file."""
+        """Load OAK configuration from YAML file.
+
+        Loads ontology_adapters and optionally cache_strategy from the config file.
+        """
         if self.config.oak_config_path is None:
             return
         yaml = YAML(typ="safe")
@@ -82,6 +99,10 @@ class BaseOntologyPlugin(ValidationPlugin):
             config = yaml.load(f)
             if "ontology_adapters" in config:
                 self._oak_config = config["ontology_adapters"]
+            # Override cache_strategy from YAML if specified
+            if "cache_strategy" in config:
+                strategy_str = config["cache_strategy"]
+                self.config.cache_strategy = CacheStrategy(strategy_str)
 
     def _get_prefix(self, curie: str) -> Optional[str]:
         """Extract prefix from a CURIE.
@@ -268,6 +289,127 @@ class BaseOntologyPlugin(ValidationPlugin):
         """
         return self._unknown_prefixes
 
+    # =========================================================================
+    # Enum Caching
+    # =========================================================================
+
+    def _get_enum_cache_key(self, enum_def: EnumDefinition) -> str:
+        """Generate a cache key from enum definition.
+
+        The key is based on the dynamic query parameters (source_nodes,
+        relationship_types, include_self, traverse_up) so the cache is
+        invalidated when the enum definition changes.
+
+        Args:
+            enum_def: Enum definition
+
+        Returns:
+            A hash string for cache file naming
+        """
+        key_parts = [enum_def.name or ""]
+
+        if enum_def.reachable_from:
+            query = enum_def.reachable_from
+            key_parts.append(f"rf:{','.join(sorted(query.source_nodes or []))}")
+            key_parts.append(f"rt:{','.join(sorted(query.relationship_types or []))}")
+            key_parts.append(f"is:{query.include_self if hasattr(query, 'include_self') else True}")
+            key_parts.append(f"tu:{query.traverse_up if hasattr(query, 'traverse_up') else False}")
+
+        if enum_def.concepts:
+            key_parts.append(f"c:{','.join(sorted(enum_def.concepts))}")
+
+        # Create a short hash for filename
+        key_string = "|".join(key_parts)
+        return hashlib.md5(key_string.encode()).hexdigest()[:12]
+
+    def _get_enum_cache_file(self, enum_name: str, cache_key: str) -> Path:
+        """Get the cache file path for an enum.
+
+        Args:
+            enum_name: Name of the enum
+            cache_key: Hash of the enum definition
+
+        Returns:
+            Path to the cache CSV file
+        """
+        enum_dir = self.config.cache_dir / "enums"
+        enum_dir.mkdir(parents=True, exist_ok=True)
+        # Use enum name + cache key to allow for definition changes
+        safe_name = re.sub(r"[^\w\-]", "_", enum_name.lower())
+        return enum_dir / f"{safe_name}_{cache_key}.csv"
+
+    def _load_enum_cache(self, enum_def: EnumDefinition) -> Optional[set[str]]:
+        """Load cached enum values if available.
+
+        Reads a simple CSV file with header 'curie' and one CURIE per line.
+
+        Args:
+            enum_def: Enum definition
+
+        Returns:
+            Set of cached values, or None if cache miss
+        """
+        if not self.config.cache_labels:  # Reuse cache_labels setting
+            return None
+
+        cache_key = self._get_enum_cache_key(enum_def)
+        cache_file = self._get_enum_cache_file(enum_def.name or "unknown", cache_key)
+
+        if not cache_file.exists():
+            return None
+
+        values: set[str] = set()
+        with open(cache_file) as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                values.add(row["curie"])
+        return values
+
+    def _save_enum_cache(self, enum_def: EnumDefinition, values: set[str]) -> None:
+        """Save expanded enum values to cache (greedy mode - writes all values).
+
+        Writes a simple CSV file with header 'curie' and one CURIE per line.
+
+        Args:
+            enum_def: Enum definition
+            values: Set of expanded values to cache
+        """
+        if not self.config.cache_labels:  # Reuse cache_labels setting
+            return
+
+        cache_key = self._get_enum_cache_key(enum_def)
+        cache_file = self._get_enum_cache_file(enum_def.name or "unknown", cache_key)
+
+        with open(cache_file, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=["curie"])
+            writer.writeheader()
+            for curie in sorted(values):
+                writer.writerow({"curie": curie})
+
+    def _add_to_enum_cache(self, enum_def: EnumDefinition, value: str) -> None:
+        """Add a single value to the enum cache (progressive mode - appends).
+
+        Appends a single CURIE to the cache file. Creates file with header if needed.
+
+        Args:
+            enum_def: Enum definition
+            value: CURIE to add to cache
+        """
+        if not self.config.cache_labels:
+            return
+
+        cache_key = self._get_enum_cache_key(enum_def)
+        cache_file = self._get_enum_cache_file(enum_def.name or "unknown", cache_key)
+
+        # Check if file exists (need to write header if not)
+        file_exists = cache_file.exists()
+
+        with open(cache_file, "a", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=["curie"])
+            if not file_exists:
+                writer.writeheader()
+            writer.writerow({"curie": value})
+
     def pre_process(self, context: ValidationContext) -> None:
         """Hook called before instances are processed.
 
@@ -283,7 +425,132 @@ class BaseOntologyPlugin(ValidationPlugin):
         pass
 
     # =========================================================================
-    # Dynamic Enum Expansion
+    # Progressive Validation (for cache_strategy="progressive")
+    # =========================================================================
+
+    def is_value_in_enum(
+        self, value: str, enum_def: EnumDefinition, schema_view: Any = None
+    ) -> bool:
+        """Check if a value is valid for an enum using progressive caching.
+
+        This method is used when cache_strategy is "progressive". It:
+        1. Checks the in-memory cache
+        2. Checks the file cache
+        3. Queries the ontology directly if not cached
+        4. Caches valid values for future lookups
+
+        Args:
+            value: CURIE to validate
+            enum_def: Enum definition to validate against
+            schema_view: SchemaView for resolving inherited enums (optional)
+
+        Returns:
+            True if value is valid for the enum
+        """
+        enum_name = enum_def.name or "unknown"
+
+        # 1. Check in-memory cache
+        if enum_name in self._enum_cache and value in self._enum_cache[enum_name]:
+            return True
+
+        # 2. Check file cache
+        cached = self._load_enum_cache(enum_def)
+        if cached is not None:
+            # Store in memory for future lookups
+            self._enum_cache[enum_name] = cached
+            if value in cached:
+                return True
+
+        # 3. Check static permissible values first (fast)
+        if enum_def.permissible_values:
+            if value in enum_def.permissible_values:
+                self._enum_cache.setdefault(enum_name, set()).add(value)
+                return True
+            # Check meanings
+            for pv in enum_def.permissible_values.values():
+                if pv.meaning == value:
+                    self._enum_cache.setdefault(enum_name, set()).add(value)
+                    return True
+
+        # 4. Check concepts
+        if enum_def.concepts and value in enum_def.concepts:
+            self._enum_cache.setdefault(enum_name, set()).add(value)
+            self._add_to_enum_cache(enum_def, value)
+            return True
+
+        # 5. Query ontology for reachable_from (dynamic)
+        if enum_def.reachable_from:
+            if self._is_value_in_reachable_from(value, enum_def.reachable_from):
+                # Valid - add to caches
+                self._enum_cache.setdefault(enum_name, set()).add(value)
+                self._add_to_enum_cache(enum_def, value)
+                return True
+
+        # 6. Handle inherits (recurse into parent enums)
+        if enum_def.inherits and schema_view is not None:
+            for parent_enum_name in enum_def.inherits:
+                parent_enum = schema_view.get_enum(parent_enum_name)
+                if parent_enum and self.is_value_in_enum(value, parent_enum, schema_view):
+                    self._enum_cache.setdefault(enum_name, set()).add(value)
+                    self._add_to_enum_cache(enum_def, value)
+                    return True
+
+        return False
+
+    def _is_value_in_reachable_from(self, value: str, query: Any) -> bool:
+        """Check if a value is within the reachable_from closure.
+
+        Uses OAK's ancestors method to check if the value is a descendant
+        (or ancestor, depending on traverse_up) of the source nodes.
+
+        Args:
+            value: CURIE to check
+            query: ReachabilityQuery object
+
+        Returns:
+            True if value is within the closure
+        """
+        if not query.source_nodes:
+            return False
+
+        # Get prefix and adapter for the value
+        prefix = self._get_prefix(value)
+        if not prefix:
+            return False
+
+        adapter = self._get_adapter(prefix)
+        if not adapter:
+            return False
+
+        # Check if value exists in ontology first
+        label = adapter.label(value)  # type: ignore[attr-defined]
+        if label is None:
+            return False  # Term doesn't exist
+
+        predicates = query.relationship_types if query.relationship_types else ["rdfs:subClassOf"]
+
+        # Check if value is reachable from any source node
+        for source_node in query.source_nodes:
+            if query.traverse_up:
+                # Check if source_node is an ancestor of value
+                ancestors = adapter.ancestors(value, predicates=predicates)  # type: ignore[attr-defined]
+                if ancestors and source_node in ancestors:
+                    return True
+            else:
+                # Check if value is a descendant of source_node
+                # We do this by checking if source_node is an ancestor of value
+                ancestors = adapter.ancestors(value, predicates=predicates)  # type: ignore[attr-defined]
+                if ancestors and source_node in ancestors:
+                    return True
+                # Also check include_self
+                include_self = query.include_self if hasattr(query, "include_self") else True
+                if include_self and value == source_node:
+                    return True
+
+        return False
+
+    # =========================================================================
+    # Dynamic Enum Expansion (for cache_strategy="greedy")
     # =========================================================================
 
     def is_dynamic_enum(self, enum_def: EnumDefinition) -> bool:
@@ -318,15 +585,19 @@ class BaseOntologyPlugin(ValidationPlugin):
             or enum_def.inherits
         )
 
-    def expand_enum(self, enum_def: EnumDefinition, schema_view: Any = None) -> set[str]:
+    def expand_enum(
+        self, enum_def: EnumDefinition, schema_view: Any = None, use_cache: bool = True
+    ) -> set[str]:
         """Expand a dynamic enum definition to a set of allowed values.
 
         This method materializes dynamic enums by querying the ontology
         and collecting all terms that match the enum's constraints.
+        Results are cached for performance.
 
         Args:
             enum_def: Enum definition to expand
             schema_view: SchemaView for resolving inherited enums (optional)
+            use_cache: Whether to use file-based caching (default: True)
 
         Returns:
             Set of allowed CURIE strings
@@ -344,6 +615,20 @@ class BaseOntologyPlugin(ValidationPlugin):
             >>> sorted(plugin.expand_enum(static))
             ['A', 'B', 'TEST:001', 'TEST:002']
         """
+        enum_name = enum_def.name or "unknown"
+
+        # Check in-memory cache first
+        if enum_name in self._enum_cache:
+            return self._enum_cache[enum_name]
+
+        # Check file cache for dynamic enums
+        if use_cache and self.is_dynamic_enum(enum_def):
+            cached = self._load_enum_cache(enum_def)
+            if cached is not None:
+                self._enum_cache[enum_name] = cached
+                return cached
+
+        # Expand the enum
         values: set[str] = set()
 
         # Handle reachable_from
@@ -373,7 +658,7 @@ class BaseOntologyPlugin(ValidationPlugin):
             for parent_enum_name in enum_def.inherits:
                 parent_enum = schema_view.get_enum(parent_enum_name)
                 if parent_enum:
-                    values.update(self.expand_enum(parent_enum, schema_view))
+                    values.update(self.expand_enum(parent_enum, schema_view, use_cache))
 
         # Also include static permissible_values if present
         if enum_def.permissible_values:
@@ -383,6 +668,11 @@ class BaseOntologyPlugin(ValidationPlugin):
                 # Add the meaning if present
                 if pv.meaning:
                     values.add(pv.meaning)
+
+        # Cache the result
+        self._enum_cache[enum_name] = values
+        if use_cache and self.is_dynamic_enum(enum_def):
+            self._save_enum_cache(enum_def, values)
 
         return values
 

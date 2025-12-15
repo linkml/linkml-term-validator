@@ -889,11 +889,15 @@ enums:
       include_self: true
 """)
 
+    # Use greedy cache strategy to verify upfront expansion
+    from linkml_term_validator.models import CacheStrategy
+
     plugin = BindingValidationPlugin(
         validate_labels=False,
         strict=True,
         cache_dir=plugin_cache_dir,
         oak_config_path=oak_config_path,
+        cache_strategy=CacheStrategy.GREEDY,  # Use greedy to test upfront expansion
     )
 
     schema_view = SchemaView(str(schema_path))
@@ -903,7 +907,7 @@ enums:
     )
     plugin.pre_process(context)
 
-    # Verify enum was expanded
+    # Verify enum was expanded (only happens in greedy mode)
     assert "BioProcessEnum" in plugin.expanded_enums
     allowed = plugin.expanded_enums["BioProcessEnum"]
     assert "TEST:0000005" in allowed  # biological_process (include_self=true)
@@ -956,6 +960,7 @@ def test_binding_with_dynamic_enum_multiple_source_nodes(plugin_cache_dir, tmp_p
     from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]
     from linkml_runtime import SchemaView
     from pathlib import Path
+    from linkml_term_validator.models import CacheStrategy
 
     oak_config_path = Path(__file__).parent / "data" / "test_oak_config.yaml"
 
@@ -1005,6 +1010,7 @@ enums:
         validate_labels=False,
         cache_dir=plugin_cache_dir,
         oak_config_path=oak_config_path,
+        cache_strategy=CacheStrategy.GREEDY,  # Use greedy for expanded_enums test
     )
 
     schema_view = SchemaView(str(schema_path))
@@ -1160,3 +1166,272 @@ def test_base_plugin_expand_enum_with_permissible_values():
     assert "C" in expanded
     assert "TEST:001" in expanded
     assert "TEST:002" in expanded
+
+
+# =============================================================================
+# Tests for Enum Caching
+# =============================================================================
+
+
+def test_enum_caching_saves_to_file(plugin_cache_dir, tmp_path):
+    """Test that expanded dynamic enums are cached to disk (greedy mode)."""
+    from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]
+    from linkml_runtime import SchemaView
+    from pathlib import Path
+    import csv
+    from linkml_term_validator.models import CacheStrategy
+
+    oak_config_path = Path(__file__).parent / "data" / "test_oak_config.yaml"
+
+    schema_path = tmp_path / "cache_test_schema.yaml"
+    schema_path.write_text("""
+id: https://example.org/test
+name: test_cache
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  TEST: http://example.org/TEST_
+
+default_prefix: test_cache
+default_range: string
+
+classes:
+  Annotation:
+    attributes:
+      id:
+        identifier: true
+      term:
+        range: Term
+        inlined: true
+        bindings:
+          - binds_value_of: id
+            range: CachedEnum
+
+  Term:
+    attributes:
+      id:
+      label:
+
+enums:
+  CachedEnum:
+    description: Test enum for caching
+    reachable_from:
+      source_ontology: simpleobo:tests/data/test_ontology.obo
+      source_nodes:
+        - TEST:0000001
+      relationship_types:
+        - rdfs:subClassOf
+      include_self: true
+""")
+
+    plugin = BindingValidationPlugin(
+        cache_labels=True,  # Enable caching
+        cache_dir=plugin_cache_dir,
+        oak_config_path=oak_config_path,
+        cache_strategy=CacheStrategy.GREEDY,  # Use greedy to test upfront expansion
+    )
+
+    schema_view = SchemaView(str(schema_path))
+    context = ValidationContext(
+        schema=schema_view.schema,
+        target_class="Annotation",
+    )
+    plugin.pre_process(context)
+
+    # Verify enum was expanded (greedy mode)
+    assert "CachedEnum" in plugin.expanded_enums
+    original_values = plugin.expanded_enums["CachedEnum"]
+    assert len(original_values) > 0
+
+    # Check that cache file was created (CSV format)
+    enum_cache_dir = plugin_cache_dir / "enums"
+    assert enum_cache_dir.exists()
+    cache_files = list(enum_cache_dir.glob("cachedenum_*.csv"))
+    assert len(cache_files) == 1, f"Expected 1 CSV cache file, found: {cache_files}"
+
+    # Verify cache file contents (CSV format)
+    cached_values = set()
+    with open(cache_files[0]) as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            cached_values.add(row["curie"])
+    assert cached_values == original_values
+
+
+def test_enum_caching_loads_from_file(plugin_cache_dir, tmp_path):
+    """Test that enum values are loaded from cache on subsequent runs (greedy mode)."""
+    from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]
+    from linkml_runtime import SchemaView
+    from pathlib import Path
+    from linkml_term_validator.models import CacheStrategy
+
+    oak_config_path = Path(__file__).parent / "data" / "test_oak_config.yaml"
+
+    schema_path = tmp_path / "cache_load_schema.yaml"
+    schema_path.write_text("""
+id: https://example.org/test
+name: test_cache_load
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  TEST: http://example.org/TEST_
+
+default_prefix: test_cache_load
+default_range: string
+
+classes:
+  Annotation:
+    attributes:
+      id:
+        identifier: true
+      term:
+        range: Term
+        inlined: true
+        bindings:
+          - binds_value_of: id
+            range: LoadTestEnum
+
+  Term:
+    attributes:
+      id:
+      label:
+
+enums:
+  LoadTestEnum:
+    description: Test enum for cache loading
+    reachable_from:
+      source_ontology: simpleobo:tests/data/test_ontology.obo
+      source_nodes:
+        - TEST:0000001
+      relationship_types:
+        - rdfs:subClassOf
+      include_self: true
+""")
+
+    # First run - expand and cache (greedy mode)
+    plugin1 = BindingValidationPlugin(
+        cache_labels=True,
+        cache_dir=plugin_cache_dir,
+        oak_config_path=oak_config_path,
+        cache_strategy=CacheStrategy.GREEDY,
+    )
+    schema_view = SchemaView(str(schema_path))
+    context = ValidationContext(schema=schema_view.schema, target_class="Annotation")
+    plugin1.pre_process(context)
+    original_values = plugin1.expanded_enums["LoadTestEnum"]
+
+    # Verify cache file exists (CSV format)
+    enum_cache_dir = plugin_cache_dir / "enums"
+    cache_files = list(enum_cache_dir.glob("loadtestenum_*.csv"))
+    assert len(cache_files) == 1
+
+    # Second run - should load from cache (greedy mode)
+    plugin2 = BindingValidationPlugin(
+        cache_labels=True,
+        cache_dir=plugin_cache_dir,
+        oak_config_path=oak_config_path,
+        cache_strategy=CacheStrategy.GREEDY,
+    )
+    schema_view2 = SchemaView(str(schema_path))
+    context2 = ValidationContext(schema=schema_view2.schema, target_class="Annotation")
+    plugin2.pre_process(context2)
+
+    # Should have same values
+    assert plugin2.expanded_enums["LoadTestEnum"] == original_values
+
+
+def test_enum_cache_key_changes_with_definition(plugin_cache_dir):
+    """Test that cache key changes when enum definition changes."""
+    from linkml_runtime.linkml_model import EnumDefinition
+    from linkml_runtime.linkml_model.meta import ReachabilityQuery
+
+    plugin = BindingValidationPlugin(cache_dir=plugin_cache_dir)
+
+    # Enum with one source node
+    enum1 = EnumDefinition(name="TestEnum")
+    enum1.reachable_from = ReachabilityQuery(source_nodes=["GO:0008150"])
+    key1 = plugin._get_enum_cache_key(enum1)
+
+    # Same name but different source node
+    enum2 = EnumDefinition(name="TestEnum")
+    enum2.reachable_from = ReachabilityQuery(source_nodes=["GO:0005575"])
+    key2 = plugin._get_enum_cache_key(enum2)
+
+    # Keys should be different
+    assert key1 != key2
+
+    # Same definition should give same key
+    enum3 = EnumDefinition(name="TestEnum")
+    enum3.reachable_from = ReachabilityQuery(source_nodes=["GO:0008150"])
+    key3 = plugin._get_enum_cache_key(enum3)
+    assert key1 == key3
+
+
+def test_enum_caching_disabled(plugin_cache_dir, tmp_path):
+    """Test that caching can be disabled."""
+    from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]
+    from linkml_runtime import SchemaView
+    from pathlib import Path
+
+    oak_config_path = Path(__file__).parent / "data" / "test_oak_config.yaml"
+
+    schema_path = tmp_path / "no_cache_schema.yaml"
+    schema_path.write_text("""
+id: https://example.org/test
+name: test_no_cache
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  TEST: http://example.org/TEST_
+
+default_prefix: test_no_cache
+default_range: string
+
+classes:
+  Annotation:
+    attributes:
+      id:
+        identifier: true
+      term:
+        range: Term
+        inlined: true
+        bindings:
+          - binds_value_of: id
+            range: NoCacheEnum
+
+  Term:
+    attributes:
+      id:
+      label:
+
+enums:
+  NoCacheEnum:
+    reachable_from:
+      source_ontology: simpleobo:tests/data/test_ontology.obo
+      source_nodes:
+        - TEST:0000001
+      include_self: true
+""")
+
+    # Disable caching but use greedy mode to test that expansion still works
+    from linkml_term_validator.models import CacheStrategy
+
+    plugin = BindingValidationPlugin(
+        cache_labels=False,  # Disable caching
+        cache_dir=plugin_cache_dir,
+        oak_config_path=oak_config_path,
+        cache_strategy=CacheStrategy.GREEDY,  # Still need greedy to populate expanded_enums
+    )
+
+    schema_view = SchemaView(str(schema_path))
+    context = ValidationContext(schema=schema_view.schema, target_class="Annotation")
+    plugin.pre_process(context)
+
+    # Enum should still be expanded (greedy mode)
+    assert "NoCacheEnum" in plugin.expanded_enums
+
+    # But no cache file should be created (CSV format)
+    enum_cache_dir = plugin_cache_dir / "enums"
+    if enum_cache_dir.exists():
+        cache_files = list(enum_cache_dir.glob("nocacheenum_*.csv"))
+        assert len(cache_files) == 0, f"Expected no cache files when caching disabled, got: {cache_files}"

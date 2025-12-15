@@ -38,11 +38,12 @@ Example:
 
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from linkml.validator.report import Severity, ValidationResult  # type: ignore[import-untyped]
 from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]
 
+from linkml_term_validator.models import CacheStrategy
 from linkml_term_validator.plugins.base import BaseOntologyPlugin
 
 # Ontology properties that represent labels
@@ -96,6 +97,7 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         cache_labels: bool = True,
         cache_dir: Path | str = Path("cache"),
         oak_config_path: Optional[Path | str] = None,
+        cache_strategy: Literal["progressive", "greedy"] | CacheStrategy = CacheStrategy.PROGRESSIVE,
     ):
         """Initialize binding validation plugin.
 
@@ -106,12 +108,14 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             cache_labels: Whether to cache ontology labels to disk
             cache_dir: Directory for label cache files
             oak_config_path: Path to oak_config.yaml for per-prefix adapters
+            cache_strategy: Caching strategy for dynamic enums ('progressive' or 'greedy')
         """
         super().__init__(
             oak_adapter_string=oak_adapter_string,
             cache_labels=cache_labels,
             cache_dir=cache_dir,
             oak_config_path=oak_config_path,
+            cache_strategy=cache_strategy,
         )
         self.validate_labels = validate_labels
         self.strict = strict
@@ -124,12 +128,13 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         self.expanded_enums: dict[str, set[str]] = {}
 
     def pre_process(self, context: ValidationContext) -> None:
-        """Extract all bindings, slot properties, and expand dynamic enums.
+        """Extract all bindings, slot properties, and optionally expand dynamic enums.
 
         This method is called before processing any instances. It:
         1. Collects all binding constraints from the schema
         2. Collects slot properties for label detection
-        3. Expands all dynamic enums referenced by bindings
+        3. For greedy caching: expands all dynamic enums referenced by bindings upfront
+        4. For progressive caching: skips expansion (will validate lazily)
         """
         self.schema_view = context.schema_view
 
@@ -138,7 +143,7 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             return
 
         # Track which enums are referenced by bindings
-        referenced_enums: set[str] = set()
+        self._referenced_enums: set[str] = set()
 
         for cls in self.schema_view.all_classes().values():
             class_properties: dict[str, set[str]] = {}
@@ -149,7 +154,7 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                     # Track referenced enums
                     for binding in slot.bindings:
                         if binding.range:
-                            referenced_enums.add(binding.range)
+                            self._referenced_enums.add(binding.range)
                 # Collect implements and slot_uri for label detection
                 slot_props: set[str] = set()
                 if slot.implements:
@@ -161,11 +166,12 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             if class_properties:
                 self.slot_properties_map[cls.name] = class_properties
 
-        # Expand all dynamic enums referenced by bindings
-        for enum_name in referenced_enums:
-            enum_def = self.schema_view.get_enum(enum_name)
-            if enum_def and self.is_dynamic_enum(enum_def):
-                self.expanded_enums[enum_name] = self.expand_enum(enum_def, self.schema_view)
+        # Only expand enums upfront for greedy caching strategy
+        if self.cache_strategy == CacheStrategy.GREEDY:
+            for enum_name in self._referenced_enums:
+                enum_def = self.schema_view.get_enum(enum_name)
+                if enum_def and self.is_dynamic_enum(enum_def):
+                    self.expanded_enums[enum_name] = self.expand_enum(enum_def, self.schema_view)
 
     def process(self, instance: dict, context: ValidationContext) -> Iterator[ValidationResult]:
         """Validate binding constraints on nested fields.
@@ -430,8 +436,9 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         """Validate field value against enum (static or dynamic).
 
         For static enums, validates against permissible values.
-        For dynamic enums (reachable_from, matches, concepts), validates
-        against the expanded set of terms from the ontology.
+        For dynamic enums (reachable_from, matches, concepts):
+        - Progressive mode: validates lazily using ontology lookup
+        - Greedy mode: validates against pre-expanded set
 
         Args:
             field_value: Value to validate
@@ -451,22 +458,55 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         if not enum_def:
             return
 
-        # Check if this is a dynamic enum with pre-expanded values
-        is_dynamic = enum_name in self.expanded_enums
-        if is_dynamic:
+        is_dynamic = self.is_dynamic_enum(enum_def)
+
+        # For dynamic enums with progressive caching, use lazy validation
+        if is_dynamic and self.cache_strategy == CacheStrategy.PROGRESSIVE:
+            is_valid = self.is_value_in_enum(field_value, enum_def, self.schema_view)
+            if not is_valid:
+                yield ValidationResult(
+                    type="binding_validation",
+                    severity=Severity.ERROR,
+                    message=f"Value '{field_value}' not in dynamic enum '{enum_name}' (expanded from ontology)",
+                    instance=instance,
+                    instantiates=target_class,
+                    context=[
+                        f"path: {path}",
+                        f"slot: {slot_name}",
+                        f"field: {field_path}",
+                        "validation: progressive (lazy)",
+                    ],
+                )
+            return
+
+        # For greedy mode with pre-expanded values
+        if is_dynamic and enum_name in self.expanded_enums:
             valid_values = self.expanded_enums[enum_name]
-        else:
-            # Get permissible values for static enum
-            valid_values = set()
+            if field_value not in valid_values:
+                yield ValidationResult(
+                    type="binding_validation",
+                    severity=Severity.ERROR,
+                    message=f"Value '{field_value}' not in dynamic enum '{enum_name}' (expanded from ontology)",
+                    instance=instance,
+                    instantiates=target_class,
+                    context=[
+                        f"path: {path}",
+                        f"slot: {slot_name}",
+                        f"field: {field_path}",
+                        f"allowed_values: {len(valid_values)} terms",
+                    ],
+                )
+            return
 
-            if enum_def.permissible_values:
-                # Add PV names
-                valid_values.update(enum_def.permissible_values.keys())
-
-                # Add meanings
-                for pv in enum_def.permissible_values.values():
-                    if pv.meaning:
-                        valid_values.add(pv.meaning)
+        # Static enum: validate against permissible values
+        valid_values = set()
+        if enum_def.permissible_values:
+            # Add PV names
+            valid_values.update(enum_def.permissible_values.keys())
+            # Add meanings
+            for pv in enum_def.permissible_values.values():
+                if pv.meaning:
+                    valid_values.add(pv.meaning)
 
         # Skip validation if no values defined
         if not valid_values:
@@ -474,11 +514,10 @@ class BindingValidationPlugin(BaseOntologyPlugin):
 
         # Check if value is valid
         if field_value not in valid_values:
-            enum_type = "dynamic enum (expanded from ontology)" if is_dynamic else "enum"
             yield ValidationResult(
                 type="binding_validation",
                 severity=Severity.ERROR,
-                message=f"Value '{field_value}' not in {enum_type} '{enum_name}'",
+                message=f"Value '{field_value}' not in enum '{enum_name}'",
                 instance=instance,
                 instantiates=target_class,
                 context=[
