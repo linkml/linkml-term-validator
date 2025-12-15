@@ -172,3 +172,12 @@ def test_validate_data_no_dynamic_enums(runner, examples_dir):
 
     # Passes because only bindings are checked (simple_schema has no bindings)
     assert result.exit_code == 0
+
+
+def test_validate_data_help_shows_lenient(runner):
+    """Test validate-data help shows --lenient option."""
+    result = runner.invoke(app, ["validate-data", "--help"])
+    assert result.exit_code == 0
+    assert "--lenient" in result.output
+    assert "lenient mode" in result.output.lower()
+    assert "term ids are not" in result.output.lower()

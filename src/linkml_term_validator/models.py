@@ -15,6 +15,23 @@ class SeverityLevel(str, Enum):
     INFO = "INFO"
 
 
+class CacheStrategy(str, Enum):
+    """Caching strategies for dynamic enum expansion.
+
+    Examples:
+        >>> CacheStrategy.PROGRESSIVE.value
+        'progressive'
+        >>> CacheStrategy.GREEDY.value
+        'greedy'
+    """
+
+    PROGRESSIVE = "progressive"
+    """Cache terms incrementally as they are validated (default, scalable)."""
+
+    GREEDY = "greedy"
+    """Expand entire enum upfront and cache all terms."""
+
+
 class ValidationIssue(BaseModel):
     """A single validation issue found during term validation.
 
@@ -202,6 +219,8 @@ class ValidationConfig(BaseModel):
         False
         >>> config.cache_labels
         True
+        >>> config.cache_strategy
+        <CacheStrategy.PROGRESSIVE: 'progressive'>
     """
 
     oak_adapter_string: str = Field(
@@ -214,6 +233,10 @@ class ValidationConfig(BaseModel):
     )
     cache_labels: bool = Field(
         default=True, description="If True, cache ontology labels to disk"
+    )
+    cache_strategy: CacheStrategy = Field(
+        default=CacheStrategy.PROGRESSIVE,
+        description="Caching strategy for dynamic enums: 'progressive' (default) or 'greedy'",
     )
     oak_config_path: Optional[Path] = Field(
         default=None,

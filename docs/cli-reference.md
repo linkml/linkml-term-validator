@@ -189,8 +189,10 @@ linkml-term-validator validate-data [OPTIONS] DATA_PATHS...
 | `--config PATH` | Path | None | Path to OAK config file |
 | `--adapter TEXT` | String | `"sqlite:obo:"` | Default OAK adapter string |
 | `--cache-dir PATH` | Path | `cache` | Directory for caching ontology labels |
+| `--cache-strategy TEXT` | String | `progressive` | Caching strategy for dynamic enums: `progressive` (lazy) or `greedy` (expand upfront) |
 | `--no-cache` | Flag | False | Disable file-based caching |
 | `--labels` | Flag | False | Validate that labels match ontology canonical labels |
+| `--lenient/--no-lenient` | Flag | False | Lenient mode: don't fail when term IDs are not found in ontology |
 | `--no-dynamic-enums` | Flag | False | Skip dynamic enum validation |
 | `--no-bindings` | Flag | False | Skip binding constraint validation |
 | `--verbose` | Flag | False | Show detailed validation information |
@@ -254,6 +256,14 @@ linkml-term-validator validate-data data/*.yaml \
   --schema schema.yaml
 ```
 
+**With greedy caching (expand all terms upfront):**
+
+```bash
+linkml-term-validator validate-data data.yaml \
+  --schema schema.yaml \
+  --cache-strategy greedy
+```
+
 **Full validation with all options:**
 
 ```bash
@@ -262,6 +272,7 @@ linkml-term-validator validate-data data.yaml \
   --target-class GeneAnnotation \
   --config oak_config.yaml \
   --cache-dir cache \
+  --cache-strategy progressive \
   --labels \
   --verbose
 ```
@@ -418,9 +429,12 @@ linkml-term-validator validate-data \
 
 ### oak_config.yaml
 
-Controls which ontology adapters to use for different prefixes:
+Controls which ontology adapters to use for different prefixes, and optionally the caching strategy:
 
 ```yaml
+# Cache strategy (optional): "progressive" (default) or "greedy"
+cache_strategy: progressive
+
 ontology_adapters:
   GO: sqlite:obo:go
   CHEBI: sqlite:obo:chebi

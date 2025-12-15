@@ -7,6 +7,7 @@ A key use case for linkml-term-validator is preventing AI systems from hallucina
 Language models frequently hallucinate identifiers like gene IDs, ontology terms, and other structured references. These fake identifiers often appear structurally correct (e.g., `GO:9999999`, `CHEBI:88888`) but don't actually exist in the source ontologies.
 
 This creates serious data quality issues:
+
 - **Invalid references** that break data integration
 - **Nonsense annotations** that corrupt curated datasets
 - **False confidence** in AI-generated content
@@ -98,6 +99,7 @@ if len(report.results) > 0:
 The most effective approach embeds validation **during AI generation** rather than treating it as a filtering step afterward. This transforms hallucination resistance from a detection problem into a generation constraint.
 
 **Pattern:**
+
 1. AI generates structured output with id+label pairs
 2. Validate immediately with `BindingValidationPlugin(validate_labels=True)`
 3. If validation fails, provide error messages back to AI with retry opportunity

@@ -33,6 +33,7 @@ nav:
       - linkml-validate Integration: notebooks/04_linkml_validate_integration.ipynb
       - TSV/CSV Data Validation: notebooks/05_tsv_csv_validation.ipynb
   - How-To Guides:
+      - Validate Bindings: howto-bindings.md
       - Configuration: configuration.md
   - Reference:
       - Schema Validation: schema-validation.md

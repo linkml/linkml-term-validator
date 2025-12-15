@@ -1,13 +1,24 @@
-"""Plugin for validating data against dynamic enum definitions."""
+"""Plugin for validating data against dynamic enum definitions.
+
+This module provides the DynamicEnumPlugin which validates slot values
+against dynamic enums defined using ontology queries (reachable_from,
+matches, concepts, etc.).
+
+Example:
+    >>> from linkml_term_validator.plugins import DynamicEnumPlugin
+    >>> plugin = DynamicEnumPlugin()
+    >>> plugin.expanded_enums
+    {}
+"""
 
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from linkml.validator.report import Severity, ValidationResult  # type: ignore[import-untyped]
 from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]
-from linkml_runtime.linkml_model import EnumDefinition
 
+from linkml_term_validator.models import CacheStrategy
 from linkml_term_validator.plugins.base import BaseOntologyPlugin
 
 
@@ -16,6 +27,9 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
 
     This plugin materializes dynamic enums (those using reachable_from, matches,
     concepts, etc.) and validates data instance values against the expanded enum.
+
+    For validation via bindings (nested objects), use BindingValidationPlugin instead.
+    This plugin handles direct slot ranges.
 
     Example:
         # Schema
@@ -38,6 +52,7 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
         cache_labels: bool = True,
         cache_dir: Path | str = Path("cache"),
         oak_config_path: Optional[Path | str] = None,
+        cache_strategy: Literal["progressive", "greedy"] | CacheStrategy = CacheStrategy.PROGRESSIVE,
     ):
         """Initialize dynamic enum plugin.
 
@@ -46,29 +61,40 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
             cache_labels: Whether to cache ontology labels to disk
             cache_dir: Directory for label cache files
             oak_config_path: Path to oak_config.yaml for per-prefix adapters
+            cache_strategy: Caching strategy for dynamic enums ('progressive' or 'greedy')
         """
         super().__init__(
             oak_adapter_string=oak_adapter_string,
             cache_labels=cache_labels,
             cache_dir=cache_dir,
             oak_config_path=oak_config_path,
+            cache_strategy=cache_strategy,
         )
         self.schema_view = None
         self.expanded_enums: dict[str, set[str]] = {}
 
     def pre_process(self, context: ValidationContext) -> None:
-        """Materialize all dynamic enums before processing instances."""
+        """Materialize dynamic enums before processing instances.
+
+        For greedy caching: expands all dynamic enums upfront.
+        For progressive caching: skips expansion (will validate lazily).
+        """
         self.schema_view = context.schema_view
 
-        # Expand all dynamic enums
+        # Only expand all dynamic enums upfront for greedy caching
         if self.schema_view is None:
             return
-        for enum_name, enum_def in self.schema_view.all_enums().items():
-            if self._is_dynamic_enum(enum_def):
-                self.expanded_enums[enum_name] = self._expand_enum(enum_def)
+
+        if self.cache_strategy == CacheStrategy.GREEDY:
+            for enum_name, enum_def in self.schema_view.all_enums().items():
+                if self.is_dynamic_enum(enum_def):
+                    self.expanded_enums[enum_name] = self.expand_enum(enum_def, self.schema_view)
 
     def process(self, instance: dict, context: ValidationContext) -> Iterator[ValidationResult]:
-        """Validate instance slot values against expanded dynamic enums.
+        """Validate instance slot values against dynamic enums.
+
+        For progressive mode: validates lazily using ontology lookup.
+        For greedy mode: validates against pre-expanded enum values.
 
         Args:
             instance: Data instance to validate
@@ -91,17 +117,34 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
                 # Slot not found in schema - let other validators handle this
                 continue
 
-            # Check if slot range is a dynamic enum
-            if slot.range and slot.range in self.expanded_enums:
-                yield from self._validate_enum_value(
+            # Check if slot range is an enum
+            if not slot.range:
+                continue
+
+            enum_def = self.schema_view.get_enum(slot.range)
+            if not enum_def or not self.is_dynamic_enum(enum_def):
+                continue
+
+            # For greedy mode, use pre-expanded values
+            if self.cache_strategy == CacheStrategy.GREEDY and slot.range in self.expanded_enums:
+                yield from self._validate_enum_value_greedy(
                     slot_name=slot_name,
                     value=value,
                     enum_name=slot.range,
                     instance=instance,
                     target_class=target_class,
                 )
+            else:
+                # Progressive mode: validate lazily
+                yield from self._validate_enum_value_progressive(
+                    slot_name=slot_name,
+                    value=value,
+                    enum_def=enum_def,
+                    instance=instance,
+                    target_class=target_class,
+                )
 
-    def _validate_enum_value(
+    def _validate_enum_value_greedy(
         self,
         slot_name: str,
         value: Any,
@@ -109,7 +152,7 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
         instance: dict,
         target_class: str,
     ) -> Iterator[ValidationResult]:
-        """Validate a slot value against a dynamic enum.
+        """Validate a slot value against a pre-expanded dynamic enum (greedy mode).
 
         Args:
             slot_name: Name of the slot
@@ -148,167 +191,48 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
                     ],
                 )
 
-    def _is_dynamic_enum(self, enum_def: EnumDefinition) -> bool:
-        """Check if enum uses dynamic definition.
+    def _validate_enum_value_progressive(
+        self,
+        slot_name: str,
+        value: Any,
+        enum_def: Any,
+        instance: dict,
+        target_class: str,
+    ) -> Iterator[ValidationResult]:
+        """Validate a slot value against a dynamic enum using progressive caching.
 
         Args:
-            enum_def: Enum definition to check
+            slot_name: Name of the slot
+            value: Value to validate (may be single or list)
+            enum_def: EnumDefinition object
+            instance: Full instance being validated
+            target_class: Name of the class being validated
 
-        Returns:
-            True if enum is dynamic
+        Yields:
+            ValidationResult if value not in enum
         """
-        return bool(
-            enum_def.reachable_from
-            or enum_def.matches
-            or enum_def.concepts
-            or enum_def.include
-            or enum_def.inherits
-        )
+        # Handle multivalued slots
+        values = value if isinstance(value, list) else [value]
 
-    def _expand_enum(self, enum_def: EnumDefinition) -> set[str]:
-        """Expand a dynamic enum definition to a set of allowed values.
+        for val in values:
+            # Skip None values
+            if val is None:
+                continue
 
-        Args:
-            enum_def: Enum definition to expand
+            # Convert to string for comparison
+            val_str = str(val)
 
-        Returns:
-            Set of allowed CURIE strings
-        """
-        values = set()
-
-        # Handle reachable_from
-        if enum_def.reachable_from:
-            values.update(self._expand_reachable_from(enum_def.reachable_from))
-
-        # Handle matches
-        if enum_def.matches:
-            values.update(self._expand_matches(enum_def.matches))
-
-        # Handle concepts
-        if enum_def.concepts:
-            values.update(enum_def.concepts)
-
-        # Handle include (union)
-        if enum_def.include:
-            for include_expr in enum_def.include:
-                values.update(self._expand_enum_expression(include_expr))
-
-        # Handle minus (set difference)
-        if enum_def.minus:
-            for minus_expr in enum_def.minus:
-                values -= self._expand_enum_expression(minus_expr)
-
-        # Handle inherits
-        if enum_def.inherits and self.schema_view is not None:
-            for parent_enum_name in enum_def.inherits:
-                parent_enum = self.schema_view.get_enum(parent_enum_name)
-                if parent_enum:
-                    values.update(self._expand_enum(parent_enum))
-
-        # Also include static permissible_values if present
-        if enum_def.permissible_values:
-            for pv_name, pv in enum_def.permissible_values.items():
-                # Add the PV name
-                values.add(pv_name)
-                # Add the meaning if present
-                if pv.meaning:
-                    values.add(pv.meaning)
-
-        return values
-
-    def _expand_enum_expression(self, expr) -> set[str]:
-        """Expand an enum expression (for include/minus).
-
-        Args:
-            expr: Enum expression object
-
-        Returns:
-            Set of CURIEs
-        """
-        values = set()
-
-        if hasattr(expr, "reachable_from") and expr.reachable_from:
-            values.update(self._expand_reachable_from(expr.reachable_from))
-
-        if hasattr(expr, "matches") and expr.matches:
-            values.update(self._expand_matches(expr.matches))
-
-        if hasattr(expr, "concepts") and expr.concepts:
-            values.update(expr.concepts)
-
-        if hasattr(expr, "permissible_values") and expr.permissible_values:
-            for pv_name, pv in expr.permissible_values.items():
-                values.add(pv_name)
-                if pv.meaning:
-                    values.add(pv.meaning)
-
-        return values
-
-    def _expand_reachable_from(self, query) -> set[str]:
-        """Expand reachable_from query using OAK.
-
-        Args:
-            query: ReachabilityQuery object
-
-        Returns:
-            Set of reachable CURIEs
-        """
-        values: set[str] = set()
-
-        # Get adapter for source ontology
-        # For now, use the prefix from the first source node
-        if not query.source_nodes:
-            return values
-
-        first_node = query.source_nodes[0]
-        prefix = self._get_prefix(first_node)
-        if not prefix:
-            return values
-
-        adapter = self._get_adapter(prefix)
-        if not adapter:
-            return values
-
-        # Get relationship types (predicates)
-        predicates = query.relationship_types if query.relationship_types else ["rdfs:subClassOf"]
-
-        # Use OAK to get descendants or ancestors
-        for source_node in query.source_nodes:
-            try:
-                if query.traverse_up:
-                    # Get ancestors
-                    ancestors_result = adapter.ancestors(  # type: ignore[attr-defined]
-                        source_node,
-                        predicates=predicates,
-                        reflexive=query.include_self if hasattr(query, "include_self") else False,
-                    )
-                    if ancestors_result:
-                        values.update(ancestors_result)
-                else:
-                    # Get descendants (default)
-                    descendants_result = adapter.descendants(  # type: ignore[attr-defined]
-                        source_node,
-                        predicates=predicates,
-                        reflexive=query.include_self if hasattr(query, "include_self") else True,
-                    )
-                    if descendants_result:
-                        values.update(descendants_result)
-            except Exception:
-                # If OAK query fails, skip this source node
-                pass
-
-        return values
-
-    def _expand_matches(self, query) -> set[str]:
-        """Expand matches query using pattern matching.
-
-        Args:
-            query: MatchQuery object
-
-        Returns:
-            Set of matching CURIEs
-        """
-        # This would require querying the ontology for all terms matching a pattern
-        # For now, return empty set - this is a more advanced feature
-        # that would require iterating through all terms in an ontology
-        return set()
+            # Use progressive validation (checks cache, then ontology, adds to cache if valid)
+            if not self.is_value_in_enum(val_str, enum_def, self.schema_view):
+                yield ValidationResult(
+                    type="dynamic_enum_validation",
+                    severity=Severity.ERROR,
+                    message=f"Value '{val_str}' not in dynamic enum '{enum_def.name}' (expanded from ontology)",
+                    instance=instance,
+                    instantiates=target_class,
+                    context=[
+                        f"slot: {slot_name}",
+                        f"enum: {enum_def.name}",
+                        "validation: progressive (lazy)",
+                    ],
+                )

@@ -9,6 +9,10 @@ The primary way to configure ontology access is through an `oak_config.yaml` fil
 ### Basic Structure
 
 ```yaml
+# Cache strategy for dynamic enums (optional)
+cache_strategy: progressive  # or "greedy"
+
+# Ontology adapter mappings
 ontology_adapters:
   # Prefix: adapter_string
   GO: sqlite:obo:go
@@ -221,6 +225,18 @@ linkml-term-validator validate-schema --no-cache schema.yaml
 
 This forces fresh lookups from the ontology source every time. Useful for testing or when you want guaranteed fresh data.
 
+**Cache strategy (data validation):**
+
+```bash
+# Progressive (default) - validates lazily, caches valid terms as encountered
+linkml-term-validator validate-data --cache-strategy progressive data.yaml -s schema.yaml
+
+# Greedy - expands entire enum upfront and caches all terms
+linkml-term-validator validate-data --cache-strategy greedy data.yaml -s schema.yaml
+```
+
+See [Caching](caching.md#enum-caching-strategies) for details on when to use each strategy.
+
 ### Validation Behavior
 
 **Strict mode:**
@@ -383,12 +399,14 @@ plugin = PermissibleValueMeaningPlugin(
 
 ```python
 from linkml_term_validator.plugins import DynamicEnumPlugin
+from linkml_term_validator.models import CacheStrategy
 
 plugin = DynamicEnumPlugin(
     oak_adapter_string="sqlite:obo:",
     oak_config_path="oak_config.yaml",
     cache_labels=True,
     cache_dir="cache",
+    cache_strategy=CacheStrategy.PROGRESSIVE,  # or GREEDY
 )
 ```
 
@@ -396,6 +414,7 @@ plugin = DynamicEnumPlugin(
 
 ```python
 from linkml_term_validator.plugins import BindingValidationPlugin
+from linkml_term_validator.models import CacheStrategy
 
 plugin = BindingValidationPlugin(
     oak_adapter_string="sqlite:obo:",
@@ -403,6 +422,7 @@ plugin = BindingValidationPlugin(
     validate_labels=True,  # Also check labels match ontology
     cache_labels=True,
     cache_dir="cache",
+    cache_strategy=CacheStrategy.PROGRESSIVE,  # or GREEDY
 )
 ```
 
@@ -426,6 +446,7 @@ plugins:
     oak_adapter_string: "sqlite:obo:"
     cache_labels: true
     cache_dir: cache
+    cache_strategy: progressive  # or "greedy"
     oak_config_path: oak_config.yaml
 
   "linkml_term_validator.plugins.BindingValidationPlugin":
@@ -433,6 +454,7 @@ plugins:
     validate_labels: true
     cache_labels: true
     cache_dir: cache
+    cache_strategy: progressive  # or "greedy"
     oak_config_path: oak_config.yaml
 ```
 
