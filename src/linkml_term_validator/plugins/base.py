@@ -525,7 +525,7 @@ class BaseOntologyPlugin(ValidationPlugin):
         # Check if value exists in ontology first
         label = adapter.label(value)  # type: ignore[attr-defined]
         if label is None:
-            return False  # Term doesn't exist
+            return False  # Term doesn't exist or adapter lookup failed
 
         predicates = query.relationship_types if query.relationship_types else ["rdfs:subClassOf"]
 
