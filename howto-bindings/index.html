@@ -8,13 +8,13 @@
       
       
       
-        <link rel="canonical" href="https://linkml.github.io/linkml-term-validator/ontologies-primer/">
+        <link rel="canonical" href="https://linkml.github.io/linkml-term-validator/howto-bindings/">
       
       
-        <link rel="prev" href="../plugin-reference/">
+        <link rel="prev" href="..">
       
       
-        <link rel="next" href="../enumerations/">
+        <link rel="next" href="../configuration/">
       
       
         
@@ -25,7 +25,7 @@
     
     
       
-        <title>Semantic Artefacts Primer - linkml-term-validator</title>
+        <title>Validate Bindings - linkml-term-validator</title>
       
     
     
@@ -66,7 +66,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#semantic-artefacts-in-linkml-a-primer" class="md-skip">
+        <a href="#how-to-validate-bindings-with-dynamic-enums" class="md-skip">
           Skip to content
         </a>
       
@@ -101,7 +101,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Semantic Artefacts Primer
+              Validate Bindings
             
           </span>
         </div>
@@ -438,18 +438,20 @@
       
   
   
+    
   
   
+  
     
     
     
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
           <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
@@ -470,7 +472,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -485,10 +487,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../howto-bindings/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validate Bindings
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -504,6 +533,236 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#goal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Goal
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-1-define-your-schema-with-bindings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1: Define Your Schema with Bindings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-2-create-test-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2: Create Test Data
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-3-run-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3: Run Validation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Step 3: Run Validation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-binding-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic Binding Validation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#catch-wrong-branch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Catch Wrong Branch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#catch-fabricated-ids-strict-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Catch Fabricated IDs (Strict Mode)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#disable-strict-mode-lenient" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Disable Strict Mode (Lenient)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-4-add-label-validation-anti-hallucination" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4: Add Label Validation (Anti-Hallucination)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-5-use-custom-ontology-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 5: Use Custom Ontology Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#python-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Python API
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-issues-and-solutions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Issues and Solutions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Common Issues and Solutions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#issue-term-not-found-for-valid-terms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Issue: "Term not found" for valid terms
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#issue-dynamic-enum-expansion-is-slow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Issue: Dynamic enum expansion is slow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#issue-unknown-prefix-warnings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Issue: Unknown prefix warnings
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validation-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next Steps
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -742,20 +1001,18 @@
       
   
   
-    
   
   
-  
     
     
     
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
         
           
           <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
@@ -776,7 +1033,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
@@ -791,37 +1048,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Semantic Artefacts Primer
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../ontologies-primer/" class="md-nav__link">
         
   
   
@@ -837,214 +1067,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#what-are-semantic-artefacts" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What are Semantic Artefacts?
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#why-validation-matters-the-opaque-id-problem" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Why Validation Matters: The Opaque ID Problem
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#anatomy-of-a-term" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Anatomy of a Term
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#curies-compact-identifiers" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        CURIEs: Compact Identifiers
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#examples-across-domains" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Examples Across Domains
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Examples Across Domains">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#life-sciences" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Life Sciences
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#industry-standards" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Industry &amp; Standards
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#environmental-materials" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Environmental &amp; Materials
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#the-data-consistency-problem" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        The Data Consistency Problem
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#hierarchical-queries" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Hierarchical Queries
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#linkml-integration-patterns" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        LinkML Integration Patterns
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="LinkML Integration Patterns">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#1-static-enum-meanings" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        1. Static Enum Meanings
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#2-dynamic-enums" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        2. Dynamic Enums
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#3-bindings-on-complex-objects" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        3. Bindings on Complex Objects
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#see-also" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        See Also
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#external-resources" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        External Resources
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1252,10 +1274,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#what-are-semantic-artefacts" class="md-nav__link">
+  <a href="#prerequisites" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What are Semantic Artefacts?
+        Prerequisites
       
     </span>
   </a>
@@ -1263,10 +1285,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#why-validation-matters-the-opaque-id-problem" class="md-nav__link">
+  <a href="#goal" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Why Validation Matters: The Opaque ID Problem
+        Goal
       
     </span>
   </a>
@@ -1274,10 +1296,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#anatomy-of-a-term" class="md-nav__link">
+  <a href="#step-1-define-your-schema-with-bindings" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Anatomy of a Term
+        Step 1: Define Your Schema with Bindings
       
     </span>
   </a>
@@ -1285,10 +1307,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#curies-compact-identifiers" class="md-nav__link">
+  <a href="#step-2-create-test-data" class="md-nav__link">
     <span class="md-ellipsis">
       
-        CURIEs: Compact Identifiers
+        Step 2: Create Test Data
       
     </span>
   </a>
@@ -1296,22 +1318,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#examples-across-domains" class="md-nav__link">
+  <a href="#step-3-run-validation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Examples Across Domains
+        Step 3: Run Validation
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Examples Across Domains">
+    <nav class="md-nav" aria-label="Step 3: Run Validation">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#life-sciences" class="md-nav__link">
+  <a href="#basic-binding-validation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Life Sciences
+        Basic Binding Validation
       
     </span>
   </a>
@@ -1319,10 +1341,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#industry-standards" class="md-nav__link">
+  <a href="#catch-wrong-branch" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Industry &amp; Standards
+        Catch Wrong Branch
       
     </span>
   </a>
@@ -1330,10 +1352,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#environmental-materials" class="md-nav__link">
+  <a href="#catch-fabricated-ids-strict-mode" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Environmental &amp; Materials
+        Catch Fabricated IDs (Strict Mode)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#disable-strict-mode-lenient" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Disable Strict Mode (Lenient)
       
     </span>
   </a>
@@ -1346,10 +1379,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#the-data-consistency-problem" class="md-nav__link">
+  <a href="#step-4-add-label-validation-anti-hallucination" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The Data Consistency Problem
+        Step 4: Add Label Validation (Anti-Hallucination)
       
     </span>
   </a>
@@ -1357,10 +1390,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#hierarchical-queries" class="md-nav__link">
+  <a href="#step-5-use-custom-ontology-configuration" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Hierarchical Queries
+        Step 5: Use Custom Ontology Configuration
       
     </span>
   </a>
@@ -1368,22 +1401,33 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#linkml-integration-patterns" class="md-nav__link">
+  <a href="#python-api" class="md-nav__link">
     <span class="md-ellipsis">
       
-        LinkML Integration Patterns
+        Python API
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="LinkML Integration Patterns">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-issues-and-solutions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Issues and Solutions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Common Issues and Solutions">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#1-static-enum-meanings" class="md-nav__link">
+  <a href="#issue-term-not-found-for-valid-terms" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. Static Enum Meanings
+        Issue: "Term not found" for valid terms
       
     </span>
   </a>
@@ -1391,10 +1435,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-dynamic-enums" class="md-nav__link">
+  <a href="#issue-dynamic-enum-expansion-is-slow" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. Dynamic Enums
+        Issue: Dynamic enum expansion is slow
       
     </span>
   </a>
@@ -1402,10 +1446,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#3-bindings-on-complex-objects" class="md-nav__link">
+  <a href="#issue-unknown-prefix-warnings" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. Bindings on Complex Objects
+        Issue: Unknown prefix warnings
       
     </span>
   </a>
@@ -1418,10 +1462,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#see-also" class="md-nav__link">
+  <a href="#validation-summary" class="md-nav__link">
     <span class="md-ellipsis">
       
-        See Also
+        Validation Summary
       
     </span>
   </a>
@@ -1429,10 +1473,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#external-resources" class="md-nav__link">
+  <a href="#next-steps" class="md-nav__link">
     <span class="md-ellipsis">
       
-        External Resources
+        Next Steps
       
     </span>
   </a>
@@ -1459,293 +1503,244 @@
   
 
 
-<h1 id="semantic-artefacts-in-linkml-a-primer">Semantic Artefacts in LinkML: A Primer</h1>
-<p>This page introduces ontologies, vocabularies, and controlled value sets—collectively called <strong>semantic artefacts</strong>—and how they integrate with LinkML schemas for term validation.</p>
-<h2 id="what-are-semantic-artefacts">What are Semantic Artefacts?</h2>
-<p><strong>Semantic artefacts</strong> are structured collections of terms with formal definitions. They include:</p>
+<h1 id="how-to-validate-bindings-with-dynamic-enums">How-To: Validate Bindings with Dynamic Enums</h1>
+<p>This guide shows you how to validate ontology term bindings in nested objects, including validation against dynamic enum closures and catching fabricated term IDs.</p>
+<h2 id="prerequisites">Prerequisites</h2>
 <ul>
-<li><strong>Ontologies</strong> - Rich hierarchical structures with relationships (Gene Ontology, SNOMED CT)</li>
-<li><strong>Controlled vocabularies</strong> - Curated term lists with definitions (ISO codes, industry standards)</li>
-<li><strong>Value sets</strong> - Enumerated lists of allowed values (status codes, categories)</li>
-<li><strong>Code systems</strong> - Standardized identifier schemes (country codes, currency codes)</li>
+<li>linkml-term-validator installed</li>
+<li>A LinkML schema with bindings</li>
+<li>Data to validate</li>
+<li>(Optional) An oak_config.yaml for custom ontology adapters</li>
 </ul>
-<p>All share a common pattern: <strong>terms with unique identifiers and human-readable labels</strong>.</p>
-<h2 id="why-validation-matters-the-opaque-id-problem">Why Validation Matters: The Opaque ID Problem</h2>
-<p>Many standardized code systems use <strong>opaque identifiers</strong>—codes that don't reveal their meaning:</p>
-<table>
-<thead>
-<tr>
-<th>System</th>
-<th>Code</th>
-<th>Meaning</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>ISO 4217 (Currency)</td>
-<td><code>CHF</code></td>
-<td>Swiss Franc</td>
-</tr>
-<tr>
-<td>ISO 3166-1 (Country)</td>
-<td><code>CHE</code></td>
-<td>Switzerland</td>
-</tr>
-<tr>
-<td>NAICS (Industry)</td>
-<td><code>5112</code></td>
-<td>Software Publishers</td>
-</tr>
-<tr>
-<td>OMB Race/Ethnicity</td>
-<td><code>2106-3</code></td>
-<td>White</td>
-</tr>
-<tr>
-<td>Gene Ontology</td>
-<td><code>GO:0007049</code></td>
-<td>cell cycle</td>
-</tr>
-<tr>
-<td>ICD-10</td>
-<td><code>E11.9</code></td>
-<td>Type 2 diabetes mellitus without complications</td>
-</tr>
-</tbody>
-</table>
-<p>When IDs are opaque, <strong>you can't tell if data is correct by looking at it</strong>. Is <code>CHE</code> a country or currency? Is <code>5112</code> the right industry code? Without validation, errors slip through.</p>
-<p>This is where linkml-term-validator helps: it verifies that codes exist in their source vocabularies and that labels match.</p>
-<h2 id="anatomy-of-a-term">Anatomy of a Term</h2>
-<p>Whether from an ontology or a simple code list, terms share common elements:</p>
-<pre><code>┌─────────────────────────────────────────────┐
-│  Term: GO:0007049                           │
-├─────────────────────────────────────────────┤
-│  Label: cell cycle                          │
-│  Definition: The series of events by which  │
-│              a cell replicates...           │
-│  Synonyms: cell division cycle, CDC         │
-│  Parent: GO:0008150 (biological_process)    │
-└─────────────────────────────────────────────┘
-</code></pre>
-<p>For validation, the key properties are:</p>
-<ul>
-<li><strong>Identifier (CURIE)</strong>: Unique, stable reference</li>
-<li><strong>Label</strong>: Canonical human-readable name</li>
-<li><strong>Relationships</strong>: Hierarchy enabling "is-a" queries</li>
-</ul>
-<h2 id="curies-compact-identifiers">CURIEs: Compact Identifiers</h2>
-<p>Terms are identified by <strong>CURIEs</strong> (Compact URIs):</p>
-<pre><code>GO:0008150
-│   └──── Local identifier
-└──────── Prefix (namespace)
-</code></pre>
-<p>CURIEs expand to full URIs:</p>
-<ul>
-<li><code>GO:0008150</code> → <code>http://purl.obolibrary.org/obo/GO_0008150</code></li>
-<li><code>ISO4217:CHF</code> → (currency code for Swiss Franc)</li>
-<li><code>NAICS:5112</code> → (Software Publishers sector)</li>
-</ul>
-<p>LinkML schemas declare prefixes:</p>
-<pre><code class="language-yaml">prefixes:
+<h2 id="goal">Goal</h2>
+<p>Validate that:</p>
+<ol>
+<li>Term IDs in nested objects belong to the correct ontology branch (closure validation)</li>
+<li>Term IDs actually exist in the ontology (strict mode)</li>
+<li>(Optionally) Labels match the ontology's canonical labels</li>
+</ol>
+<h2 id="step-1-define-your-schema-with-bindings">Step 1: Define Your Schema with Bindings</h2>
+<p>Create a schema with a reusable term class and bindings that constrain the <code>id</code> field to a dynamic enum:</p>
+<pre><code class="language-yaml"># schema.yaml
+id: https://example.org/gene-annotations
+name: gene-annotations
+prefixes:
   GO: http://purl.obolibrary.org/obo/GO_
-  ISO4217: https://example.org/iso4217/
-  NAICS: https://example.org/naics/
-</code></pre>
-<h2 id="examples-across-domains">Examples Across Domains</h2>
-<h3 id="life-sciences">Life Sciences</h3>
-<table>
-<thead>
-<tr>
-<th>Vocabulary</th>
-<th>Prefix</th>
-<th>Domain</th>
-<th>Example</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Gene Ontology</td>
-<td>GO</td>
-<td>Biological processes</td>
-<td><code>GO:0007049</code> (cell cycle)</td>
-</tr>
-<tr>
-<td>Cell Ontology</td>
-<td>CL</td>
-<td>Cell types</td>
-<td><code>CL:0000540</code> (neuron)</td>
-</tr>
-<tr>
-<td>MONDO</td>
-<td>MONDO</td>
-<td>Diseases</td>
-<td><code>MONDO:0004975</code> (Alzheimer disease)</td>
-</tr>
-<tr>
-<td>ChEBI</td>
-<td>CHEBI</td>
-<td>Chemicals</td>
-<td><code>CHEBI:15377</code> (water)</td>
-</tr>
-</tbody>
-</table>
-<h3 id="industry-standards">Industry &amp; Standards</h3>
-<table>
-<thead>
-<tr>
-<th>Vocabulary</th>
-<th>Prefix</th>
-<th>Domain</th>
-<th>Example</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>ISO 4217</td>
-<td>ISO4217</td>
-<td>Currency codes</td>
-<td><code>CHF</code> (Swiss Franc)</td>
-</tr>
-<tr>
-<td>ISO 3166-1</td>
-<td>ISO3166</td>
-<td>Country codes</td>
-<td><code>CHE</code> (Switzerland)</td>
-</tr>
-<tr>
-<td>NAICS</td>
-<td>NAICS</td>
-<td>Industry sectors</td>
-<td><code>5112</code> (Software Publishers)</td>
-</tr>
-<tr>
-<td>OMB Categories</td>
-<td>OMB</td>
-<td>Race/ethnicity</td>
-<td><code>2106-3</code> (White)</td>
-</tr>
-</tbody>
-</table>
-<h3 id="environmental-materials">Environmental &amp; Materials</h3>
-<table>
-<thead>
-<tr>
-<th>Vocabulary</th>
-<th>Prefix</th>
-<th>Domain</th>
-<th>Example</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>ENVO</td>
-<td>ENVO</td>
-<td>Environments</td>
-<td><code>ENVO:00000015</code> (ocean)</td>
-</tr>
-<tr>
-<td>ChEBI</td>
-<td>CHEBI</td>
-<td>Chemical elements</td>
-<td><code>CHEBI:33256</code> (gallium)</td>
-</tr>
-</tbody>
-</table>
-<p>See the <a href="https://linkml.io/valuesets/">LinkML Value Sets collection</a> for many more examples.</p>
-<h2 id="the-data-consistency-problem">The Data Consistency Problem</h2>
-<p>When collecting data across teams or systems, inconsistency creeps in:</p>
-<p><strong>Without controlled vocabularies:</strong></p>
-<pre><code class="language-yaml"># Team A
-location: &quot;ocean&quot;
+  linkml: https://w3id.org/linkml/
 
-# Team B
-location: &quot;Ocean&quot;
+default_prefix: gene-annotations
+default_range: string
 
-# Team C
-location: &quot;marine environment&quot;
-
-# Team D
-location: &quot;sea&quot;
-</code></pre>
-<p><strong>With controlled vocabularies:</strong></p>
-<pre><code class="language-yaml"># All teams use the same identifier
-location:
-  id: ENVO:00000015
-  label: ocean
-</code></pre>
-<p>Now data is:</p>
-<ul>
-<li><strong>Consistent</strong>: Same concept, same ID</li>
-<li><strong>Validatable</strong>: We can check <code>ENVO:00000015</code> exists</li>
-<li><strong>Interoperable</strong>: Systems can exchange and merge data</li>
-<li><strong>Queryable</strong>: Find all marine samples via hierarchy</li>
-</ul>
-<p>This pattern applies whether you're tracking environmental samples, financial transactions, or patient diagnoses.</p>
-<h2 id="hierarchical-queries">Hierarchical Queries</h2>
-<p>Many semantic artefacts organize terms hierarchically:</p>
-<pre><code>ENVO:00000015 (ocean)
-├── ENVO:00000016 (sea)
-├── ENVO:01000023 (coastal ocean)
-└── ENVO:01000024 (deep ocean)
-    ├── ENVO:01000025 (hadal zone)
-    └── ENVO:01000026 (abyssal zone)
-</code></pre>
-<p>This enables powerful queries:</p>
-<ul>
-<li>"All ocean environments" = <code>ENVO:00000015</code> and all its descendants</li>
-<li>Dynamic enums can express this: "any subtype of ocean"</li>
-</ul>
-<h2 id="linkml-integration-patterns">LinkML Integration Patterns</h2>
-<h3 id="1-static-enum-meanings">1. Static Enum Meanings</h3>
-<p>Map your codes to authoritative terms:</p>
-<pre><code class="language-yaml">enums:
-  CurrencyEnum:
-    permissible_values:
-      USD:
-        meaning: ISO4217:USD
-        title: US Dollar
-      EUR:
-        meaning: ISO4217:EUR
-        title: Euro
-      CHF:
-        meaning: ISO4217:CHF
-        title: Swiss Franc
-</code></pre>
-<h3 id="2-dynamic-enums">2. Dynamic Enums</h3>
-<p>Query a vocabulary for allowed values:</p>
-<pre><code class="language-yaml">enums:
-  OceanEnvironmentEnum:
-    reachable_from:
-      source_ontology: obo:envo
-      source_nodes:
-        - ENVO:00000015  # ocean
-      relationship_types:
-        - rdfs:subClassOf
-</code></pre>
-<h3 id="3-bindings-on-complex-objects">3. Bindings on Complex Objects</h3>
-<p>Constrain fields within nested structures:</p>
-<pre><code class="language-yaml">classes:
-  Sample:
+classes:
+  GeneAnnotation:
+    tree_root: true
     attributes:
-      environment:
-        range: EnvironmentTerm
+      gene_id:
+        identifier: true
+      process:
+        description: Biological process annotation
+        range: Term
+        inlined: true
         bindings:
           - binds_value_of: id
-            range: OceanEnvironmentEnum
+            range: BiologicalProcessEnum
+
+  Term:
+    description: Reusable ontology term class
+    attributes:
+      id:
+        description: CURIE (e.g., GO:0007049)
+      label:
+        description: Human-readable label
+        implements:
+          - rdfs:label
+
+enums:
+  BiologicalProcessEnum:
+    description: GO biological processes
+    reachable_from:
+      source_ontology: sqlite:obo:go
+      source_nodes:
+        - GO:0008150  # biological_process
+      relationship_types:
+        - rdfs:subClassOf
+      include_self: true
 </code></pre>
-<h2 id="see-also">See Also</h2>
+<p>Key points:</p>
 <ul>
-<li><a href="../enumerations/">Enumerations in LinkML</a> - Static and dynamic enums</li>
-<li><a href="../bindings-explained/">Bindings Explained</a> - Complex object constraints</li>
-<li><a href="../ontology-access/">Ontology Access</a> - OAK configuration details</li>
+<li><code>bindings</code> on the <code>process</code> slot constrains <code>term.id</code> to <code>BiologicalProcessEnum</code></li>
+<li><code>reachable_from</code> defines a dynamic enum based on ontology traversal</li>
+<li><code>implements: [rdfs:label]</code> marks the label field for validation</li>
 </ul>
-<h2 id="external-resources">External Resources</h2>
+<h2 id="step-2-create-test-data">Step 2: Create Test Data</h2>
+<p><strong>Valid data</strong> (<code>valid_data.yaml</code>):</p>
+<pre><code class="language-yaml">gene_id: BRCA1
+process:
+  id: GO:0007049    # cell cycle - IS a biological process
+  label: cell cycle
+</code></pre>
+<p><strong>Invalid data - wrong branch</strong> (<code>wrong_branch.yaml</code>):</p>
+<pre><code class="language-yaml">gene_id: BRCA1
+process:
+  id: GO:0005634    # nucleus - NOT a biological process (it's a cellular component)
+  label: nucleus
+</code></pre>
+<p><strong>Invalid data - fabricated ID</strong> (<code>fabricated.yaml</code>):</p>
+<pre><code class="language-yaml">gene_id: BRCA1
+process:
+  id: GO:9999999    # Doesn't exist in GO!
+  label: made up term
+</code></pre>
+<h2 id="step-3-run-validation">Step 3: Run Validation</h2>
+<h3 id="basic-binding-validation">Basic Binding Validation</h3>
+<pre><code class="language-bash"># Validates against the dynamic enum closure
+linkml-term-validator validate-data valid_data.yaml -s schema.yaml -t GeneAnnotation
+</code></pre>
+<p>Output:</p>
+<pre><code>Validation passed
+</code></pre>
+<h3 id="catch-wrong-branch">Catch Wrong Branch</h3>
+<pre><code class="language-bash">linkml-term-validator validate-data wrong_branch.yaml -s schema.yaml -t GeneAnnotation
+</code></pre>
+<p>Output:</p>
+<pre><code>Validation failed with 1 issue(s):
+
+  ERROR: Value 'GO:0005634' not in dynamic enum (expanded from ontology) 'BiologicalProcessEnum'
+      path: process
+      slot: process
+      field: id
+      allowed_values: 29688 terms
+</code></pre>
+<h3 id="catch-fabricated-ids-strict-mode">Catch Fabricated IDs (Strict Mode)</h3>
+<p>By default, strict mode is enabled. This catches fabricated term IDs:</p>
+<pre><code class="language-bash">linkml-term-validator validate-data fabricated.yaml -s schema.yaml -t GeneAnnotation
+</code></pre>
+<p>Output:</p>
+<pre><code>Validation failed with 2 issue(s):
+
+  ERROR: Value 'GO:9999999' not in dynamic enum (expanded from ontology) 'BiologicalProcessEnum'
+      ...
+  ERROR: Term 'GO:9999999' not found in ontology
+      ...
+      prefix: GO (configured in oak_config)
+</code></pre>
+<h3 id="disable-strict-mode-lenient">Disable Strict Mode (Lenient)</h3>
+<p>If you want to skip the existence check:</p>
+<pre><code class="language-bash">linkml-term-validator validate-data fabricated.yaml -s schema.yaml -t GeneAnnotation --lenient
+</code></pre>
+<p>This will only report the closure error, not the "term not found" error.</p>
+<h2 id="step-4-add-label-validation-anti-hallucination">Step 4: Add Label Validation (Anti-Hallucination)</h2>
+<p>Enable label validation to catch mismatched labels:</p>
+<pre><code class="language-bash">linkml-term-validator validate-data data.yaml -s schema.yaml -t GeneAnnotation --labels
+</code></pre>
+<p>If the data has:</p>
+<pre><code class="language-yaml">process:
+  id: GO:0007049
+  label: DNA repair  # WRONG! Should be &quot;cell cycle&quot;
+</code></pre>
+<p>Output:</p>
+<pre><code>WARNING: Label mismatch for GO:0007049
+  Expected: &quot;DNA repair&quot;
+  Ontology: &quot;cell cycle&quot;
+</code></pre>
+<h2 id="step-5-use-custom-ontology-configuration">Step 5: Use Custom Ontology Configuration</h2>
+<p>For local ontologies or specific adapters, create an <code>oak_config.yaml</code>:</p>
+<pre><code class="language-yaml"># oak_config.yaml
+ontology_adapters:
+  GO: sqlite:obo:go
+  HP: sqlite:obo:hp
+  MONDO: sqlite:obo:mondo
+  # For local OBO files:
+  # TEST: simpleobo:path/to/test.obo
+</code></pre>
+<p>Then reference it:</p>
+<pre><code class="language-bash">linkml-term-validator validate-data data.yaml -s schema.yaml -t GeneAnnotation \
+    --config oak_config.yaml
+</code></pre>
+<h2 id="python-api">Python API</h2>
+<pre><code class="language-python">from linkml.validator import Validator
+from linkml.validator.loaders import YamlLoader
+from linkml_term_validator.plugins import BindingValidationPlugin
+
+# Create plugin with options
+plugin = BindingValidationPlugin(
+    validate_labels=True,      # Check labels match ontology
+    strict=True,               # Fail on non-existent terms (default)
+    cache_labels=True,         # Cache lookups to disk
+    cache_dir=&quot;cache&quot;,
+    oak_config_path=&quot;oak_config.yaml&quot;,
+)
+
+# Create validator
+validator = Validator(
+    schema=&quot;schema.yaml&quot;,
+    validation_plugins=[plugin]
+)
+
+# Validate
+loader = YamlLoader(&quot;data.yaml&quot;)
+report = validator.validate_source(loader, target_class=&quot;GeneAnnotation&quot;)
+
+# Check results
+if len(report.results) == 0:
+    print(&quot;Validation passed!&quot;)
+else:
+    for result in report.results:
+        print(f&quot;{result.severity.name}: {result.message}&quot;)
+</code></pre>
+<h2 id="common-issues-and-solutions">Common Issues and Solutions</h2>
+<h3 id="issue-term-not-found-for-valid-terms">Issue: "Term not found" for valid terms</h3>
+<p><strong>Cause</strong>: The prefix isn't configured in oak_config.yaml</p>
+<p><strong>Solution</strong>: Add the prefix to your oak_config.yaml:</p>
+<pre><code class="language-yaml">ontology_adapters:
+  GO: sqlite:obo:go  # Add this line
+</code></pre>
+<h3 id="issue-dynamic-enum-expansion-is-slow">Issue: Dynamic enum expansion is slow</h3>
+<p><strong>Cause</strong>: Large ontologies take time to traverse</p>
+<p><strong>Solutions</strong>:
+1. Enable caching with <code>--cache-dir cache</code>
+2. Use more specific source nodes (lower in the hierarchy)
+3. Consider using a local sqlite database instead of downloading</p>
+<h3 id="issue-unknown-prefix-warnings">Issue: Unknown prefix warnings</h3>
+<p><strong>Cause</strong>: Data contains prefixes not in your oak_config.yaml</p>
+<p><strong>Solution</strong>: Either add the prefix to oak_config.yaml or ignore if expected:</p>
+<pre><code class="language-yaml">ontology_adapters:
+  KNOWN_PREFIX: sqlite:obo:known
+  # Unknown prefixes will be skipped with a warning
+</code></pre>
+<h2 id="validation-summary">Validation Summary</h2>
+<table>
+<thead>
+<tr>
+<th>Validation Type</th>
+<th>What it Catches</th>
+<th>Flag</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Binding + Dynamic Enum</td>
+<td>Terms outside ontology branch</td>
+<td>(default)</td>
+</tr>
+<tr>
+<td>Strict Mode</td>
+<td>Fabricated/non-existent term IDs</td>
+<td><code>--no-lenient</code> (default)</td>
+</tr>
+<tr>
+<td>Label Validation</td>
+<td>Mismatched labels</td>
+<td><code>--labels</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="next-steps">Next Steps</h2>
 <ul>
-<li><a href="https://linkml.io/valuesets/">LinkML Value Sets</a> - Collection of commonly used value sets</li>
-<li><a href="https://oboacademy.github.io/obook/lesson/linkml-helps-with-ontology-use/">LinkML Helps with Ontology Use</a> - OBO Academy tutorial</li>
-<li><a href="https://linkml.io/linkml/schemas/enums.html">LinkML Semantic Enumerations</a> - Official documentation</li>
-<li><a href="https://obofoundry.org/">OBO Foundry</a> - Open biomedical ontologies</li>
-<li><a href="https://www.ebi.ac.uk/ols/">Ontology Lookup Service</a> - Search ontologies online</li>
+<li><a href="../binding-validation/">Binding Validation Reference</a> - Complete reference</li>
+<li><a href="../bindings-explained/">Bindings Explained</a> - Conceptual overview</li>
+<li><a href="../anti-hallucination/">Anti-Hallucination Guardrails</a> - Using validation with AI</li>
+<li><a href="../configuration/">Configuration</a> - oak_config.yaml options</li>
 </ul>
 
 

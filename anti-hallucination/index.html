@@ -486,6 +486,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../howto-bindings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validate Bindings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../configuration/" class="md-nav__link">
         
   
@@ -1377,10 +1405,12 @@
 <p>A key use case for linkml-term-validator is preventing AI systems from hallucinating ontology identifiers.</p>
 <h2 id="the-problem">The Problem</h2>
 <p>Language models frequently hallucinate identifiers like gene IDs, ontology terms, and other structured references. These fake identifiers often appear structurally correct (e.g., <code>GO:9999999</code>, <code>CHEBI:88888</code>) but don't actually exist in the source ontologies.</p>
-<p>This creates serious data quality issues:
-- <strong>Invalid references</strong> that break data integration
-- <strong>Nonsense annotations</strong> that corrupt curated datasets
-- <strong>False confidence</strong> in AI-generated content</p>
+<p>This creates serious data quality issues:</p>
+<ul>
+<li><strong>Invalid references</strong> that break data integration</li>
+<li><strong>Nonsense annotations</strong> that corrupt curated datasets</li>
+<li><strong>False confidence</strong> in AI-generated content</li>
+</ul>
 <h2 id="the-solution-dual-validation">The Solution: Dual Validation</h2>
 <p>A robust guardrail requires <strong>dual validation</strong>—forcing the AI to provide both the identifier AND its canonical label, then validating that they match:</p>
 <p><strong>Instead of accepting:</strong></p>
@@ -1450,11 +1480,13 @@ if len(report.results) &gt; 0:
 </code></pre>
 <h3 id="3-use-validation-during-generation">3. Use Validation During Generation</h3>
 <p>The most effective approach embeds validation <strong>during AI generation</strong> rather than treating it as a filtering step afterward. This transforms hallucination resistance from a detection problem into a generation constraint.</p>
-<p><strong>Pattern:</strong>
-1. AI generates structured output with id+label pairs
-2. Validate immediately with <code>BindingValidationPlugin(validate_labels=True)</code>
-3. If validation fails, provide error messages back to AI with retry opportunity
-4. Only accept outputs that pass validation</p>
+<p><strong>Pattern:</strong></p>
+<ol>
+<li>AI generates structured output with id+label pairs</li>
+<li>Validate immediately with <code>BindingValidationPlugin(validate_labels=True)</code></li>
+<li>If validation fails, provide error messages back to AI with retry opportunity</li>
+<li>Only accept outputs that pass validation</li>
+</ol>
 <h2 id="what-gets-validated">What Gets Validated</h2>
 <p>The <code>BindingValidationPlugin</code> with <code>validate_labels=True</code> checks:</p>
 <ol>

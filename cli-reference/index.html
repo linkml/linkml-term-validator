@@ -488,6 +488,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../howto-bindings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validate Bindings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../configuration/" class="md-nav__link">
         
   
@@ -2134,6 +2162,12 @@ Consider adding these to oak_config.yaml to enable validation.
 <td>Directory for caching ontology labels</td>
 </tr>
 <tr>
+<td><code>--cache-strategy TEXT</code></td>
+<td>String</td>
+<td><code>progressive</code></td>
+<td>Caching strategy for dynamic enums: <code>progressive</code> (lazy) or <code>greedy</code> (expand upfront)</td>
+</tr>
+<tr>
 <td><code>--no-cache</code></td>
 <td>Flag</td>
 <td>False</td>
@@ -2144,6 +2178,12 @@ Consider adding these to oak_config.yaml to enable validation.
 <td>Flag</td>
 <td>False</td>
 <td>Validate that labels match ontology canonical labels</td>
+</tr>
+<tr>
+<td><code>--lenient/--no-lenient</code></td>
+<td>Flag</td>
+<td>False</td>
+<td>Lenient mode: don't fail when term IDs are not found in ontology</td>
 </tr>
 <tr>
 <td><code>--no-dynamic-enums</code></td>
@@ -2204,12 +2244,18 @@ Consider adding these to oak_config.yaml to enable validation.
 <pre><code class="language-bash">linkml-term-validator validate-data data/*.yaml \
   --schema schema.yaml
 </code></pre>
+<p><strong>With greedy caching (expand all terms upfront):</strong></p>
+<pre><code class="language-bash">linkml-term-validator validate-data data.yaml \
+  --schema schema.yaml \
+  --cache-strategy greedy
+</code></pre>
 <p><strong>Full validation with all options:</strong></p>
 <pre><code class="language-bash">linkml-term-validator validate-data data.yaml \
   --schema schema.yaml \
   --target-class GeneAnnotation \
   --config oak_config.yaml \
   --cache-dir cache \
+  --cache-strategy progressive \
   --labels \
   --verbose
 </code></pre>
@@ -2334,8 +2380,11 @@ linkml-term-validator validate-schema schema.yaml
 </code></pre>
 <h2 id="configuration-files">Configuration Files</h2>
 <h3 id="oak_configyaml">oak_config.yaml</h3>
-<p>Controls which ontology adapters to use for different prefixes:</p>
-<pre><code class="language-yaml">ontology_adapters:
+<p>Controls which ontology adapters to use for different prefixes, and optionally the caching strategy:</p>
+<pre><code class="language-yaml"># Cache strategy (optional): &quot;progressive&quot; (default) or &quot;greedy&quot;
+cache_strategy: progressive
+
+ontology_adapters:
   GO: sqlite:obo:go
   CHEBI: sqlite:obo:chebi
   UBERON: sqlite:obo:uberon

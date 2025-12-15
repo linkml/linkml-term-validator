@@ -488,6 +488,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../howto-bindings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validate Bindings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../configuration/" class="md-nav__link">
         
   
@@ -715,6 +743,17 @@
     <span class="md-ellipsis">
       
         CLI Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#strict-mode-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Strict Mode (Default)
       
     </span>
   </a>
@@ -978,10 +1017,32 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#binding-violation" class="md-nav__link">
+  <a href="#binding-violation-static-enum" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Binding Violation
+        Binding Violation (Static Enum)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#binding-violation-dynamic-enum-closure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Binding Violation (Dynamic Enum Closure)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#term-not-found-strict-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Term Not Found (Strict Mode)
       
     </span>
   </a>
@@ -1469,6 +1530,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#strict-mode-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Strict Mode (Default)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1726,10 +1798,32 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#binding-violation" class="md-nav__link">
+  <a href="#binding-violation-static-enum" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Binding Violation
+        Binding Violation (Static Enum)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#binding-violation-dynamic-enum-closure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Binding Violation (Dynamic Enum Closure)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#term-not-found-strict-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Term Not Found (Strict Mode)
       
     </span>
   </a>
@@ -1899,6 +1993,10 @@ linkml-term-validator validate-data data.yaml -s schema.yaml --oak-config oak_co
 <td>Also validate labels against ontology</td>
 </tr>
 <tr>
+<td><code>--lenient</code></td>
+<td>Don't fail when term IDs are not found in ontology</td>
+</tr>
+<tr>
 <td><code>--oak-adapter</code></td>
 <td>OAK adapter string (default: <code>sqlite:obo:</code>)</td>
 </tr>
@@ -1916,6 +2014,14 @@ linkml-term-validator validate-data data.yaml -s schema.yaml --oak-config oak_co
 </tr>
 </tbody>
 </table>
+<h3 id="strict-mode-default">Strict Mode (Default)</h3>
+<p>By default, the validator operates in <strong>strict mode</strong>, which fails validation when:</p>
+<ol>
+<li>A term ID is not found in a configured ontology</li>
+<li>A term ID is outside the dynamic enum closure</li>
+</ol>
+<p>This catches fabricated/hallucinated term IDs that don't actually exist.</p>
+<p>Use <code>--lenient</code> to disable strict existence checking (closure validation still applies).</p>
 <h2 id="binding-syntax">Binding Syntax</h2>
 <h3 id="basic-binding">Basic Binding</h3>
 <pre><code class="language-yaml">classes:
@@ -2247,6 +2353,12 @@ for result in report.results:
 <td>Also validate labels</td>
 </tr>
 <tr>
+<td><code>strict</code></td>
+<td><code>bool</code></td>
+<td><code>True</code></td>
+<td>Fail when term IDs not found in configured ontologies</td>
+</tr>
+<tr>
 <td><code>cache_labels</code></td>
 <td><code>bool</code></td>
 <td><code>True</code></td>
@@ -2261,11 +2373,27 @@ for result in report.results:
 </tbody>
 </table>
 <h2 id="error-messages">Error Messages</h2>
-<h3 id="binding-violation">Binding Violation</h3>
+<h3 id="binding-violation-static-enum">Binding Violation (Static Enum)</h3>
 <pre><code>ERROR: Value 'GO:0005634' not in enum 'BiologicalProcessEnum'
   path: process
   slot: process
   field: id
+</code></pre>
+<h3 id="binding-violation-dynamic-enum-closure">Binding Violation (Dynamic Enum Closure)</h3>
+<p>When the term exists but is outside the ontology closure:</p>
+<pre><code>ERROR: Value 'GO:0005634' not in dynamic enum (expanded from ontology) 'BiologicalProcessEnum'
+  path: process
+  slot: process
+  field: id
+  allowed_values: 29688 terms
+</code></pre>
+<h3 id="term-not-found-strict-mode">Term Not Found (Strict Mode)</h3>
+<p>When a term ID doesn't exist in a configured ontology:</p>
+<pre><code>ERROR: Term 'GO:9999999' not found in ontology
+  path: process
+  slot: process
+  field: id
+  prefix: GO (configured in oak_config)
 </code></pre>
 <h3 id="label-mismatch-with-labels">Label Mismatch (with <code>--labels</code>)</h3>
 <pre><code>ERROR: Label mismatch for GO:0007049

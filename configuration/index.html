@@ -11,7 +11,7 @@
         <link rel="canonical" href="https://linkml.github.io/linkml-term-validator/configuration/">
       
       
-        <link rel="prev" href="..">
+        <link rel="prev" href="../howto-bindings/">
       
       
         <link rel="next" href="../schema-validation/">
@@ -482,6 +482,34 @@
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../howto-bindings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validate Bindings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -1826,7 +1854,11 @@
 <h2 id="oak-configuration-file">OAK Configuration File</h2>
 <p>The primary way to configure ontology access is through an <code>oak_config.yaml</code> file that maps ontology prefixes to OAK adapter strings.</p>
 <h3 id="basic-structure">Basic Structure</h3>
-<pre><code class="language-yaml">ontology_adapters:
+<pre><code class="language-yaml"># Cache strategy for dynamic enums (optional)
+cache_strategy: progressive  # or &quot;greedy&quot;
+
+# Ontology adapter mappings
+ontology_adapters:
   # Prefix: adapter_string
   GO: sqlite:obo:go
   CHEBI: sqlite:obo:chebi
@@ -1972,6 +2004,14 @@ linkml-term-validator validate-schema --config oak_config.yaml schema.yaml
 <pre><code class="language-bash">linkml-term-validator validate-schema --no-cache schema.yaml
 </code></pre>
 <p>This forces fresh lookups from the ontology source every time. Useful for testing or when you want guaranteed fresh data.</p>
+<p><strong>Cache strategy (data validation):</strong></p>
+<pre><code class="language-bash"># Progressive (default) - validates lazily, caches valid terms as encountered
+linkml-term-validator validate-data --cache-strategy progressive data.yaml -s schema.yaml
+
+# Greedy - expands entire enum upfront and caches all terms
+linkml-term-validator validate-data --cache-strategy greedy data.yaml -s schema.yaml
+</code></pre>
+<p>See <a href="../caching/#enum-caching-strategies">Caching</a> for details on when to use each strategy.</p>
 <h3 id="validation-behavior">Validation Behavior</h3>
 <p><strong>Strict mode:</strong></p>
 <pre><code class="language-bash">linkml-term-validator validate-schema --strict schema.yaml
@@ -2094,16 +2134,19 @@ plugin = PermissibleValueMeaningPlugin(
 </code></pre>
 <h3 id="dynamicenumplugin">DynamicEnumPlugin</h3>
 <pre><code class="language-python">from linkml_term_validator.plugins import DynamicEnumPlugin
+from linkml_term_validator.models import CacheStrategy
 
 plugin = DynamicEnumPlugin(
     oak_adapter_string=&quot;sqlite:obo:&quot;,
     oak_config_path=&quot;oak_config.yaml&quot;,
     cache_labels=True,
     cache_dir=&quot;cache&quot;,
+    cache_strategy=CacheStrategy.PROGRESSIVE,  # or GREEDY
 )
 </code></pre>
 <h3 id="bindingvalidationplugin">BindingValidationPlugin</h3>
 <pre><code class="language-python">from linkml_term_validator.plugins import BindingValidationPlugin
+from linkml_term_validator.models import CacheStrategy
 
 plugin = BindingValidationPlugin(
     oak_adapter_string=&quot;sqlite:obo:&quot;,
@@ -2111,6 +2154,7 @@ plugin = BindingValidationPlugin(
     validate_labels=True,  # Also check labels match ontology
     cache_labels=True,
     cache_dir=&quot;cache&quot;,
+    cache_strategy=CacheStrategy.PROGRESSIVE,  # or GREEDY
 )
 </code></pre>
 <h2 id="linkml-validate-configuration">linkml-validate Configuration</h2>
@@ -2130,6 +2174,7 @@ plugins:
     oak_adapter_string: &quot;sqlite:obo:&quot;
     cache_labels: true
     cache_dir: cache
+    cache_strategy: progressive  # or &quot;greedy&quot;
     oak_config_path: oak_config.yaml
 
   &quot;linkml_term_validator.plugins.BindingValidationPlugin&quot;:
@@ -2137,6 +2182,7 @@ plugins:
     validate_labels: true
     cache_labels: true
     cache_dir: cache
+    cache_strategy: progressive  # or &quot;greedy&quot;
     oak_config_path: oak_config.yaml
 </code></pre>
 <p>Then:</p>
