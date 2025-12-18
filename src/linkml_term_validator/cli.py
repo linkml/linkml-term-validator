@@ -171,9 +171,9 @@ def validate_data(
         bool,
         typer.Option(
             "--labels/--no-labels",
-            help="Validate labels match ontology",
+            help="Validate labels match ontology (default: enabled)",
         ),
-    ] = False,
+    ] = True,
     lenient: Annotated[
         bool,
         typer.Option(
@@ -406,7 +406,7 @@ def validate_all(
             target_class=None,
             validate_bindings=True,
             validate_dynamic_enums=True,
-            validate_labels=False,
+            validate_labels=True,
             lenient=lenient,
             adapter=adapter,
             cache_dir=cache_dir,
