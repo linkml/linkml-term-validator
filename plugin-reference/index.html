@@ -2088,7 +2088,7 @@ for result in report.results:
 plugin = BindingValidationPlugin(
     oak_adapter_string=&quot;sqlite:obo:&quot;,
     oak_config_path=None,
-    validate_labels=False,
+    validate_labels=True,
     cache_labels=True,
     cache_dir=&quot;cache&quot;,
 )
@@ -2119,8 +2119,8 @@ plugin = BindingValidationPlugin(
 <tr>
 <td><code>validate_labels</code></td>
 <td><code>bool</code></td>
-<td><code>False</code></td>
-<td>If <code>True</code>, also validate that labels match ontology canonical labels</td>
+<td><code>True</code></td>
+<td>If <code>True</code> (default), also validate that labels match ontology canonical labels</td>
 </tr>
 <tr>
 <td><code>cache_labels</code></td>
