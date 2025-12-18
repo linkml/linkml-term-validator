@@ -13,7 +13,7 @@ Example:
     >>> plugin.strict
     True
     >>> plugin.validate_labels
-    False
+    True
     >>> plugin.expanded_enums
     {}
 
@@ -92,7 +92,7 @@ class BindingValidationPlugin(BaseOntologyPlugin):
     def __init__(
         self,
         oak_adapter_string: str = "sqlite:obo:",
-        validate_labels: bool = False,
+        validate_labels: bool = True,
         strict: bool = True,
         cache_labels: bool = True,
         cache_dir: Path | str = Path("cache"),
@@ -103,7 +103,7 @@ class BindingValidationPlugin(BaseOntologyPlugin):
 
         Args:
             oak_adapter_string: Default OAK adapter string (e.g., "sqlite:obo:")
-            validate_labels: If True, also validate that labels match ontology
+            validate_labels: If True (default), also validate that labels match ontology
             strict: If True (default), fail when term IDs are not found in configured ontologies
             cache_labels: Whether to cache ontology labels to disk
             cache_dir: Directory for label cache files

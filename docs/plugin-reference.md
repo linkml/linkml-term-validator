@@ -289,7 +289,7 @@ from linkml_term_validator.plugins import BindingValidationPlugin
 plugin = BindingValidationPlugin(
     oak_adapter_string="sqlite:obo:",
     oak_config_path=None,
-    validate_labels=False,
+    validate_labels=True,
     cache_labels=True,
     cache_dir="cache",
 )
@@ -301,7 +301,7 @@ plugin = BindingValidationPlugin(
 |-----------|------|---------|-------------|
 | `oak_adapter_string` | `str` | `"sqlite:obo:"` | Default OAK adapter string for ontology access |
 | `oak_config_path` | `str \| None` | `None` | Path to `oak_config.yaml` for per-prefix adapter configuration |
-| `validate_labels` | `bool` | `False` | If `True`, also validate that labels match ontology canonical labels |
+| `validate_labels` | `bool` | `True` | If `True` (default), also validate that labels match ontology canonical labels |
 | `cache_labels` | `bool` | `True` | Enable file-based caching of ontology labels |
 | `cache_dir` | `str` | `"cache"` | Directory for cache files |
 

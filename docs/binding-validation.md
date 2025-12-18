@@ -357,7 +357,7 @@ for result in report.results:
 |-----------|------|---------|-------------|
 | `oak_adapter_string` | `str` | `"sqlite:obo:"` | Default OAK adapter |
 | `oak_config_path` | `str \| None` | `None` | Path to OAK config file |
-| `validate_labels` | `bool` | `False` | Also validate labels |
+| `validate_labels` | `bool` | `True` | Also validate labels |
 | `strict` | `bool` | `True` | Fail when term IDs not found in configured ontologies |
 | `cache_labels` | `bool` | `True` | Enable file-based caching |
 | `cache_dir` | `str` | `"cache"` | Cache directory |

@@ -516,7 +516,7 @@ See the [examples/](examples/) directory for complete examples:
 ```yaml
 "linkml_term_validator.plugins.BindingValidationPlugin":
   oak_adapter_string: "sqlite:obo:"  # OAK adapter (default: sqlite:obo:)
-  validate_labels: true               # Check labels match ontology (default: false)
+  validate_labels: true               # Check labels match ontology (default: true)
   cache_labels: true                  # Enable label caching (default: true)
   cache_dir: cache                    # Cache directory (default: cache)
   oak_config_path: oak_config.yaml    # Optional: custom OAK config
