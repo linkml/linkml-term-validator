@@ -8,6 +8,7 @@ This CLI supports three validation modes:
 For integration with LinkML's validator framework, see documentation.
 """
 
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -424,6 +425,183 @@ def validate_all(
             config=config,
             verbose=verbose,
         )
+
+
+@app.command()
+def validate_text_file(
+    file_path: Annotated[
+        Path,
+        typer.Argument(
+            help="Path to the text or markdown file to validate",
+            exists=True,
+        ),
+    ],
+    regex: Annotated[
+        str,
+        typer.Option(
+            "--regex",
+            "-r",
+            help='Regex pattern with capture groups for CURIE and label. '
+            'Default matches: @term CURIE "label"',
+        ),
+    ] = r'@term (\S+) "([^"]*)"',
+    curie_group: Annotated[
+        int,
+        typer.Option(
+            "--curie-group",
+            help="Capture group index (1-based) for the CURIE",
+        ),
+    ] = 1,
+    label_group: Annotated[
+        int,
+        typer.Option(
+            "--label-group",
+            help="Capture group index (1-based) for the label",
+        ),
+    ] = 2,
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict",
+            help="Treat unresolvable CURIEs as errors (even for unconfigured prefixes)",
+        ),
+    ] = False,
+    adapter: Annotated[
+        str,
+        typer.Option(
+            "--adapter",
+            "-a",
+            help="OAK adapter string (default: sqlite:obo:)",
+        ),
+    ] = "sqlite:obo:",
+    config: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--config",
+            "-c",
+            help="Path to oak_config.yaml",
+        ),
+    ] = None,
+    no_cache: Annotated[
+        bool,
+        typer.Option(
+            "--no-cache",
+            help="Disable label caching",
+        ),
+    ] = False,
+    cache_dir: Annotated[
+        Path,
+        typer.Option(
+            "--cache-dir",
+            help="Directory for caching ontology labels",
+        ),
+    ] = Path("cache"),
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose",
+            "-v",
+            help="Verbose output: show each validated term",
+        ),
+    ] = False,
+):
+    """Validate ontology term CURIEs and labels embedded in a text or markdown file.
+
+    Reads the file, extracts CURIE+label pairs using the specified regex,
+    then resolves each CURIE via OAK and checks that the label matches.
+
+    With --strict, CURIEs that cannot be resolved are reported as errors
+    rather than silently skipped.
+
+    Examples:
+
+        linkml-term-validator validate-text-file document.md
+
+        linkml-term-validator validate-text-file document.md \\
+          --regex '@term (\\S+) "([^"]*)"' \\
+          --curie-group 1 --label-group 2 \\
+          --config oak_config.yaml --strict -v
+    """
+    # Compile regex, bail out early on syntax error
+    try:
+        pattern = re.compile(regex)
+    except re.error as exc:
+        typer.echo(f"❌ Invalid regex pattern: {exc}", err=True)
+        raise typer.Exit(code=1)
+
+    # Validate group indices against the pattern
+    num_groups = pattern.groups
+    for grp_name, grp_idx in [("--curie-group", curie_group), ("--label-group", label_group)]:
+        if grp_idx < 1 or grp_idx > num_groups:
+            typer.echo(
+                f"❌ {grp_name} {grp_idx} is out of range "
+                f"(pattern has {num_groups} group(s))",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+
+    # Extract (curie, label, location) triples from the file
+    text = file_path.read_text(encoding="utf-8")
+    pairs: list[tuple[str, str, str]] = []
+    for line_no, line in enumerate(text.splitlines(), start=1):
+        for match in pattern.finditer(line):
+            curie = match.group(curie_group)
+            label = match.group(label_group)
+            location = f"line:{line_no}"
+            pairs.append((curie, label, location))
+
+    if not pairs:
+        typer.echo(f"⚠️  No matches found in {file_path} with pattern: {regex}")
+        return
+
+    # Set up EnumValidator with the given config
+    validation_config = ValidationConfig(
+        oak_adapter_string=adapter,
+        strict_mode=strict,
+        cache_labels=not no_cache,
+        cache_dir=cache_dir,
+        oak_config_path=config,
+    )
+    validator = EnumValidator(validation_config)
+
+    issues = validator.validate_curie_label_pairs(pairs)
+
+    # Print results
+    if verbose:
+        valid_curies = {issue.value_name for issue in issues}
+        for curie, label, location in pairs:
+            if curie in valid_curies:
+                pass  # will be shown in error block below
+            else:
+                typer.echo(f"  ✅ {location} {curie} \"{label}\"")
+
+    if issues:
+        for issue in issues:
+            typer.echo(
+                f"  ❌ {issue.enum_name} {issue.value_name}: {issue.message}"
+            )
+
+    unknown_prefixes = validator.get_unknown_prefixes()
+    if unknown_prefixes:
+        typer.echo("\n⚠️  Unknown prefixes encountered (validation skipped):")
+        for prefix in sorted(unknown_prefixes):
+            typer.echo(f"  - {prefix}")
+        typer.echo("\nConsider adding these to oak_config.yaml to enable validation.")
+
+    error_count = sum(1 for i in issues if i.is_error())
+    total = len(pairs)
+
+    if error_count > 0:
+        typer.echo(
+            f"\n❌ Validation failed: {error_count} error(s) in {total} CURIE(s)",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    else:
+        if not verbose:
+            typer.echo(f"✅ All {total} CURIE(s) validated successfully")
+        else:
+            typer.echo(f"\n✅ All {total} CURIE(s) validated successfully")
 
 
 def main():

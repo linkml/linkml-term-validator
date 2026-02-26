@@ -353,7 +353,7 @@ class EnumValidator:
 
             if actual_label is None:
                 prefix = self._get_prefix(meaning)
-                if prefix and self._is_prefix_configured(prefix):
+                if (prefix and self._is_prefix_configured(prefix)) or self.config.strict_mode:
                     issues.append(
                         ValidationIssue(
                             enum_name=enum_name,
@@ -443,6 +443,75 @@ class EnumValidator:
             result.issues.extend(issues)
 
         return result
+
+    def validate_curie_label_pairs(
+        self,
+        pairs: list[tuple[str, str, str]],
+    ) -> list[ValidationIssue]:
+        """Validate a list of (CURIE, expected_label, location) tuples against ontology.
+
+        For each pair:
+        - If the CURIE resolves to a label, checks it matches the expected label.
+        - If the CURIE cannot be resolved:
+          - Configured prefix or strict_mode → ERROR
+          - Unconfigured prefix without strict_mode → silently skipped
+
+        Args:
+            pairs: List of (curie, expected_label, location) tuples where location
+                   is a human-readable string like "line:3" for error messages.
+
+        Returns:
+            List of validation issues found.
+
+        Examples:
+            >>> config = ValidationConfig(cache_labels=False)
+            >>> validator = EnumValidator(config)
+            >>> issues = validator.validate_curie_label_pairs([])
+            >>> issues
+            []
+        """
+        issues: list[ValidationIssue] = []
+
+        for curie, expected_label, location in pairs:
+            actual_label = self.get_ontology_label(curie)
+
+            if actual_label is None:
+                prefix = self._get_prefix(curie)
+                if (prefix and self._is_prefix_configured(prefix)) or self.config.strict_mode:
+                    issues.append(
+                        ValidationIssue(
+                            enum_name=location,
+                            value_name=curie,
+                            severity=SeverityLevel.ERROR,
+                            message=f"Unresolvable CURIE: {curie}",
+                            meaning=curie,
+                            expected_label=expected_label,
+                            actual_label=None,
+                        )
+                    )
+                # else: unconfigured prefix without strict mode — silently skip
+                continue
+
+            normalized_actual = self.normalize_string(actual_label)
+            normalized_expected = self.normalize_string(expected_label)
+
+            if normalized_actual != normalized_expected:
+                issues.append(
+                    ValidationIssue(
+                        enum_name=location,
+                        value_name=curie,
+                        severity=SeverityLevel.ERROR,
+                        message=(
+                            f"Label mismatch for {curie}: "
+                            f"expected '{expected_label}', got '{actual_label}'"
+                        ),
+                        meaning=curie,
+                        expected_label=expected_label,
+                        actual_label=actual_label,
+                    )
+                )
+
+        return issues
 
     def get_unknown_prefixes(self) -> set[str]:
         """Get the set of unknown prefixes encountered.
