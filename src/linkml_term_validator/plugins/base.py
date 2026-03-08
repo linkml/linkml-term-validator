@@ -161,8 +161,35 @@ class BaseOntologyPlugin(ValidationPlugin):
                 cached[row["curie"]] = row["label"]
         return cached
 
+    def _load_cache_with_timestamps(self, prefix: str) -> dict[str, dict[str, str]]:
+        """Load cached labels with timestamps for a prefix.
+
+        Args:
+            prefix: Ontology prefix
+
+        Returns:
+            Dict mapping CURIEs to {"label": ..., "retrieved_at": ...}
+        """
+        cache_file = self._get_cache_file(prefix)
+        if not cache_file.exists():
+            return {}
+
+        cached: dict[str, dict[str, str]] = {}
+        with open(cache_file) as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                cached[row["curie"]] = {
+                    "label": row["label"],
+                    "retrieved_at": row.get("retrieved_at", ""),
+                }
+        return cached
+
     def _save_to_cache(self, prefix: str, curie: str, label: str) -> None:
         """Save a label to the cache.
+
+        Preserves existing timestamps for unchanged entries.
+        Only new or changed entries get a fresh timestamp.
+        Entries are sorted by CURIE for deterministic output.
 
         Args:
             prefix: Ontology prefix
@@ -171,20 +198,24 @@ class BaseOntologyPlugin(ValidationPlugin):
         """
         cache_file = self._get_cache_file(prefix)
 
-        # Load existing cache
-        existing = self._load_cache(prefix)
-        existing[curie] = label
+        # Load existing cache with timestamps preserved
+        existing = self._load_cache_with_timestamps(prefix)
 
-        # Write back
-        with open(cache_file, "w") as f:
+        # Only set new timestamp if entry is new or label changed
+        now = datetime.now().isoformat()
+        if curie not in existing or existing[curie]["label"] != label:
+            existing[curie] = {"label": label, "retrieved_at": now}
+
+        # Write back sorted by curie for deterministic output
+        with open(cache_file, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=["curie", "label", "retrieved_at"])
             writer.writeheader()
-            for curie, label in existing.items():
+            for c in sorted(existing.keys()):
                 writer.writerow(
                     {
-                        "curie": curie,
-                        "label": label,
-                        "retrieved_at": datetime.now().isoformat(),
+                        "curie": c,
+                        "label": existing[c]["label"],
+                        "retrieved_at": existing[c]["retrieved_at"],
                     }
                 )
 
