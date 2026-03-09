@@ -418,9 +418,10 @@ class BaseOntologyPlugin(ValidationPlugin):
                 writer.writerow({"curie": curie})
 
     def _add_to_enum_cache(self, enum_def: EnumDefinition, value: str) -> None:
-        """Add a single value to the enum cache (progressive mode - appends).
+        """Add a single value to the enum cache (progressive mode).
 
-        Appends a single CURIE to the cache file. Creates file with header if needed.
+        Reads existing entries, adds the new value, and rewrites sorted
+        for deterministic output.
 
         Args:
             enum_def: Enum definition
@@ -432,14 +433,22 @@ class BaseOntologyPlugin(ValidationPlugin):
         cache_key = self._get_enum_cache_key(enum_def)
         cache_file = self._get_enum_cache_file(enum_def.name or "unknown", cache_key)
 
-        # Check if file exists (need to write header if not)
-        file_exists = cache_file.exists()
+        # Load existing entries
+        existing: set[str] = set()
+        if cache_file.exists():
+            with open(cache_file) as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    existing.add(row["curie"])
 
-        with open(cache_file, "a", newline="") as f:
+        existing.add(value)
+
+        # Rewrite sorted for deterministic output
+        with open(cache_file, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=["curie"])
-            if not file_exists:
-                writer.writeheader()
-            writer.writerow({"curie": value})
+            writer.writeheader()
+            for curie in sorted(existing):
+                writer.writerow({"curie": curie})
 
     def pre_process(self, context: ValidationContext) -> None:
         """Hook called before instances are processed.

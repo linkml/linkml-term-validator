@@ -126,3 +126,84 @@ def test_migrate_already_sorted(tmp_path):
 
     content_after = terms_file.read_text()
     assert content_before == content_after
+
+
+# =========================================================================
+# Enum cache file tests
+# =========================================================================
+
+
+def _write_enum_csv(cache_file: Path, curies: list[str]) -> None:
+    """Helper to write an enum cache CSV file."""
+    cache_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(cache_file, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["curie"])
+        writer.writeheader()
+        for curie in curies:
+            writer.writerow({"curie": curie})
+
+
+def _read_enum_csv(cache_file: Path) -> list[str]:
+    """Helper to read an enum cache CSV file."""
+    curies = []
+    with open(cache_file) as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            curies.append(row["curie"])
+    return curies
+
+
+def test_migrate_sorts_enum_entries(tmp_path):
+    """migrate-cache should sort enum cache entries by CURIE."""
+    cache_dir = tmp_path / "cache"
+    enum_file = cache_dir / "enums" / "test_enum_abc123.csv"
+    _write_enum_csv(enum_file, ["HP:0000003", "HP:0000001", "HP:0000002"])
+
+    result = runner.invoke(app, ["migrate-cache", "--cache-dir", str(cache_dir)])
+    assert result.exit_code == 0
+
+    curies = _read_enum_csv(enum_file)
+    assert curies == ["HP:0000001", "HP:0000002", "HP:0000003"]
+
+
+def test_migrate_deduplicates_enum_entries(tmp_path):
+    """migrate-cache should deduplicate enum cache entries."""
+    cache_dir = tmp_path / "cache"
+    enum_file = cache_dir / "enums" / "test_enum_abc123.csv"
+    _write_enum_csv(enum_file, ["HP:0000001", "HP:0000002", "HP:0000001", "HP:0000003"])
+
+    result = runner.invoke(app, ["migrate-cache", "--cache-dir", str(cache_dir)])
+    assert result.exit_code == 0
+    assert "dupes removed" in result.output
+
+    curies = _read_enum_csv(enum_file)
+    assert curies == ["HP:0000001", "HP:0000002", "HP:0000003"]
+
+
+def test_migrate_enum_already_sorted(tmp_path):
+    """Already-sorted enum file should not be rewritten."""
+    cache_dir = tmp_path / "cache"
+    enum_file = cache_dir / "enums" / "test_enum_abc123.csv"
+    _write_enum_csv(enum_file, ["HP:0000001", "HP:0000002", "HP:0000003"])
+
+    content_before = enum_file.read_text()
+    result = runner.invoke(app, ["migrate-cache", "--cache-dir", str(cache_dir)])
+    assert result.exit_code == 0
+
+    content_after = enum_file.read_text()
+    assert content_before == content_after
+
+
+def test_migrate_enum_dry_run(tmp_path):
+    """--dry-run should not modify enum files."""
+    cache_dir = tmp_path / "cache"
+    enum_file = cache_dir / "enums" / "test_enum_abc123.csv"
+    _write_enum_csv(enum_file, ["HP:0000003", "HP:0000001"])
+
+    content_before = enum_file.read_text()
+    result = runner.invoke(app, ["migrate-cache", "--cache-dir", str(cache_dir), "--dry-run"])
+    assert result.exit_code == 0
+    assert "Would update" in result.output
+
+    content_after = enum_file.read_text()
+    assert content_before == content_after

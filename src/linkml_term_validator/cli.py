@@ -498,9 +498,10 @@ def migrate_cache(
         typer.echo(f"Cache directory not found: {cache_dir}", err=True)
         raise typer.Exit(code=1)
 
-    # Find all terms.csv files
+    # Find all terms.csv files and enum cache files
     terms_files = sorted(cache_dir.glob("*/terms.csv"))
-    if not terms_files:
+    enum_files = sorted(cache_dir.glob("enums/*.csv"))
+    if not terms_files and not enum_files:
         typer.echo("No cache files found to migrate.")
         return
 
@@ -608,6 +609,45 @@ def migrate_cache(
         else:
             if dry_run:
                 typer.echo(f"  {terms_file} - no changes needed")
+
+    # Process enum cache files (sort and deduplicate)
+    for enum_file in enum_files:
+        total_files += 1
+
+        # Load existing entries
+        curies: list[str] = []
+        with open(enum_file) as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                curies.append(row["curie"])
+
+        sorted_unique = sorted(set(curies))
+        dupes = len(curies) - len(sorted_unique)
+        total_removed_dupes += dupes
+
+        needs_rewrite = dupes > 0 or curies != sorted_unique
+
+        if needs_rewrite:
+            total_updated += 1
+            status_parts = []
+            if dupes > 0:
+                status_parts.append(f"{dupes} dupes removed")
+            if not status_parts:
+                status_parts.append("sorted")
+            status = ", ".join(status_parts)
+
+            if dry_run:
+                typer.echo(f"  Would update {enum_file} ({status})")
+            else:
+                with open(enum_file, "w", newline="") as f:
+                    writer = csv.DictWriter(f, fieldnames=["curie"])
+                    writer.writeheader()
+                    for curie in sorted_unique:
+                        writer.writerow({"curie": curie})
+                typer.echo(f"  Updated {enum_file} ({status})")
+        else:
+            if dry_run:
+                typer.echo(f"  {enum_file} - no changes needed")
 
     # Summary
     typer.echo(f"\nMigration {'preview' if dry_run else 'complete'}:")
