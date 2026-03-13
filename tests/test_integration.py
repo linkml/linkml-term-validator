@@ -378,3 +378,37 @@ def test_cli_integration(test_schema_path, cache_dir, tmp_path):
 
     # Output should contain some validation info
     assert "checked" in result.stdout.lower() or "✅" in result.stdout
+
+
+@pytest.mark.integration
+def test_cpt_download_and_build(tmp_path):
+    """Actually download CMS RVU data and verify CPT cache is built.
+
+    This test makes a real HTTP request to CMS servers.
+    """
+    from linkml_term_validator.cpt_utils import build_cpt_cache
+
+    import csv
+
+    cache_file = build_cpt_cache(tmp_path)
+
+    assert cache_file.exists()
+
+    with open(cache_file) as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+
+    # Should have thousands of CPT codes
+    assert len(rows) > 10000, f"Expected >10000 codes, got {len(rows)}"
+
+    # Verify format
+    curies = [row["curie"] for row in rows]
+    assert all(c.startswith("CPT:") for c in curies)
+
+    # Spot-check well-known codes
+    curie_set = set(curies)
+    assert "CPT:99213" in curie_set, "Should contain common E/M code 99213"
+    assert "CPT:99214" in curie_set, "Should contain common E/M code 99214"
+
+    # Verify sorted
+    assert curies == sorted(curies)

@@ -2,6 +2,7 @@
 
 import csv
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -133,7 +134,12 @@ class EnumValidator:
         """
         cache_file = self._get_cache_file(prefix)
         if not cache_file.exists():
-            return {}
+            if _should_auto_build_cache(prefix):
+                _auto_build_cache(prefix, self.config.cache_dir)
+                if not cache_file.exists():
+                    return {}
+            else:
+                return {}
 
         cached = {}
         with open(cache_file) as f:
@@ -491,3 +497,21 @@ class EnumValidator:
             set()
         """
         return self._unknown_prefixes
+
+
+def _should_auto_build_cache(prefix: str) -> bool:
+    """Check if a prefix supports automatic cache building."""
+    from linkml_term_validator.cpt_utils import is_cpt_prefix
+
+    return is_cpt_prefix(prefix)
+
+
+def _auto_build_cache(prefix: str, cache_dir: Path) -> None:
+    """Attempt to auto-build a cache for the given prefix."""
+    from linkml_term_validator.cpt_utils import CptDataError, build_cpt_cache, is_cpt_prefix
+
+    if is_cpt_prefix(prefix):
+        try:
+            build_cpt_cache(cache_dir)
+        except CptDataError as e:
+            print(f"Warning: Could not auto-build CPT cache: {e}", file=sys.stderr)

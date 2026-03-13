@@ -1,0 +1,18 @@
+CY 2026 JANUARY PHYSICIAN FEE SCHEDULE RELATIVE VALUE FILE
+This file contains the CY 2026 January Relative Value Units
+for all HCPCS codes.
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+The file is updated periodically to reflect any changes.
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+HCPCS,MOD,DESCRIPTION,STATUS_CODE,NOT_USED_FOR_MEDICARE_PAYMENT,WORK_RVU,NON_FAC_PE_RVU,NON_FAC_NA_INDICATOR,FAC_PE_RVU,FAC_NA_INDICATOR,MP_RVU,NON_FAC_TOTAL,FAC_TOTAL,PCTC_IND,GLOB_DAYS,PRE_OP,INTRA_OP,POST_OP,MULT_PROC,BILAT_SURG,ASST_SURG,CO_SURG,TEAM_SURG,ENDO_BASE,CONV_FACTOR,PHYSICIAN_SUPERVISION,CALC_FLAG,DIAGNOSTIC_IMAGING,NON_FAC_PE_USED,FAC_PE_USED
+99213,,Office o/p est low 20 min,A,,1.30,1.59,,0.83,,0.07,2.96,2.20,0,XXX,0.00,0.00,0.00,0,1,0,0,0,,37.8875,09,,A,,
+99213,25,Office o/p est low 20 min,A,,1.30,1.59,,0.83,,0.07,2.96,2.20,0,XXX,0.00,0.00,0.00,0,1,0,0,0,,37.8875,09,,A,,
+99214,,Office o/p est mod 30 min,A,,1.92,2.41,,1.27,,0.10,4.43,3.29,0,XXX,0.00,0.00,0.00,0,1,0,0,0,,37.8875,09,,A,,
+0001F,,Heart failure composite,A,,0.00,0.04,,0.04,,0.00,0.04,0.04,0,XXX,0.00,0.00,0.00,0,0,0,0,0,,37.8875,09,,N,,
+0054T,,Bone integrity ultrasound,A,,0.00,1.30,,0.30,,0.02,1.32,0.32,0,XXX,0.00,0.00,0.00,0,0,0,0,0,,37.8875,09,,A,,
+G0101,,Ca screen pelvic/breast exam,A,,0.45,0.81,,0.32,,0.03,1.29,0.80,0,XXX,0.00,0.00,0.00,0,0,0,0,0,,37.8875,09,,N,,
+G0102,,Prostate ca screening DRE,A,,0.17,0.50,,0.12,,0.01,0.68,0.30,0,XXX,0.00,0.00,0.00,0,0,0,0,0,,37.8875,09,,N,,
