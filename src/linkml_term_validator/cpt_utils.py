@@ -122,11 +122,17 @@ def parse_rvu_csv(csv_content: str) -> dict[str, str]:
     try:
         lines = csv_content.splitlines()
 
-        # Skip the 10 header rows
-        if len(lines) <= 10:
-            raise CptParseError("CSV has fewer than 10 lines — missing data rows")
+        # Find the header row (starts with "HCPCS,")
+        header_idx = None
+        for i, line in enumerate(lines):
+            if line.startswith("HCPCS,"):
+                header_idx = i
+                break
 
-        data_lines = lines[10:]
+        if header_idx is None:
+            raise CptParseError("Could not find HCPCS header row in CSV")
+
+        data_lines = lines[header_idx:]
         reader = csv.DictReader(data_lines)
 
         codes: dict[str, str] = {}
