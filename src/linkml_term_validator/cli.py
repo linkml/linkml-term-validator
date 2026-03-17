@@ -492,7 +492,7 @@ def migrate_cache(
     import csv
     from datetime import datetime
 
-    from linkml_term_validator.plugins.base import BaseOntologyPlugin
+    from linkml_term_validator.plugins.dynamic_enum_plugin import DynamicEnumPlugin
 
     if not cache_dir.exists():
         typer.echo(f"Cache directory not found: {cache_dir}", err=True)
@@ -507,7 +507,7 @@ def migrate_cache(
     # Create a plugin instance for label lookups if refreshing
     plugin = None
     if refresh_labels:
-        plugin = BaseOntologyPlugin(
+        plugin = DynamicEnumPlugin(
             oak_adapter_string=adapter,
             cache_labels=False,  # Don't write cache during migration
             cache_dir=cache_dir,
