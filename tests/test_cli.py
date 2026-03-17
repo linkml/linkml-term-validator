@@ -181,3 +181,38 @@ def test_validate_data_help_shows_lenient(runner):
     assert "--lenient" in result.output
     assert "lenient mode" in result.output.lower()
     assert "term ids are not" in result.output.lower()
+
+
+def test_migrate_cache_refresh_labels(runner, tmp_path):
+    """Test migrate-cache --refresh-labels doesn't crash (issue #17).
+
+    Previously this crashed because BaseOntologyPlugin (abstract) was
+    instantiated directly. The fix uses DynamicEnumPlugin instead.
+    """
+    # Create a fake cache directory with a terms.csv
+    prefix_dir = tmp_path / "test"
+    prefix_dir.mkdir()
+    terms_file = prefix_dir / "terms.csv"
+    terms_file.write_text(
+        "curie,label,retrieved_at\n"
+        "TEST:0000001,old label,2024-01-01T00:00:00\n"
+        "TEST:0000002,child term one,2024-01-01T00:00:00\n"
+    )
+
+    config_path = Path(__file__).parent / "data" / "test_oak_config.yaml"
+
+    result = runner.invoke(
+        app,
+        [
+            "migrate-cache",
+            "--cache-dir",
+            str(tmp_path),
+            "--refresh-labels",
+            "--config",
+            str(config_path),
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Migration preview" in result.output
