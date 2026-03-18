@@ -16,26 +16,104 @@ Lawrence Berkeley National Laboratory
 
 ---
 
-## The Problem: Ontology Terms Go Wrong
+## What Are Ontologies?
+
+Ontologies are **structured vocabularies** with formal hierarchical relationships between terms.
+
+```
+                    disease (MONDO:0000001)
+                   /                      \
+      genetic disease                infectious disease
+     (MONDO:0003847)                 (MONDO:0005550)
+        /        \                      /          \
+ Mendelian    chromosomal          bacterial     viral
+  disease      disorder            disease      disease
+```
+
+Each term has:
+- A **persistent identifier** (CURIE): `MONDO:0003847`
+- A **canonical label**: "genetic disease"
+- **Relationships** to other terms: subClassOf, part-of, ...
+
+---
+
+## Biomedical Ontologies: One Per Domain
+
+| Ontology | Domain | Terms | Example |
+|----------|--------|-------|---------|
+| **GO** | Gene functions | ~45,000 | `GO:0007049` cell cycle |
+| **HP** | Human phenotypes | ~18,000 | `HP:0001250` seizure |
+| **MONDO** | Diseases | ~32,000 | `MONDO:0005148` diabetes |
+| **CHEBI** | Chemicals | ~180,000 | `CHEBI:15377` water |
+| **UBERON** | Anatomy | ~16,000 | `UBERON:0000955` brain |
+| **CL** | Cell types | ~3,000 | `CL:0000540` neuron |
+
+These ontologies are the **shared language** of biomedical data.
+Virtually all structured biomedical datasets reference them.
+
+---
+
+## CURIEs: The Universal Identifier Pattern
+
+**CURIE** = Compact URI = `prefix:local_id`
+
+```yaml
+# Every ontology term has a globally unique CURIE
+GO:0007049       # cell cycle (Gene Ontology)
+HP:0001250       # seizure (Human Phenotype Ontology)
+MONDO:0005148    # type 2 diabetes mellitus
+CHEBI:15377      # water
+CL:0000540       # neuron
+
+# Prefix declares the namespace
+prefixes:
+  GO: http://purl.obolibrary.org/obo/GO_
+  HP: http://purl.obolibrary.org/obo/HP_
+  MONDO: http://purl.obolibrary.org/obo/MONDO_
+```
+
+CURIEs appear in clinical records, genomic annotations, knowledge bases, EHRs, and research datasets everywhere.
+
+---
+
+## The Problem: Ontology References Go Wrong
 
 Data files reference thousands of ontology terms. Things break silently:
 
 ```yaml
-# Wrong ID (doesn't exist)
+# Wrong ID — doesn't exist in the ontology
 disease_term: MONDO:9999999
 
-# Stale label (ontology updated, your data didn't)
+# Stale label — ontology was updated, data wasn't
 term:
   id: GO:0007049
-  label: cell cycle process  # Was renamed to "cell cycle"
+  label: cell cycle process  # Renamed to "cell cycle" in GO 2024
 
-# Hallucinated by AI (structurally valid, semantically nonsense)
-term:
-  id: GO:0042995
-  label: DNA repair  # Actually "src64B" — AI hallucinated the label
+# Wrong scope — real term, wrong ontology branch
+cell_type: GO:0008150  # This is a biological process, not a cell type
+
+# Obsoleted term — merged into another entry
+phenotype: HP:0100886  # Obsoleted, replaced by HP:0003270
 ```
 
 These errors propagate silently through pipelines.
+
+---
+
+## Who Has This Problem? Everyone.
+
+Any data that references ontology terms needs validation:
+
+| Domain | Example Data | Ontologies Used |
+|--------|-------------|-----------------|
+| **Clinical trials** | Patient phenotypes, diagnoses | HP, MONDO, SNOMED |
+| **Genomics** | Gene annotations, pathways | GO, SO, PR |
+| **Knowledge bases** | Disease models, drug targets | MONDO, CHEBI, HP |
+| **EHRs** | Lab results, conditions | LOINC, SNOMED, RxNorm |
+| **Model organisms** | Mutant phenotypes | MP, ZP, WBPhenotype |
+| **AI curation** | LLM-generated annotations | Any/all of the above |
+
+Whether a **human** or **machine** created the data, the validation problem is the same.
 
 ---
 
@@ -45,9 +123,10 @@ Validating ontology terms requires:
 
 - Access to **hundreds of ontologies** (GO, MONDO, HP, CL, CHEBI, ...)
 - Checking term **existence** (does this CURIE resolve?)
-- Checking **labels** match (is "cell cycle" correct for GO:0007049?)
-- Checking **semantic constraints** (is this term actually a disease?)
-- Doing all this **fast enough** for CI pipelines
+- Checking **labels** match (is "cell cycle" the current label for GO:0007049?)
+- Checking **semantic constraints** (is this term actually a disease, not a phenotype?)
+- Handling **obsolescence** (has this term been deprecated or merged?)
+- Doing all this **fast enough** for CI pipelines and interactive use
 
 No standard tool did all of this for LinkML data.
 
@@ -55,7 +134,7 @@ No standard tool did all of this for LinkML data.
 
 ## LinkML Enumerations: Two Approaches
 
-### Static Enums
+### Static Enums — curated list
 ```yaml
 enums:
   VitalStatusEnum:
@@ -66,7 +145,7 @@ enums:
         meaning: NCIT:C28554
 ```
 
-### Dynamic Enums
+### Dynamic Enums — ontology query
 ```yaml
 enums:
   NeuronTypeEnum:
@@ -125,7 +204,7 @@ The `id` field of `OntologyTerm` must be in `BiologicalProcessEnum`.
 
 ## Enter: linkml-term-validator
 
-A collection of **LinkML ValidationPlugin** implementations that validate ontology term references against live ontologies.
+A **general-purpose validation framework** for any LinkML data that references ontology terms.
 
 **Three composable plugins:**
 
@@ -133,7 +212,9 @@ A collection of **LinkML ValidationPlugin** implementations that validate ontolo
 |--------|-----------|
 | `PermissibleValueMeaningPlugin` | `meaning` fields in static enums |
 | `DynamicEnumPlugin` | Data against dynamic enums |
-| `BindingValidationPlugin` | Binding constraints on nested objects |
+| `BindingValidationPlugin` | Binding constraints + label correctness |
+
+Validates that term references are **real**, **current**, and **correctly scoped** — regardless of whether a human or AI created the data.
 
 All powered by **OAK (Ontology Access Kit)** for ontology access.
 
@@ -216,7 +297,7 @@ Supports two caching strategies:
 Validates **nested object fields** against binding constraints.
 
 ```yaml
-# Data: AI generated this
+# Data with a label error
 annotations:
   - gene: BRCA1
     go_term:
@@ -233,49 +314,6 @@ ERROR: Label mismatch for GO:0005515
   Expected: protein binding
   Found: DNA binding
 ```
-
----
-
-## Anti-Hallucination: The Dual Validation Pattern
-
-LLMs hallucinate ontology IDs. The fix: require **both** ID and label.
-
-**Instead of:**
-```yaml
-term: GO:0005515  # Easy to hallucinate a single value
-```
-
-**Require:**
-```yaml
-term:
-  id: GO:0005515
-  label: protein binding  # Must match canonical label
-```
-
-The AI must get **two interdependent facts correct simultaneously** — much harder to fake than a single plausible-looking CURIE.
-
----
-
-## Dual Validation in Practice
-
-```python
-from linkml.validator import Validator
-from linkml_term_validator.plugins import BindingValidationPlugin
-
-plugin = BindingValidationPlugin(validate_labels=True)
-validator = Validator(
-    schema="schema.yaml",
-    validation_plugins=[plugin]
-)
-
-report = validator.validate(ai_generated_data)
-
-if len(report.results) > 0:
-    # Reject hallucinated terms, prompt AI to regenerate
-    raise ValueError("Invalid ontology terms detected")
-```
-
-Embed validation **during** AI generation, not just post-hoc.
 
 ---
 
@@ -307,7 +345,7 @@ cache/
 | First run (10 ontologies) | ~30-60 seconds | ~30-60 seconds |
 | Subsequent runs | ~30-60 seconds | **< 1 second** |
 | CI pipeline (per commit) | Minutes | **Milliseconds** |
-| Offline validation | ❌ Fails | Works |
+| Offline validation | Fails | Works |
 
 **Key insight:** commit the cache to version control for **reproducible validation**. Cache = versioned ontology snapshot.
 
@@ -450,6 +488,70 @@ report = validator.validate("data.yaml")
 - Label drift detected automatically when ontologies update
 - Cache committed to repo — validation runs in seconds
 - Contributors get immediate feedback, no ontology expertise needed
+
+---
+
+## High-Impact Use Case: AI Curation Guardrails
+
+LLMs are increasingly used to generate ontology-annotated data. But they **hallucinate identifiers** — producing structurally valid CURIEs that don't exist or have wrong labels.
+
+```yaml
+# AI-generated annotation — looks plausible but wrong
+term:
+  id: GO:0042995
+  label: DNA repair  # Actually "src64B" — hallucinated label
+```
+
+**The fix: dual validation.** Require both ID and label, validate both:
+
+```yaml
+term:
+  id: GO:0005515
+  label: protein binding  # Must match canonical label in ontology
+```
+
+The AI must get **two interdependent facts correct simultaneously**.
+
+---
+
+## LTV in an AI Curation Pipeline
+
+```python
+from linkml.validator import Validator
+from linkml_term_validator.plugins import BindingValidationPlugin
+
+plugin = BindingValidationPlugin(validate_labels=True)
+validator = Validator(
+    schema="schema.yaml",
+    validation_plugins=[plugin]
+)
+
+# Validate AI-generated data before committing
+report = validator.validate(ai_generated_data)
+
+if len(report.results) > 0:
+    # Reject hallucinated terms, prompt AI to regenerate
+    raise ValueError("Invalid ontology terms detected")
+```
+
+Embed validation **during** AI generation, not just post-hoc.
+
+---
+
+## DisMech + AI: Validation at Scale
+
+In the DisMech project, **AI agents curate 500+ disorder models**, each referencing dozens of terms across 16 ontologies.
+
+**Without LTV:**
+- Hallucinated terms enter the knowledge base undetected
+- Manual review of thousands of term references is infeasible
+- Errors compound as downstream analyses build on bad data
+
+**With LTV:**
+- Every AI-generated term validated against live ontologies
+- Label mismatches caught immediately
+- Scope violations detected (e.g., phenotype used where disease expected)
+- CI pipeline rejects invalid PRs before human review
 
 ---
 
