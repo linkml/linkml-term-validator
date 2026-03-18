@@ -176,6 +176,47 @@ This captures **thousands of terms** with a single declaration:
 
 ---
 
+## The Gap in Core LinkML
+
+Core `linkml-validate` converts schemas to JSON Schema internally. JSON Schema has **no concept of ontology queries**.
+
+> "Tooling support for dynamic enums is maturing, but ... **the default behavior will be too permissive.**"
+> — LinkML documentation
+
+What happens today with `linkml-validate` and dynamic enums:
+
+- `reachable_from` constraints are **silently ignored**
+- Any string value is accepted — no ontology checking
+- Static enum `meaning` fields are not validated against ontologies
+- Label correctness is not checked
+
+**linkml-term-validator fills this gap** as an external plugin.
+
+---
+
+## Two Approaches: vskit vs. LTV
+
+**vskit** (part of OAK) materializes dynamic enums at **build time**:
+```bash
+vskit expand -s schema.yaml -o schema_expanded.yaml
+# Dynamic enums → static permissible_values lists
+```
+
+**LTV** validates at **data-validation time** against live ontologies.
+
+| | vskit (build-time) | LTV (validation-time) |
+|---|---|---|
+| **Approach** | Expand to static YAML | Query ontology via plugins |
+| **Freshness** | Snapshot — must re-expand | Always current (+ cache) |
+| **Schema size** | Grows with terms | Constant (just the query) |
+| **Validation speed** | Fast (string match) | Cached after first run |
+| **Tool compatibility** | Any validator | LinkML Validator plugins |
+| **Maintenance** | Re-run on ontology updates | Automatic |
+
+These are **complementary**: vskit for downstream tooling, LTV for runtime validation.
+
+---
+
 ## LinkML Bindings: Constraining Complex Objects
 
 Bindings connect a field inside a nested object to a value set:
@@ -204,7 +245,7 @@ The `id` field of `OntologyTerm` must be in `BiologicalProcessEnum`.
 
 ## Enter: linkml-term-validator
 
-A **general-purpose validation framework** for any LinkML data that references ontology terms.
+A **standalone validation tool** that complements core LinkML — not part of `linkml-runtime`, but plugs into its validator framework.
 
 **Three composable plugins:**
 
@@ -214,7 +255,7 @@ A **general-purpose validation framework** for any LinkML data that references o
 | `DynamicEnumPlugin` | Data against dynamic enums |
 | `BindingValidationPlugin` | Binding constraints + label correctness |
 
-Validates that term references are **real**, **current**, and **correctly scoped** — regardless of whether a human or AI created the data.
+Core LinkML validates **schema structure**. LTV validates that ontology term references are **real**, **current**, and **correctly scoped**.
 
 All powered by **OAK (Ontology Access Kit)** for ontology access.
 
