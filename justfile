@@ -108,3 +108,8 @@ gh-invite-the-dragon:
 # ============== Include project-specific recipes ==============
 
 import "project.justfile"
+
+# Generate presentation slides in all formats
+gen-slides:
+  cd docs/slides && npx @marp-team/marp-cli ltv-slides.md --allow-local-files -o ltv-slides.html
+  @echo "Slides generated in docs/slides/"
