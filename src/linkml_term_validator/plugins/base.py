@@ -208,7 +208,7 @@ class BaseOntologyPlugin(ValidationPlugin):
 
         # Write back sorted by curie for deterministic output
         with open(cache_file, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["curie", "label", "retrieved_at"])
+            writer = csv.DictWriter(f, fieldnames=["curie", "label", "retrieved_at"], lineterminator="\n")
             writer.writeheader()
             for c in sorted(existing.keys()):
                 writer.writerow(
@@ -412,7 +412,7 @@ class BaseOntologyPlugin(ValidationPlugin):
         cache_file = self._get_enum_cache_file(enum_def.name or "unknown", cache_key)
 
         with open(cache_file, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["curie"])
+            writer = csv.DictWriter(f, fieldnames=["curie"], lineterminator="\n")
             writer.writeheader()
             for curie in sorted(values):
                 writer.writerow({"curie": curie})
@@ -436,7 +436,7 @@ class BaseOntologyPlugin(ValidationPlugin):
         file_exists = cache_file.exists()
 
         with open(cache_file, "a", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["curie"])
+            writer = csv.DictWriter(f, fieldnames=["curie"], lineterminator="\n")
             if not file_exists:
                 writer.writeheader()
             writer.writerow({"curie": value})

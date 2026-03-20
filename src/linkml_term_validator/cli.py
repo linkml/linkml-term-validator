@@ -594,7 +594,7 @@ def migrate_cache(
                 typer.echo(f"  Would update {terms_file} ({status})")
             else:
                 with open(terms_file, "w", newline="") as f:
-                    writer = csv.DictWriter(f, fieldnames=["curie", "label", "retrieved_at"])
+                    writer = csv.DictWriter(f, fieldnames=["curie", "label", "retrieved_at"], lineterminator="\n")
                     writer.writeheader()
                     for c in sorted_curies:
                         writer.writerow(

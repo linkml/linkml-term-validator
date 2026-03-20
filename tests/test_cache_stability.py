@@ -22,7 +22,7 @@ def _write_terms_csv(cache_file: Path, entries: list[dict[str, str]]) -> None:
     """Helper to write a terms.csv file."""
     cache_file.parent.mkdir(parents=True, exist_ok=True)
     with open(cache_file, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["curie", "label", "retrieved_at"])
+        writer = csv.DictWriter(f, fieldnames=["curie", "label", "retrieved_at"], lineterminator="\n")
         writer.writeheader()
         for entry in entries:
             writer.writerow(entry)
@@ -211,3 +211,32 @@ class TestValidatorCacheStability:
 
         content_after = cache_file.read_text()
         assert content_before == content_after
+
+
+class TestCacheLFLineEndings:
+    """Tests that cache CSV files use LF (not CRLF) line endings. See #20."""
+
+    def test_terms_cache_uses_lf(self, cache_dir):
+        """PermissibleValueMeaningPlugin cache should use LF line endings."""
+        prefix_dir = cache_dir / "go"
+        prefix_dir.mkdir()
+
+        plugin = PermissibleValueMeaningPlugin(cache_labels=True, cache_dir=cache_dir)
+        plugin._save_to_cache("GO", "GO:0008150", "biological_process")
+
+        raw = (prefix_dir / "terms.csv").read_bytes()
+        assert b"\r\n" not in raw, "Cache file contains CRLF line endings"
+        assert b"\n" in raw, "Cache file has no newlines at all"
+
+    def test_validator_cache_uses_lf(self, cache_dir):
+        """EnumValidator cache should use LF line endings."""
+        prefix_dir = cache_dir / "go"
+        prefix_dir.mkdir()
+
+        config = ValidationConfig(cache_labels=True, cache_dir=cache_dir)
+        validator = EnumValidator(config)
+        validator._save_to_cache("GO", "GO:0008150", "biological_process")
+
+        raw = (prefix_dir / "terms.csv").read_bytes()
+        assert b"\r\n" not in raw, "Cache file contains CRLF line endings"
+        assert b"\n" in raw, "Cache file has no newlines at all"
