@@ -192,7 +192,7 @@ class EnumValidator:
 
         # Write back sorted by curie for deterministic output
         with open(cache_file, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["curie", "label", "retrieved_at"])
+            writer = csv.DictWriter(f, fieldnames=["curie", "label", "retrieved_at"], lineterminator="\n")
             writer.writeheader()
             for c in sorted(existing.keys()):
                 writer.writerow(
