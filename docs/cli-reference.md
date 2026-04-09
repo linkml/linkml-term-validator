@@ -188,9 +188,10 @@ linkml-term-validator validate-data [OPTIONS] DATA_PATHS...
 | `--target-class TEXT` | String | None | Target class name to validate against |
 | `--config PATH` | Path | None | Path to OAK config file |
 | `--adapter TEXT` | String | `"sqlite:obo:"` | Default OAK adapter string |
-| `--cache-dir PATH` | Path | `cache` | Directory for caching ontology labels |
-| `--cache-strategy TEXT` | String | `progressive` | Caching strategy for dynamic enums: `progressive` (lazy) or `greedy` (expand upfront) |
-| `--no-cache` | Flag | False | Disable file-based caching |
+| `--cache-dir PATH` | Path | `cache` | Directory for caching ontology labels and dynamic enums |
+| `--cache-strategy TEXT` | String | `progressive` | Caching strategy for dynamic enums: `progressive` (lazy per enum) or `greedy` (expand upfront) |
+| `--cache-enum-expansions/--no-cache-enum-expansions` | Flag | True | Enable or disable file-based caching of expanded dynamic enums |
+| `--no-cache` | Flag | False | Disable file-based label and enum caching |
 | `--labels` | Flag | False | Validate that labels match ontology canonical labels |
 | `--lenient/--no-lenient` | Flag | False | Lenient mode: don't fail when term IDs are not found in ontology |
 | `--no-dynamic-enums` | Flag | False | Skip dynamic enum validation |
@@ -429,11 +430,12 @@ linkml-term-validator validate-data \
 
 ### oak_config.yaml
 
-Controls which ontology adapters to use for different prefixes, and optionally the caching strategy:
+Controls which ontology adapters to use for different prefixes, and optionally the caching behavior:
 
 ```yaml
 # Cache strategy (optional): "progressive" (default) or "greedy"
 cache_strategy: progressive
+cache_enum_expansions: true
 
 ontology_adapters:
   GO: sqlite:obo:go

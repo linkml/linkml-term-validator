@@ -40,6 +40,7 @@ def test_dynamic_enum_plugin_init(plugin_cache_dir):
     )
     assert plugin is not None
     assert plugin.expanded_enums == {}
+    assert plugin.config.cache_enum_expansions is True
 
 
 def test_binding_plugin_init(plugin_cache_dir):
@@ -52,6 +53,7 @@ def test_binding_plugin_init(plugin_cache_dir):
     )
     assert plugin is not None
     assert plugin.validate_labels is True
+    assert plugin.config.cache_enum_expansions is True
 
 
 @pytest.mark.integration
@@ -1367,11 +1369,12 @@ def test_enum_cache_key_changes_with_definition(plugin_cache_dir):
     assert key1 == key3
 
 
-def test_enum_caching_disabled(plugin_cache_dir, tmp_path):
-    """Test that caching can be disabled."""
+def test_enum_expansion_caching_is_independent_of_label_caching(plugin_cache_dir, tmp_path):
+    """Enum caches should still be written when label caching is disabled."""
     from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]
     from linkml_runtime import SchemaView
     from pathlib import Path
+    from linkml_term_validator.models import CacheStrategy
 
     oak_config_path = Path(__file__).parent / "data" / "test_oak_config.yaml"
 
@@ -1413,14 +1416,12 @@ enums:
       include_self: true
 """)
 
-    # Disable caching but use greedy mode to test that expansion still works
-    from linkml_term_validator.models import CacheStrategy
-
     plugin = BindingValidationPlugin(
-        cache_labels=False,  # Disable caching
+        cache_labels=False,
+        cache_enum_expansions=True,
         cache_dir=plugin_cache_dir,
         oak_config_path=oak_config_path,
-        cache_strategy=CacheStrategy.GREEDY,  # Still need greedy to populate expanded_enums
+        cache_strategy=CacheStrategy.GREEDY,
     )
 
     schema_view = SchemaView(str(schema_path))
@@ -1430,8 +1431,74 @@ enums:
     # Enum should still be expanded (greedy mode)
     assert "NoCacheEnum" in plugin.expanded_enums
 
-    # But no cache file should be created (CSV format)
+    # Enum cache should still be created even with label caching disabled
+    enum_cache_dir = plugin_cache_dir / "enums"
+    cache_files = list(enum_cache_dir.glob("nocacheenum_*.csv"))
+    assert len(cache_files) == 1
+
+
+def test_enum_expansion_caching_can_be_disabled(plugin_cache_dir, tmp_path):
+    """Enum expansion caching can be disabled independently of label caching."""
+    from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]
+    from linkml_runtime import SchemaView
+    from pathlib import Path
+    from linkml_term_validator.models import CacheStrategy
+
+    oak_config_path = Path(__file__).parent / "data" / "test_oak_config.yaml"
+
+    schema_path = tmp_path / "no_enum_cache_schema.yaml"
+    schema_path.write_text("""
+id: https://example.org/test
+name: test_no_enum_cache
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  TEST: http://example.org/TEST_
+
+default_prefix: test_no_enum_cache
+default_range: string
+
+classes:
+  Annotation:
+    attributes:
+      id:
+        identifier: true
+      term:
+        range: Term
+        inlined: true
+        bindings:
+          - binds_value_of: id
+            range: NoEnumCacheEnum
+
+  Term:
+    attributes:
+      id:
+      label:
+
+enums:
+  NoEnumCacheEnum:
+    reachable_from:
+      source_ontology: simpleobo:tests/data/test_ontology.obo
+      source_nodes:
+        - TEST:0000001
+      include_self: true
+""")
+
+    plugin = BindingValidationPlugin(
+        cache_labels=True,
+        cache_enum_expansions=False,
+        cache_dir=plugin_cache_dir,
+        oak_config_path=oak_config_path,
+        cache_strategy=CacheStrategy.GREEDY,
+    )
+
+    schema_view = SchemaView(str(schema_path))
+    context = ValidationContext(schema=schema_view.schema, target_class="Annotation")
+    plugin.pre_process(context)
+
+    assert "NoEnumCacheEnum" in plugin.expanded_enums
+
     enum_cache_dir = plugin_cache_dir / "enums"
     if enum_cache_dir.exists():
-        cache_files = list(enum_cache_dir.glob("nocacheenum_*.csv"))
-        assert len(cache_files) == 0, f"Expected no cache files when caching disabled, got: {cache_files}"
+        cache_files = list(enum_cache_dir.glob("noenumcacheenum_*.csv"))
+        assert len(cache_files) == 0

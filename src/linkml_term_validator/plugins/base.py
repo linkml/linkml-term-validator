@@ -44,6 +44,7 @@ class BaseOntologyPlugin(ValidationPlugin):
         self,
         oak_adapter_string: str = "sqlite:obo:",
         cache_labels: bool = True,
+        cache_enum_expansions: bool = True,
         cache_dir: Path | str = Path("cache"),
         oak_config_path: Optional[Path | str] = None,
         cache_strategy: Literal["progressive", "greedy"] | CacheStrategy = CacheStrategy.PROGRESSIVE,
@@ -53,6 +54,7 @@ class BaseOntologyPlugin(ValidationPlugin):
         Args:
             oak_adapter_string: Default OAK adapter string (e.g., "sqlite:obo:")
             cache_labels: Whether to cache ontology labels to disk
+            cache_enum_expansions: Whether to cache expanded dynamic enum values to disk
             cache_dir: Directory for label cache files
             oak_config_path: Path to oak_config.yaml for per-prefix adapters
             cache_strategy: Caching strategy for dynamic enums - "progressive" (default) or "greedy"
@@ -64,6 +66,7 @@ class BaseOntologyPlugin(ValidationPlugin):
         self.config = ValidationConfig(
             oak_adapter_string=oak_adapter_string,
             cache_labels=cache_labels,
+            cache_enum_expansions=cache_enum_expansions,
             cache_dir=Path(cache_dir) if isinstance(cache_dir, str) else cache_dir,
             oak_config_path=(
                 Path(oak_config_path) if isinstance(oak_config_path, str) else oak_config_path
@@ -103,6 +106,8 @@ class BaseOntologyPlugin(ValidationPlugin):
             if "cache_strategy" in config:
                 strategy_str = config["cache_strategy"]
                 self.config.cache_strategy = CacheStrategy(strategy_str)
+            if "cache_enum_expansions" in config:
+                self.config.cache_enum_expansions = bool(config["cache_enum_expansions"])
 
     def _get_prefix(self, curie: str) -> Optional[str]:
         """Extract prefix from a CURIE.
@@ -380,7 +385,7 @@ class BaseOntologyPlugin(ValidationPlugin):
         Returns:
             Set of cached values, or None if cache miss
         """
-        if not self.config.cache_labels:  # Reuse cache_labels setting
+        if not self.config.cache_enum_expansions:
             return None
 
         cache_key = self._get_enum_cache_key(enum_def)
@@ -405,7 +410,7 @@ class BaseOntologyPlugin(ValidationPlugin):
             enum_def: Enum definition
             values: Set of expanded values to cache
         """
-        if not self.config.cache_labels:  # Reuse cache_labels setting
+        if not self.config.cache_enum_expansions:
             return
 
         cache_key = self._get_enum_cache_key(enum_def)
@@ -426,7 +431,7 @@ class BaseOntologyPlugin(ValidationPlugin):
             enum_def: Enum definition
             value: CURIE to add to cache
         """
-        if not self.config.cache_labels:
+        if not self.config.cache_enum_expansions:
             return
 
         cache_key = self._get_enum_cache_key(enum_def)
@@ -467,8 +472,8 @@ class BaseOntologyPlugin(ValidationPlugin):
         This method is used when cache_strategy is "progressive". It:
         1. Checks the in-memory cache
         2. Checks the file cache
-        3. Queries the ontology directly if not cached
-        4. Caches valid values for future lookups
+        3. Optionally materializes the full enum lazily on first use
+        4. Falls back to per-value ontology checks when enum expansion caching is disabled
 
         Args:
             value: CURIE to validate
@@ -491,6 +496,17 @@ class BaseOntologyPlugin(ValidationPlugin):
             self._enum_cache[enum_name] = cached
             if value in cached:
                 return True
+
+        # In progressive mode, lazily materialize the full enum on first use when
+        # enum expansion caching is enabled. This avoids repeating the same
+        # reachable_from traversal across validations while keeping expansion lazy.
+        if (
+            self.config.cache_enum_expansions
+            and self.is_dynamic_enum(enum_def)
+            and schema_view is not None
+        ):
+            expanded = self.expand_enum(enum_def, schema_view, use_cache=True)
+            return value in expanded
 
         # 3. Check static permissible values first (fast)
         if enum_def.permissible_values:

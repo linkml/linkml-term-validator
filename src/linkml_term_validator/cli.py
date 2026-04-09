@@ -189,6 +189,13 @@ def validate_data(
             help="OAK adapter string (default: sqlite:obo:)",
         ),
     ] = "sqlite:obo:",
+    no_cache: Annotated[
+        bool,
+        typer.Option(
+            "--no-cache",
+            help="Disable file-based label and enum caching",
+        ),
+    ] = False,
     cache_dir: Annotated[
         Path,
         typer.Option(
@@ -196,6 +203,13 @@ def validate_data(
             help="Directory for caching ontology labels",
         ),
     ] = Path("cache"),
+    cache_enum_expansions: Annotated[
+        bool,
+        typer.Option(
+            "--cache-enum-expansions/--no-cache-enum-expansions",
+            help="Enable file-based caching of expanded dynamic enum values",
+        ),
+    ] = True,
     config: Annotated[
         Optional[Path],
         typer.Option(
@@ -241,8 +255,10 @@ def validate_data(
         plugins.append(
             DynamicEnumPlugin(
                 oak_adapter_string=adapter,
+                cache_labels=not no_cache,
                 cache_dir=cache_dir,
                 oak_config_path=config,
+                cache_enum_expansions=cache_enum_expansions and not no_cache,
                 cache_strategy=strategy,
             )
         )
@@ -253,8 +269,10 @@ def validate_data(
                 oak_adapter_string=adapter,
                 validate_labels=validate_labels,
                 strict=not lenient,
+                cache_labels=not no_cache,
                 cache_dir=cache_dir,
                 oak_config_path=config,
+                cache_enum_expansions=cache_enum_expansions and not no_cache,
                 cache_strategy=strategy,
             )
         )
@@ -352,6 +370,13 @@ def validate_all(
             help="Lenient mode: don't fail when term IDs are not found (data validation)",
         ),
     ] = False,
+    no_cache: Annotated[
+        bool,
+        typer.Option(
+            "--no-cache",
+            help="Disable file-based label and enum caching",
+        ),
+    ] = False,
     cache_dir: Annotated[
         Path,
         typer.Option(
@@ -359,6 +384,13 @@ def validate_all(
             help="Directory for caching ontology labels",
         ),
     ] = Path("cache"),
+    cache_enum_expansions: Annotated[
+        bool,
+        typer.Option(
+            "--cache-enum-expansions/--no-cache-enum-expansions",
+            help="Enable file-based caching of expanded dynamic enum values",
+        ),
+    ] = True,
     config: Annotated[
         Optional[Path],
         typer.Option(
@@ -409,7 +441,9 @@ def validate_all(
             validate_labels=True,
             lenient=lenient,
             adapter=adapter,
+            no_cache=no_cache,
             cache_dir=cache_dir,
+            cache_enum_expansions=cache_enum_expansions,
             config=config,
             cache_strategy=cache_strategy,
         )
@@ -419,7 +453,7 @@ def validate_all(
             schema_path=input_path,
             adapter=adapter,
             strict=strict,
-            no_cache=False,
+            no_cache=no_cache,
             cache_dir=cache_dir,
             config=config,
             verbose=verbose,

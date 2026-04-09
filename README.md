@@ -226,10 +226,12 @@ linkml-term-validator validate-data annotations.yaml --schema schema.yaml --labe
 The validator uses multi-level caching to speed up repeated validations:
 
 ### In-Memory Cache
-During a single validation run, ontology labels are cached in memory. This means if multiple permissible values use the same ontology term, it's only looked up once.
+During a single validation run, ontology labels and expanded dynamic enums are cached in memory.
 
 ### File-Based Cache
-Labels are persisted to CSV files in the cache directory (default: `cache/`). The cache is organized by ontology prefix:
+Labels are persisted to CSV files in the cache directory (default: `cache/`). Dynamic enums are cached separately under `cache/enums/`.
+
+Label cache layout:
 
 ```
 cache/
@@ -250,10 +252,11 @@ GO:0007049,cell cycle,2025-11-15T10:30:01
 
 ### Cache Behavior
 
-- **First run**: Queries ontology databases, saves to cache
-- **Subsequent runs**: Loads from cache files (very fast!)
+- **First run**: Queries ontology databases and lazily materializes dynamic enum closures on first use
+- **Subsequent runs**: Loads warm label and enum caches from disk
 - **Cache location**: Configurable via `--cache-dir` flag
-- **Disable caching**: Use `--no-cache` flag
+- **Disable all file caching**: Use `--no-cache`
+- **Disable only enum expansion caching**: Use `--no-cache-enum-expansions`
 
 ### When to Clear Cache
 
@@ -475,6 +478,7 @@ plugins:
   "linkml_term_validator.plugins.DynamicEnumPlugin":
     oak_adapter_string: "sqlite:obo:"
     cache_labels: true
+    cache_enum_expansions: true
     cache_dir: cache
 
   # Binding constraint validation
@@ -482,6 +486,7 @@ plugins:
     oak_adapter_string: "sqlite:obo:"
     validate_labels: true
     cache_labels: true
+    cache_enum_expansions: true
     cache_dir: cache
 ```
 
@@ -507,6 +512,7 @@ See the [examples/](examples/) directory for complete examples:
 "linkml_term_validator.plugins.DynamicEnumPlugin":
   oak_adapter_string: "sqlite:obo:"  # OAK adapter (default: sqlite:obo:)
   cache_labels: true                  # Enable label caching (default: true)
+  cache_enum_expansions: true         # Enable enum expansion caching (default: true)
   cache_dir: cache                    # Cache directory (default: cache)
   oak_config_path: oak_config.yaml    # Optional: custom OAK config
 ```
@@ -518,6 +524,7 @@ See the [examples/](examples/) directory for complete examples:
   oak_adapter_string: "sqlite:obo:"  # OAK adapter (default: sqlite:obo:)
   validate_labels: true               # Check labels match ontology (default: true)
   cache_labels: true                  # Enable label caching (default: true)
+  cache_enum_expansions: true         # Enable enum expansion caching (default: true)
   cache_dir: cache                    # Cache directory (default: cache)
   oak_config_path: oak_config.yaml    # Optional: custom OAK config
 ```
@@ -657,4 +664,3 @@ For detailed patterns and best practices on making ontology IDs hallucination-re
 
 - [Make IDs Hallucination Resistant](https://ai4curation.io/aidocs/how-tos/make-ids-hallucination-resistant/) - Comprehensive guide from the AI for Curation project
 - [Jupyter Notebooks](notebooks/) - Interactive tutorials demonstrating validation workflows
-

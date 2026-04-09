@@ -95,6 +95,7 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         validate_labels: bool = True,
         strict: bool = True,
         cache_labels: bool = True,
+        cache_enum_expansions: bool = True,
         cache_dir: Path | str = Path("cache"),
         oak_config_path: Optional[Path | str] = None,
         cache_strategy: Literal["progressive", "greedy"] | CacheStrategy = CacheStrategy.PROGRESSIVE,
@@ -106,6 +107,7 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             validate_labels: If True (default), also validate that labels match ontology
             strict: If True (default), fail when term IDs are not found in configured ontologies
             cache_labels: Whether to cache ontology labels to disk
+            cache_enum_expansions: Whether to cache expanded dynamic enum values to disk
             cache_dir: Directory for label cache files
             oak_config_path: Path to oak_config.yaml for per-prefix adapters
             cache_strategy: Caching strategy for dynamic enums ('progressive' or 'greedy')
@@ -113,6 +115,7 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         super().__init__(
             oak_adapter_string=oak_adapter_string,
             cache_labels=cache_labels,
+            cache_enum_expansions=cache_enum_expansions,
             cache_dir=cache_dir,
             oak_config_path=oak_config_path,
             cache_strategy=cache_strategy,
