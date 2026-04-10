@@ -65,7 +65,7 @@ def validate_schema(
         Path,
         typer.Option(
             "--cache-dir",
-            help="Directory for caching ontology labels",
+            help="Directory for caching ontology labels and dynamic enum expansions",
         ),
     ] = Path("cache"),
     config: Annotated[
@@ -200,7 +200,7 @@ def validate_data(
         Path,
         typer.Option(
             "--cache-dir",
-            help="Directory for caching ontology labels",
+            help="Directory for caching ontology labels and dynamic enum expansions",
         ),
     ] = Path("cache"),
     cache_enum_expansions: Annotated[

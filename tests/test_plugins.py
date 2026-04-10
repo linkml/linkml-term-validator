@@ -129,6 +129,22 @@ def test_plugin_unknown_prefix_tracking(plugin_cache_dir, tmp_path):
     assert "NOTCONFIGURED" in unknown
 
 
+def test_oak_config_parses_quoted_cache_enum_expansions(plugin_cache_dir, tmp_path):
+    """Quoted booleans in YAML should be parsed explicitly, not via bool(...)."""
+    oak_config = tmp_path / "oak_config.yaml"
+    oak_config.write_text("""cache_enum_expansions: "false"
+ontology_adapters:
+  TEST: simpleobo:tests/data/test_ontology.obo
+""")
+
+    plugin = DynamicEnumPlugin(
+        oak_config_path=oak_config,
+        cache_dir=plugin_cache_dir,
+    )
+
+    assert plugin.config.cache_enum_expansions is False
+
+
 def test_binding_plugin_finds_label_slots_with_implements(plugin_cache_dir, tmp_path):
     """Test that BindingValidationPlugin detects label slots via implements."""
     from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]

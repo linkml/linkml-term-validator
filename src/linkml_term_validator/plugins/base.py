@@ -107,7 +107,22 @@ class BaseOntologyPlugin(ValidationPlugin):
                 strategy_str = config["cache_strategy"]
                 self.config.cache_strategy = CacheStrategy(strategy_str)
             if "cache_enum_expansions" in config:
-                self.config.cache_enum_expansions = bool(config["cache_enum_expansions"])
+                self.config.cache_enum_expansions = self._parse_bool_config_value(
+                    config["cache_enum_expansions"], "cache_enum_expansions"
+                )
+
+    @staticmethod
+    def _parse_bool_config_value(value: Any, field_name: str) -> bool:
+        """Parse a boolean config value without accepting arbitrary truthy strings."""
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized == "true":
+                return True
+            if normalized == "false":
+                return False
+        raise ValueError(f"{field_name} must be a boolean or 'true'/'false', got: {value!r}")
 
     def _get_prefix(self, curie: str) -> Optional[str]:
         """Extract prefix from a CURIE.
