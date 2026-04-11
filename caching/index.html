@@ -1737,21 +1737,21 @@ GO:0006260
 <h2 id="enum-caching-strategies">Enum Caching Strategies</h2>
 <p>The validator supports two strategies for caching dynamic enum values:</p>
 <h3 id="progressive-caching-default">Progressive Caching (Default)</h3>
-<p><strong>Progressive caching</strong> validates terms lazily:</p>
+<p><strong>Progressive caching</strong> validates enums lazily:</p>
 <ol>
 <li>Check in-memory cache</li>
 <li>Check file cache</li>
-<li>Query ontology directly (is this term a descendant of the source nodes?)</li>
-<li>If valid, add to cache for future lookups</li>
+<li>On first use of a dynamic enum, materialize the full closure and save it</li>
+<li>Reuse the in-memory or file cache on subsequent lookups</li>
 </ol>
 <p><strong>Benefits:</strong>
-- Scales well for large ontologies (SNOMED with 100k+ terms)
-- Cache grows organically with actual usage
+- Avoids upfront expansion for enums that are never used
+- Warm runs do not repeat the same <code>reachable_from</code> traversals
 - Faster startup (no upfront expansion)
-- Supports "lazy list" style enums (e.g., any valid chemical SMILES)</p>
+- Still scales better than eager expansion across all enums in a schema</p>
 <p><strong>Trade-offs:</strong>
-- First validation of each term requires ontology query
-- Cache is append-only (may contain terms no longer in use)</p>
+- First use of a dynamic enum still pays the expansion cost
+- Large closures still occupy disk and memory once cached</p>
 <h3 id="greedy-caching">Greedy Caching</h3>
 <p><strong>Greedy caching</strong> expands the entire enum upfront:</p>
 <ol>
@@ -1769,10 +1769,11 @@ GO:0006260
 - May cache terms never actually used</p>
 <h2 id="cache-behavior">Cache Behavior</h2>
 <ul>
-<li><strong>First run</strong>: Queries ontology databases, saves results to cache</li>
-<li><strong>Subsequent runs</strong>: Loads from cache files (very fast, no network/database access)</li>
+<li><strong>First run</strong>: Queries ontology databases and saves label / enum caches</li>
+<li><strong>Subsequent runs</strong>: Loads warm caches from disk (very fast, no network/database access)</li>
 <li><strong>Cache location</strong>: Configurable via <code>--cache-dir</code> flag</li>
-<li><strong>Disable caching</strong>: Use <code>--no-cache</code> flag</li>
+<li><strong>Disable all file caching</strong>: Use <code>--no-cache</code></li>
+<li><strong>Disable only enum expansion caching</strong>: Use <code>--no-cache-enum-expansions</code></li>
 </ul>
 <h2 id="configuration">Configuration</h2>
 <h3 id="cli">CLI</h3>
@@ -1796,6 +1797,7 @@ from linkml_term_validator.models import CacheStrategy
 plugin = DynamicEnumPlugin(
     cache_dir=&quot;/path/to/cache&quot;,
     cache_labels=True,
+    cache_enum_expansions=True,
     cache_strategy=CacheStrategy.PROGRESSIVE,
 )
 
@@ -1803,12 +1805,14 @@ plugin = DynamicEnumPlugin(
 plugin = BindingValidationPlugin(
     cache_dir=&quot;/path/to/cache&quot;,
     cache_labels=True,
+    cache_enum_expansions=True,
     cache_strategy=CacheStrategy.GREEDY,
 )
 </code></pre>
 <h3 id="yaml-configuration-oak_configyaml">YAML Configuration (oak_config.yaml)</h3>
 <pre><code class="language-yaml"># Set cache strategy globally
 cache_strategy: progressive  # or &quot;greedy&quot;
+cache_enum_expansions: true
 
 # Configure ontology adapters
 ontology_adapters:
@@ -1821,6 +1825,7 @@ ontology_adapters:
   &quot;linkml_term_validator.plugins.DynamicEnumPlugin&quot;:
     oak_adapter_string: &quot;sqlite:obo:&quot;
     cache_labels: true
+    cache_enum_expansions: true
     cache_dir: cache
     cache_strategy: progressive  # or &quot;greedy&quot;
 </code></pre>

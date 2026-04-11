@@ -2159,19 +2159,25 @@ Consider adding these to oak_config.yaml to enable validation.
 <td><code>--cache-dir PATH</code></td>
 <td>Path</td>
 <td><code>cache</code></td>
-<td>Directory for caching ontology labels</td>
+<td>Directory for caching ontology labels and dynamic enums</td>
 </tr>
 <tr>
 <td><code>--cache-strategy TEXT</code></td>
 <td>String</td>
 <td><code>progressive</code></td>
-<td>Caching strategy for dynamic enums: <code>progressive</code> (lazy) or <code>greedy</code> (expand upfront)</td>
+<td>Caching strategy for dynamic enums: <code>progressive</code> (lazy per enum) or <code>greedy</code> (expand upfront)</td>
+</tr>
+<tr>
+<td><code>--cache-enum-expansions/--no-cache-enum-expansions</code></td>
+<td>Flag</td>
+<td>True</td>
+<td>Enable or disable file-based caching of expanded dynamic enums</td>
 </tr>
 <tr>
 <td><code>--no-cache</code></td>
 <td>Flag</td>
 <td>False</td>
-<td>Disable file-based caching</td>
+<td>Disable file-based label and enum caching</td>
 </tr>
 <tr>
 <td><code>--labels</code></td>
@@ -2380,9 +2386,10 @@ linkml-term-validator validate-schema schema.yaml
 </code></pre>
 <h2 id="configuration-files">Configuration Files</h2>
 <h3 id="oak_configyaml">oak_config.yaml</h3>
-<p>Controls which ontology adapters to use for different prefixes, and optionally the caching strategy:</p>
+<p>Controls which ontology adapters to use for different prefixes, and optionally the caching behavior:</p>
 <pre><code class="language-yaml"># Cache strategy (optional): &quot;progressive&quot; (default) or &quot;greedy&quot;
 cache_strategy: progressive
+cache_enum_expansions: true
 
 ontology_adapters:
   GO: sqlite:obo:go
