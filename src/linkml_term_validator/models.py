@@ -26,7 +26,7 @@ class CacheStrategy(str, Enum):
     """
 
     PROGRESSIVE = "progressive"
-    """Cache terms incrementally as they are validated (default, scalable)."""
+    """Lazily materialize enum caches on first use (default, scalable)."""
 
     GREEDY = "greedy"
     """Expand entire enum upfront and cache all terms."""
@@ -233,6 +233,10 @@ class ValidationConfig(BaseModel):
     )
     cache_labels: bool = Field(
         default=True, description="If True, cache ontology labels to disk"
+    )
+    cache_enum_expansions: bool = Field(
+        default=True,
+        description="If True, cache expanded dynamic enum values to disk",
     )
     cache_strategy: CacheStrategy = Field(
         default=CacheStrategy.PROGRESSIVE,

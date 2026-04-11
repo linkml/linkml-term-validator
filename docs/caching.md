@@ -66,22 +66,22 @@ The validator supports two strategies for caching dynamic enum values:
 
 ### Progressive Caching (Default)
 
-**Progressive caching** validates terms lazily:
+**Progressive caching** validates enums lazily:
 
 1. Check in-memory cache
 2. Check file cache
-3. Query ontology directly (is this term a descendant of the source nodes?)
-4. If valid, add to cache for future lookups
+3. On first use of a dynamic enum, materialize the full closure and save it
+4. Reuse the in-memory or file cache on subsequent lookups
 
 **Benefits:**
-- Scales well for large ontologies (SNOMED with 100k+ terms)
-- Cache grows organically with actual usage
+- Avoids upfront expansion for enums that are never used
+- Warm runs do not repeat the same `reachable_from` traversals
 - Faster startup (no upfront expansion)
-- Supports "lazy list" style enums (e.g., any valid chemical SMILES)
+- Still scales better than eager expansion across all enums in a schema
 
 **Trade-offs:**
-- First validation of each term requires ontology query
-- Cache is append-only (may contain terms no longer in use)
+- First use of a dynamic enum still pays the expansion cost
+- Large closures still occupy disk and memory once cached
 
 ### Greedy Caching
 
@@ -103,10 +103,11 @@ The validator supports two strategies for caching dynamic enum values:
 
 ## Cache Behavior
 
-- **First run**: Queries ontology databases, saves results to cache
-- **Subsequent runs**: Loads from cache files (very fast, no network/database access)
+- **First run**: Queries ontology databases and saves label / enum caches
+- **Subsequent runs**: Loads warm caches from disk (very fast, no network/database access)
 - **Cache location**: Configurable via `--cache-dir` flag
-- **Disable caching**: Use `--no-cache` flag
+- **Disable all file caching**: Use `--no-cache`
+- **Disable only enum expansion caching**: Use `--no-cache-enum-expansions`
 
 ## Configuration
 
@@ -136,6 +137,7 @@ from linkml_term_validator.models import CacheStrategy
 plugin = DynamicEnumPlugin(
     cache_dir="/path/to/cache",
     cache_labels=True,
+    cache_enum_expansions=True,
     cache_strategy=CacheStrategy.PROGRESSIVE,
 )
 
@@ -143,6 +145,7 @@ plugin = DynamicEnumPlugin(
 plugin = BindingValidationPlugin(
     cache_dir="/path/to/cache",
     cache_labels=True,
+    cache_enum_expansions=True,
     cache_strategy=CacheStrategy.GREEDY,
 )
 ```
@@ -152,6 +155,7 @@ plugin = BindingValidationPlugin(
 ```yaml
 # Set cache strategy globally
 cache_strategy: progressive  # or "greedy"
+cache_enum_expansions: true
 
 # Configure ontology adapters
 ontology_adapters:
@@ -167,6 +171,7 @@ plugins:
   "linkml_term_validator.plugins.DynamicEnumPlugin":
     oak_adapter_string: "sqlite:obo:"
     cache_labels: true
+    cache_enum_expansions: true
     cache_dir: cache
     cache_strategy: progressive  # or "greedy"
 ```

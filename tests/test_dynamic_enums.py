@@ -6,6 +6,7 @@ import pytest
 from linkml.validator import Validator  # type: ignore[import-untyped]
 from linkml.validator.loaders import YamlLoader  # type: ignore[import-untyped]
 
+from linkml_term_validator.models import CacheStrategy
 from linkml_term_validator.plugins import DynamicEnumPlugin
 
 
@@ -209,3 +210,39 @@ def test_dynamic_enum_plugin_with_cache(dynamic_enum_schema, valid_data, oak_con
     loader2 = YamlLoader(valid_data)
     report2 = validator2.validate_source(loader2, target_class="Sample")
     assert len(report2.results) == 0, "Second validation should also pass"
+
+
+def test_dynamic_enum_plugin_progressive_warm_cache_avoids_reexpansion(
+    dynamic_enum_schema, valid_data, oak_config, tmp_path
+):
+    """Progressive mode should lazily materialize enum caches and reuse them."""
+    cache_dir = tmp_path / "progressive_cache"
+    expansion_calls: list[int] = []
+
+    for _ in range(2):
+        plugin = DynamicEnumPlugin(
+            cache_dir=cache_dir,
+            oak_config_path=oak_config,
+            cache_strategy=CacheStrategy.PROGRESSIVE,
+        )
+        original_expand = plugin._expand_reachable_from
+        calls = 0
+
+        def wrapped(query):
+            nonlocal calls
+            calls += 1
+            return original_expand(query)
+
+        plugin._expand_reachable_from = wrapped  # type: ignore[method-assign]
+
+        validator = Validator(
+            schema=str(dynamic_enum_schema),
+            validation_plugins=[plugin],
+        )
+        report = validator.validate_source(YamlLoader(valid_data), target_class="Sample")
+        assert len(report.results) == 0
+        expansion_calls.append(calls)
+
+    assert expansion_calls[0] > 0
+    assert expansion_calls[1] == 0
+    assert list((cache_dir / "enums").glob("*.csv"))
