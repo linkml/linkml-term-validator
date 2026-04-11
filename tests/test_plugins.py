@@ -41,6 +41,7 @@ def test_dynamic_enum_plugin_init(plugin_cache_dir):
     assert plugin is not None
     assert plugin.expanded_enums == {}
     assert plugin.config.cache_enum_expansions is True
+    assert plugin.config.saturate_enum_caches is False
 
 
 def test_binding_plugin_init(plugin_cache_dir):
@@ -54,6 +55,7 @@ def test_binding_plugin_init(plugin_cache_dir):
     assert plugin is not None
     assert plugin.validate_labels is True
     assert plugin.config.cache_enum_expansions is True
+    assert plugin.config.saturate_enum_caches is False
 
 
 @pytest.mark.integration
@@ -143,6 +145,22 @@ ontology_adapters:
     )
 
     assert plugin.config.cache_enum_expansions is False
+
+
+def test_oak_config_parses_saturate_enum_caches(plugin_cache_dir, tmp_path):
+    """YAML config should control cache saturation behavior."""
+    oak_config = tmp_path / "oak_config.yaml"
+    oak_config.write_text("""saturate_enum_caches: true
+ontology_adapters:
+  TEST: simpleobo:tests/data/test_ontology.obo
+""")
+
+    plugin = DynamicEnumPlugin(
+        oak_config_path=oak_config,
+        cache_dir=plugin_cache_dir,
+    )
+
+    assert plugin.config.saturate_enum_caches is True
 
 
 def test_binding_plugin_finds_label_slots_with_implements(plugin_cache_dir, tmp_path):
@@ -1274,6 +1292,7 @@ enums:
         for row in reader:
             cached_values.add(row["curie"])
     assert cached_values == original_values
+    assert plugin._get_enum_cache_marker_file(schema_view.get_enum("CachedEnum")).exists()
 
 
 def test_enum_caching_loads_from_file(plugin_cache_dir, tmp_path):
@@ -1342,6 +1361,7 @@ enums:
     enum_cache_dir = plugin_cache_dir / "enums"
     cache_files = list(enum_cache_dir.glob("loadtestenum_*.csv"))
     assert len(cache_files) == 1
+    assert plugin1._get_enum_cache_marker_file(schema_view.get_enum("LoadTestEnum")).exists()
 
     # Second run - should load from cache (greedy mode)
     plugin2 = BindingValidationPlugin(

@@ -45,6 +45,7 @@ class BaseOntologyPlugin(ValidationPlugin):
         oak_adapter_string: str = "sqlite:obo:",
         cache_labels: bool = True,
         cache_enum_expansions: bool = True,
+        saturate_enum_caches: bool = False,
         cache_dir: Path | str = Path("cache"),
         oak_config_path: Optional[Path | str] = None,
         cache_strategy: Literal["progressive", "greedy"] | CacheStrategy = CacheStrategy.PROGRESSIVE,
@@ -55,6 +56,7 @@ class BaseOntologyPlugin(ValidationPlugin):
             oak_adapter_string: Default OAK adapter string (e.g., "sqlite:obo:")
             cache_labels: Whether to cache ontology labels to disk
             cache_enum_expansions: Whether to cache expanded dynamic enum values to disk
+            saturate_enum_caches: Whether progressive validation should materialize full enum closures
             cache_dir: Directory for label cache files
             oak_config_path: Path to oak_config.yaml for per-prefix adapters
             cache_strategy: Caching strategy for dynamic enums - "progressive" (default) or "greedy"
@@ -67,6 +69,7 @@ class BaseOntologyPlugin(ValidationPlugin):
             oak_adapter_string=oak_adapter_string,
             cache_labels=cache_labels,
             cache_enum_expansions=cache_enum_expansions,
+            saturate_enum_caches=saturate_enum_caches,
             cache_dir=Path(cache_dir) if isinstance(cache_dir, str) else cache_dir,
             oak_config_path=(
                 Path(oak_config_path) if isinstance(oak_config_path, str) else oak_config_path
@@ -77,7 +80,8 @@ class BaseOntologyPlugin(ValidationPlugin):
         # In-memory caches
         self._label_cache: dict[str, Optional[str]] = {}
         self._adapter_cache: dict[str, object | None] = {}
-        self._enum_cache: dict[str, set[str]] = {}  # enum_name -> expanded/cached values
+        self._enum_cache: dict[str, set[str]] = {}  # enum_name -> cached values
+        self._closed_enum_caches: set[str] = set()  # enum_name -> cache is known complete
         self._unknown_prefixes: set[str] = set()
 
         # Load OAK config if provided (may override cache_strategy)
@@ -109,6 +113,10 @@ class BaseOntologyPlugin(ValidationPlugin):
             if "cache_enum_expansions" in config:
                 self.config.cache_enum_expansions = self._parse_bool_config_value(
                     config["cache_enum_expansions"], "cache_enum_expansions"
+                )
+            if "saturate_enum_caches" in config:
+                self.config.saturate_enum_caches = self._parse_bool_config_value(
+                    config["saturate_enum_caches"], "saturate_enum_caches"
                 )
 
     @staticmethod
@@ -389,6 +397,27 @@ class BaseOntologyPlugin(ValidationPlugin):
         safe_name = re.sub(r"[^\w\-]", "_", enum_name.lower())
         return enum_dir / f"{safe_name}_{cache_key}.csv"
 
+    def _get_enum_cache_marker_file(self, enum_def: EnumDefinition) -> Path:
+        """Get the completion-marker file for a fully materialized enum cache."""
+        cache_key = self._get_enum_cache_key(enum_def)
+        cache_file = self._get_enum_cache_file(enum_def.name or "unknown", cache_key)
+        return cache_file.with_suffix(f"{cache_file.suffix}.complete")
+
+    def _is_enum_cache_complete(self, enum_def: EnumDefinition) -> bool:
+        """Check whether an enum cache is explicitly marked complete."""
+        return self._get_enum_cache_marker_file(enum_def).exists()
+
+    def _mark_enum_cache_complete(self, enum_def: EnumDefinition) -> None:
+        """Mark an enum cache as a fully materialized closure."""
+        marker_file = self._get_enum_cache_marker_file(enum_def)
+        marker_file.write_text("complete\n")
+
+    def _clear_enum_cache_complete_marker(self, enum_def: EnumDefinition) -> None:
+        """Remove the completion marker so the cache is treated as partial."""
+        marker_file = self._get_enum_cache_marker_file(enum_def)
+        if marker_file.exists():
+            marker_file.unlink()
+
     def _load_enum_cache(self, enum_def: EnumDefinition) -> Optional[set[str]]:
         """Load cached enum values if available.
 
@@ -416,7 +445,7 @@ class BaseOntologyPlugin(ValidationPlugin):
                 values.add(row["curie"])
         return values
 
-    def _save_enum_cache(self, enum_def: EnumDefinition, values: set[str]) -> None:
+    def _save_enum_cache(self, enum_def: EnumDefinition, values: set[str], complete: bool = True) -> None:
         """Save expanded enum values to cache (greedy mode - writes all values).
 
         Writes a simple CSV file with header 'curie' and one CURIE per line.
@@ -437,6 +466,11 @@ class BaseOntologyPlugin(ValidationPlugin):
             for curie in sorted(values):
                 writer.writerow({"curie": curie})
 
+        if complete:
+            self._mark_enum_cache_complete(enum_def)
+        else:
+            self._clear_enum_cache_complete_marker(enum_def)
+
     def _add_to_enum_cache(self, enum_def: EnumDefinition, value: str) -> None:
         """Add a single value to the enum cache (progressive mode - appends).
 
@@ -451,6 +485,7 @@ class BaseOntologyPlugin(ValidationPlugin):
 
         cache_key = self._get_enum_cache_key(enum_def)
         cache_file = self._get_enum_cache_file(enum_def.name or "unknown", cache_key)
+        self._clear_enum_cache_complete_marker(enum_def)
 
         # Check if file exists (need to write header if not)
         file_exists = cache_file.exists()
@@ -487,8 +522,9 @@ class BaseOntologyPlugin(ValidationPlugin):
         This method is used when cache_strategy is "progressive". It:
         1. Checks the in-memory cache
         2. Checks the file cache
-        3. Optionally materializes the full enum lazily on first use
-        4. Falls back to per-value ontology checks when enum expansion caching is disabled
+        3. Reuses complete enum caches only when they are explicitly marked
+        4. Optionally saturates the cache by materializing the full enum on demand
+        5. Otherwise falls back to per-value ontology checks
 
         Args:
             value: CURIE to validate
@@ -501,22 +537,29 @@ class BaseOntologyPlugin(ValidationPlugin):
         enum_name = enum_def.name or "unknown"
 
         # 1. Check in-memory cache
-        if enum_name in self._enum_cache and value in self._enum_cache[enum_name]:
-            return True
+        if enum_name in self._enum_cache:
+            if value in self._enum_cache[enum_name]:
+                return True
+            if enum_name in self._closed_enum_caches:
+                return False
 
         # 2. Check file cache
         cached = self._load_enum_cache(enum_def)
         if cached is not None:
             # Store in memory for future lookups
             self._enum_cache[enum_name] = cached
+            if self._is_enum_cache_complete(enum_def):
+                self._closed_enum_caches.add(enum_name)
+                return value in cached
             if value in cached:
                 return True
 
-        # In progressive mode, lazily materialize the full enum on first use when
-        # enum expansion caching is enabled. This avoids repeating the same
-        # reachable_from traversal across validations while keeping expansion lazy.
+        # Progressive mode only treats a cache as authoritative when it carries an
+        # explicit completion marker. Otherwise fall back to ontology checks or
+        # opt-in saturation so legacy append-only caches remain safe.
         if (
             self.config.cache_enum_expansions
+            and self.config.saturate_enum_caches
             and self.is_dynamic_enum(enum_def)
             and schema_view is not None
         ):
@@ -679,15 +722,19 @@ class BaseOntologyPlugin(ValidationPlugin):
         """
         enum_name = enum_def.name or "unknown"
 
-        # Check in-memory cache first
-        if enum_name in self._enum_cache:
+        # Check in-memory cache first, but only trust dynamic enum caches when they
+        # are known complete.
+        if enum_name in self._enum_cache and (
+            not self.is_dynamic_enum(enum_def) or enum_name in self._closed_enum_caches
+        ):
             return self._enum_cache[enum_name]
 
-        # Check file cache for dynamic enums
-        if use_cache and self.is_dynamic_enum(enum_def):
+        # Check file cache for dynamic enums only when explicitly marked complete.
+        if use_cache and self.is_dynamic_enum(enum_def) and self._is_enum_cache_complete(enum_def):
             cached = self._load_enum_cache(enum_def)
             if cached is not None:
                 self._enum_cache[enum_name] = cached
+                self._closed_enum_caches.add(enum_name)
                 return cached
 
         # Expand the enum
@@ -733,6 +780,8 @@ class BaseOntologyPlugin(ValidationPlugin):
 
         # Cache the result
         self._enum_cache[enum_name] = values
+        if self.is_dynamic_enum(enum_def):
+            self._closed_enum_caches.add(enum_name)
         if use_cache and self.is_dynamic_enum(enum_def):
             self._save_enum_cache(enum_def, values)
 

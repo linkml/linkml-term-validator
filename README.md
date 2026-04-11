@@ -252,8 +252,9 @@ GO:0007049,cell cycle,2025-11-15T10:30:01
 
 ### Cache Behavior
 
-- **First run**: Queries ontology databases and lazily materializes dynamic enum closures on first use
-- **Subsequent runs**: Loads warm label and enum caches from disk
+- **First run**: Queries ontology databases and stores positive enum membership hits
+- **Subsequent runs**: Loads warm label caches and any previously seen enum hits from disk
+- **Closed enum caches**: Use `--saturate-enum-caches` or `cache_strategy=greedy` to materialize full closures and write an explicit `.complete` marker
 - **Cache location**: Configurable via `--cache-dir` flag
 - **Disable all file caching**: Use `--no-cache`
 - **Disable only enum expansion caching**: Use `--no-cache-enum-expansions`
@@ -479,6 +480,7 @@ plugins:
     oak_adapter_string: "sqlite:obo:"
     cache_labels: true
     cache_enum_expansions: true
+    saturate_enum_caches: false
     cache_dir: cache
 
   # Binding constraint validation
@@ -487,6 +489,7 @@ plugins:
     validate_labels: true
     cache_labels: true
     cache_enum_expansions: true
+    saturate_enum_caches: false
     cache_dir: cache
 ```
 
@@ -513,6 +516,7 @@ See the [examples/](examples/) directory for complete examples:
   oak_adapter_string: "sqlite:obo:"  # OAK adapter (default: sqlite:obo:)
   cache_labels: true                  # Enable label caching (default: true)
   cache_enum_expansions: true         # Enable enum expansion caching (default: true)
+  saturate_enum_caches: false         # Materialize full closures and mark caches complete
   cache_dir: cache                    # Cache directory (default: cache)
   oak_config_path: oak_config.yaml    # Optional: custom OAK config
 ```
@@ -525,6 +529,7 @@ See the [examples/](examples/) directory for complete examples:
   validate_labels: true               # Check labels match ontology (default: true)
   cache_labels: true                  # Enable label caching (default: true)
   cache_enum_expansions: true         # Enable enum expansion caching (default: true)
+  saturate_enum_caches: false         # Materialize full closures and mark caches complete
   cache_dir: cache                    # Cache directory (default: cache)
   oak_config_path: oak_config.yaml    # Optional: custom OAK config
 ```

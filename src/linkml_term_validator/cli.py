@@ -210,6 +210,13 @@ def validate_data(
             help="Enable file-based caching of expanded dynamic enum values",
         ),
     ] = True,
+    saturate_enum_caches: Annotated[
+        bool,
+        typer.Option(
+            "--saturate-enum-caches/--no-saturate-enum-caches",
+            help="Materialize full dynamic enum closures and mark enum caches complete",
+        ),
+    ] = False,
     config: Annotated[
         Optional[Path],
         typer.Option(
@@ -259,6 +266,7 @@ def validate_data(
                 cache_dir=cache_dir,
                 oak_config_path=config,
                 cache_enum_expansions=cache_enum_expansions and not no_cache,
+                saturate_enum_caches=saturate_enum_caches and not no_cache,
                 cache_strategy=strategy,
             )
         )
@@ -273,6 +281,7 @@ def validate_data(
                 cache_dir=cache_dir,
                 oak_config_path=config,
                 cache_enum_expansions=cache_enum_expansions and not no_cache,
+                saturate_enum_caches=saturate_enum_caches and not no_cache,
                 cache_strategy=strategy,
             )
         )
@@ -381,7 +390,7 @@ def validate_all(
         Path,
         typer.Option(
             "--cache-dir",
-            help="Directory for caching ontology labels",
+            help="Directory for caching ontology labels and dynamic enum expansions",
         ),
     ] = Path("cache"),
     cache_enum_expansions: Annotated[
@@ -391,6 +400,13 @@ def validate_all(
             help="Enable file-based caching of expanded dynamic enum values",
         ),
     ] = True,
+    saturate_enum_caches: Annotated[
+        bool,
+        typer.Option(
+            "--saturate-enum-caches/--no-saturate-enum-caches",
+            help="Materialize full dynamic enum closures and mark enum caches complete",
+        ),
+    ] = False,
     config: Annotated[
         Optional[Path],
         typer.Option(
@@ -444,6 +460,7 @@ def validate_all(
             no_cache=no_cache,
             cache_dir=cache_dir,
             cache_enum_expansions=cache_enum_expansions,
+            saturate_enum_caches=saturate_enum_caches,
             config=config,
             cache_strategy=cache_strategy,
         )

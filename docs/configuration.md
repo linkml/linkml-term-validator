@@ -11,6 +11,8 @@ The primary way to configure ontology access is through an `oak_config.yaml` fil
 ```yaml
 # Cache strategy for dynamic enums (optional)
 cache_strategy: progressive  # or "greedy"
+cache_enum_expansions: true
+saturate_enum_caches: false
 
 # Ontology adapter mappings
 ontology_adapters:
@@ -405,6 +407,8 @@ plugin = DynamicEnumPlugin(
     oak_adapter_string="sqlite:obo:",
     oak_config_path="oak_config.yaml",
     cache_labels=True,
+    cache_enum_expansions=True,
+    saturate_enum_caches=False,
     cache_dir="cache",
     cache_strategy=CacheStrategy.PROGRESSIVE,  # or GREEDY
 )
@@ -421,6 +425,8 @@ plugin = BindingValidationPlugin(
     oak_config_path="oak_config.yaml",
     validate_labels=True,  # Also check labels match ontology
     cache_labels=True,
+    cache_enum_expansions=True,
+    saturate_enum_caches=False,
     cache_dir="cache",
     cache_strategy=CacheStrategy.PROGRESSIVE,  # or GREEDY
 )
@@ -445,6 +451,8 @@ plugins:
   "linkml_term_validator.plugins.DynamicEnumPlugin":
     oak_adapter_string: "sqlite:obo:"
     cache_labels: true
+    cache_enum_expansions: true
+    saturate_enum_caches: false
     cache_dir: cache
     cache_strategy: progressive  # or "greedy"
     oak_config_path: oak_config.yaml
@@ -453,6 +461,8 @@ plugins:
     oak_adapter_string: "sqlite:obo:"
     validate_labels: true
     cache_labels: true
+    cache_enum_expansions: true
+    saturate_enum_caches: false
     cache_dir: cache
     cache_strategy: progressive  # or "greedy"
     oak_config_path: oak_config.yaml

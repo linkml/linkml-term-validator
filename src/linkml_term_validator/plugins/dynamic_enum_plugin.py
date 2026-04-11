@@ -51,6 +51,7 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
         oak_adapter_string: str = "sqlite:obo:",
         cache_labels: bool = True,
         cache_enum_expansions: bool = True,
+        saturate_enum_caches: bool = False,
         cache_dir: Path | str = Path("cache"),
         oak_config_path: Optional[Path | str] = None,
         cache_strategy: Literal["progressive", "greedy"] | CacheStrategy = CacheStrategy.PROGRESSIVE,
@@ -61,6 +62,7 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
             oak_adapter_string: Default OAK adapter string (e.g., "sqlite:obo:")
             cache_labels: Whether to cache ontology labels to disk
             cache_enum_expansions: Whether to cache expanded dynamic enum values to disk
+            saturate_enum_caches: Whether progressive validation should materialize full enum closures
             cache_dir: Directory for label cache files
             oak_config_path: Path to oak_config.yaml for per-prefix adapters
             cache_strategy: Caching strategy for dynamic enums ('progressive' or 'greedy')
@@ -69,6 +71,7 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
             oak_adapter_string=oak_adapter_string,
             cache_labels=cache_labels,
             cache_enum_expansions=cache_enum_expansions,
+            saturate_enum_caches=saturate_enum_caches,
             cache_dir=cache_dir,
             oak_config_path=oak_config_path,
             cache_strategy=cache_strategy,

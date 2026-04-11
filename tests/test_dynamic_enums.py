@@ -215,34 +215,96 @@ def test_dynamic_enum_plugin_with_cache(dynamic_enum_schema, valid_data, oak_con
 def test_dynamic_enum_plugin_progressive_warm_cache_avoids_reexpansion(
     dynamic_enum_schema, valid_data, oak_config, tmp_path
 ):
-    """Progressive mode should lazily materialize enum caches and reuse them."""
+    """Progressive mode can opt into saturated caches with an explicit marker."""
     cache_dir = tmp_path / "progressive_cache"
-    expansion_calls: list[int] = []
+    first_data = tmp_path / "first.yaml"
+    second_data = tmp_path / "second.yaml"
+    first_data.write_text("- id: sample1\n  term: TEST:0000002\n")
+    second_data.write_text("- id: sample2\n  term: TEST:0000004\n")
 
-    for _ in range(2):
-        plugin = DynamicEnumPlugin(
-            cache_dir=cache_dir,
-            oak_config_path=oak_config,
-            cache_strategy=CacheStrategy.PROGRESSIVE,
-        )
-        original_expand = plugin._expand_reachable_from
-        calls = 0
+    plugin1 = DynamicEnumPlugin(
+        cache_dir=cache_dir,
+        oak_config_path=oak_config,
+        cache_strategy=CacheStrategy.PROGRESSIVE,
+        saturate_enum_caches=True,
+    )
+    validator1 = Validator(
+        schema=str(dynamic_enum_schema),
+        validation_plugins=[plugin1],
+    )
+    report1 = validator1.validate_source(YamlLoader(first_data), target_class="Sample")
+    assert len(report1.results) == 0
 
-        def wrapped(query):
-            nonlocal calls
-            calls += 1
-            return original_expand(query)
+    enum_def = plugin1.schema_view.get_enum("RootDescendantsEnum")
+    marker_file = plugin1._get_enum_cache_marker_file(enum_def)
+    assert marker_file.exists()
 
-        plugin._expand_reachable_from = wrapped  # type: ignore[method-assign]
+    plugin2 = DynamicEnumPlugin(
+        cache_dir=cache_dir,
+        oak_config_path=oak_config,
+        cache_strategy=CacheStrategy.PROGRESSIVE,
+        saturate_enum_caches=True,
+    )
+    original_reachable = plugin2._is_value_in_reachable_from
+    reachable_calls = 0
 
-        validator = Validator(
-            schema=str(dynamic_enum_schema),
-            validation_plugins=[plugin],
-        )
-        report = validator.validate_source(YamlLoader(valid_data), target_class="Sample")
-        assert len(report.results) == 0
-        expansion_calls.append(calls)
+    def wrapped(value, query):
+        nonlocal reachable_calls
+        reachable_calls += 1
+        return original_reachable(value, query)
 
-    assert expansion_calls[0] > 0
-    assert expansion_calls[1] == 0
-    assert list((cache_dir / "enums").glob("*.csv"))
+    plugin2._is_value_in_reachable_from = wrapped  # type: ignore[method-assign]
+
+    validator2 = Validator(
+        schema=str(dynamic_enum_schema),
+        validation_plugins=[plugin2],
+    )
+    report2 = validator2.validate_source(YamlLoader(second_data), target_class="Sample")
+    assert len(report2.results) == 0
+    assert reachable_calls == 0
+
+
+def test_dynamic_enum_plugin_partial_cache_falls_back_to_ontology(
+    dynamic_enum_schema, oak_config, tmp_path
+):
+    """Unmarked enum caches are treated as partial membership caches, not full closures."""
+    from linkml_runtime import SchemaView
+
+    cache_dir = tmp_path / "partial_cache"
+    plugin = DynamicEnumPlugin(
+        cache_dir=cache_dir,
+        oak_config_path=oak_config,
+        cache_strategy=CacheStrategy.PROGRESSIVE,
+    )
+
+    validator = Validator(
+        schema=str(dynamic_enum_schema),
+        validation_plugins=[plugin],
+    )
+
+    data_path = tmp_path / "partial_cache_data.yaml"
+    data_path.write_text("- id: sample1\n  term: TEST:0000003\n")
+
+    enum_def = SchemaView(str(dynamic_enum_schema)).get_enum("RootDescendantsEnum")
+    cache_file = plugin._get_enum_cache_file(
+        enum_def.name or "unknown",
+        plugin._get_enum_cache_key(enum_def),
+    )
+    cache_file.parent.mkdir(parents=True, exist_ok=True)
+    cache_file.write_text("curie\nTEST:0000002\n")
+
+    original_reachable = plugin._is_value_in_reachable_from
+    reachable_calls = 0
+
+    def wrapped(value, query):
+        nonlocal reachable_calls
+        reachable_calls += 1
+        return original_reachable(value, query)
+
+    plugin._is_value_in_reachable_from = wrapped  # type: ignore[method-assign]
+
+    report = validator.validate_source(YamlLoader(data_path), target_class="Sample")
+    assert len(report.results) == 0
+    assert reachable_calls > 0
+    assert not plugin._get_enum_cache_marker_file(enum_def).exists()
+    assert "TEST:0000003" in cache_file.read_text()
