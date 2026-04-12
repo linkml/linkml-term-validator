@@ -1,13 +1,73 @@
 """Tests for cache stability - verifying no spurious diffs."""
 
 import csv
+import multiprocessing as mp
 from pathlib import Path
+import time
 
 import pytest
 
 from linkml_term_validator.models import ValidationConfig
 from linkml_term_validator.plugins import PermissibleValueMeaningPlugin
 from linkml_term_validator.validator import EnumValidator
+
+CONCURRENT_WRITE_DELAY = 0.2
+
+
+class SlowPermissibleValueMeaningPlugin(PermissibleValueMeaningPlugin):
+    """Delay cache reloads to widen the concurrent write window in tests."""
+
+    def _load_cache_with_timestamps(self, prefix: str) -> dict[str, dict[str, str]]:
+        cached = super()._load_cache_with_timestamps(prefix)
+        time.sleep(CONCURRENT_WRITE_DELAY)
+        return cached
+
+
+class SlowEnumValidator(EnumValidator):
+    """Delay cache reloads to widen the concurrent write window in tests."""
+
+    def _load_cache_with_timestamps(self, prefix: str) -> dict[str, dict[str, str]]:
+        cached = super()._load_cache_with_timestamps(prefix)
+        time.sleep(CONCURRENT_WRITE_DELAY)
+        return cached
+
+
+def _plugin_cache_worker(cache_dir: str, curie: str, barrier) -> None:
+    plugin = SlowPermissibleValueMeaningPlugin(cache_labels=True, cache_dir=Path(cache_dir))
+    barrier.wait()
+    plugin._save_to_cache("GO", curie, f"label-{curie}")
+
+
+def _validator_cache_worker(cache_dir: str, curie: str, barrier) -> None:
+    config = ValidationConfig(cache_labels=True, cache_dir=Path(cache_dir))
+    validator = SlowEnumValidator(config)
+    barrier.wait()
+    validator._save_to_cache("GO", curie, f"label-{curie}")
+
+
+def _run_concurrent_cache_writers(cache_dir: Path, worker) -> Path:
+    ctx = mp.get_context("spawn")
+    curies = [f"GO:{i:07d}" for i in range(1, 7)]
+    barrier = ctx.Barrier(len(curies))
+    processes = [
+        ctx.Process(target=worker, args=(str(cache_dir), curie, barrier))
+        for curie in curies
+    ]
+
+    for process in processes:
+        process.start()
+    for process in processes:
+        process.join(timeout=20)
+
+    for process in processes:
+        assert process.exitcode == 0, f"worker {process.pid} failed with exit code {process.exitcode}"
+
+    cache_file = cache_dir / "go" / "terms.csv"
+    assert cache_file.exists()
+    rows = _read_terms_csv(cache_file)
+    assert [row["curie"] for row in rows] == sorted(curies)
+    assert b"\x00" not in cache_file.read_bytes()
+    return cache_file
 
 
 @pytest.fixture
@@ -148,6 +208,10 @@ class TestBasePluginCacheStability:
         content_after = cache_file.read_text()
         assert content_before == content_after
 
+    def test_concurrent_saves_preserve_all_entries(self, cache_dir):
+        """Concurrent plugin writers should serialize cache updates safely."""
+        _run_concurrent_cache_writers(cache_dir, _plugin_cache_worker)
+
 
 class TestValidatorCacheStability:
     """Tests for EnumValidator cache stability."""
@@ -211,6 +275,10 @@ class TestValidatorCacheStability:
 
         content_after = cache_file.read_text()
         assert content_before == content_after
+
+    def test_concurrent_saves_preserve_all_entries(self, cache_dir):
+        """Concurrent validator writers should serialize cache updates safely."""
+        _run_concurrent_cache_writers(cache_dir, _validator_cache_worker)
 
 
 class TestCacheLFLineEndings:

@@ -11,6 +11,7 @@ from linkml_runtime.utils.schemaview import SchemaView
 from oaklib import get_adapter
 from ruamel.yaml import YAML
 
+from linkml_term_validator.cache_utils import atomic_write_csv, locked_cache_file
 from linkml_term_validator.models import (
     SeverityLevel,
     ValidationConfig,
@@ -182,26 +183,25 @@ class EnumValidator:
 
         cache_file = self._get_cache_file(prefix)
 
-        # Load existing cache with timestamps preserved
-        existing = self._load_cache_with_timestamps(prefix)
+        with locked_cache_file(cache_file):
+            existing = self._load_cache_with_timestamps(prefix)
 
-        # Only set new timestamp if entry is new or label changed
-        now = datetime.now().isoformat()
-        if curie not in existing or existing[curie]["label"] != label:
-            existing[curie] = {"label": label, "retrieved_at": now}
+            now = datetime.now().isoformat()
+            if curie not in existing or existing[curie]["label"] != label:
+                existing[curie] = {"label": label, "retrieved_at": now}
 
-        # Write back sorted by curie for deterministic output
-        with open(cache_file, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["curie", "label", "retrieved_at"], lineterminator="\n")
-            writer.writeheader()
-            for c in sorted(existing.keys()):
-                writer.writerow(
+            atomic_write_csv(
+                cache_file,
+                ["curie", "label", "retrieved_at"],
+                (
                     {
-                        "curie": c,
-                        "label": existing[c]["label"],
-                        "retrieved_at": existing[c]["retrieved_at"],
+                        "curie": cached_curie,
+                        "label": existing[cached_curie]["label"],
+                        "retrieved_at": existing[cached_curie]["retrieved_at"],
                     }
-                )
+                    for cached_curie in sorted(existing)
+                ),
+            )
 
     def _get_adapter(self, prefix: str) -> object | None:
         """Get an OAK adapter for a prefix.
