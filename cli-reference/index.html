@@ -2165,13 +2165,19 @@ Consider adding these to oak_config.yaml to enable validation.
 <td><code>--cache-strategy TEXT</code></td>
 <td>String</td>
 <td><code>progressive</code></td>
-<td>Caching strategy for dynamic enums: <code>progressive</code> (lazy per enum) or <code>greedy</code> (expand upfront)</td>
+<td>Caching strategy for dynamic enums: <code>progressive</code> (positive-hit cache) or <code>greedy</code> (expand upfront)</td>
 </tr>
 <tr>
 <td><code>--cache-enum-expansions/--no-cache-enum-expansions</code></td>
 <td>Flag</td>
 <td>True</td>
 <td>Enable or disable file-based caching of expanded dynamic enums</td>
+</tr>
+<tr>
+<td><code>--saturate-enum-caches/--no-saturate-enum-caches</code></td>
+<td>Flag</td>
+<td>False</td>
+<td>In progressive mode, materialize full enum closures and mark caches complete</td>
 </tr>
 <tr>
 <td><code>--no-cache</code></td>
@@ -2390,6 +2396,7 @@ linkml-term-validator validate-schema schema.yaml
 <pre><code class="language-yaml"># Cache strategy (optional): &quot;progressive&quot; (default) or &quot;greedy&quot;
 cache_strategy: progressive
 cache_enum_expansions: true
+saturate_enum_caches: false
 
 ontology_adapters:
   GO: sqlite:obo:go

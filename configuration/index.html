@@ -1856,6 +1856,8 @@
 <h3 id="basic-structure">Basic Structure</h3>
 <pre><code class="language-yaml"># Cache strategy for dynamic enums (optional)
 cache_strategy: progressive  # or &quot;greedy&quot;
+cache_enum_expansions: true
+saturate_enum_caches: false
 
 # Ontology adapter mappings
 ontology_adapters:
@@ -2140,6 +2142,8 @@ plugin = DynamicEnumPlugin(
     oak_adapter_string=&quot;sqlite:obo:&quot;,
     oak_config_path=&quot;oak_config.yaml&quot;,
     cache_labels=True,
+    cache_enum_expansions=True,
+    saturate_enum_caches=False,
     cache_dir=&quot;cache&quot;,
     cache_strategy=CacheStrategy.PROGRESSIVE,  # or GREEDY
 )
@@ -2153,6 +2157,8 @@ plugin = BindingValidationPlugin(
     oak_config_path=&quot;oak_config.yaml&quot;,
     validate_labels=True,  # Also check labels match ontology
     cache_labels=True,
+    cache_enum_expansions=True,
+    saturate_enum_caches=False,
     cache_dir=&quot;cache&quot;,
     cache_strategy=CacheStrategy.PROGRESSIVE,  # or GREEDY
 )
@@ -2173,6 +2179,8 @@ plugins:
   &quot;linkml_term_validator.plugins.DynamicEnumPlugin&quot;:
     oak_adapter_string: &quot;sqlite:obo:&quot;
     cache_labels: true
+    cache_enum_expansions: true
+    saturate_enum_caches: false
     cache_dir: cache
     cache_strategy: progressive  # or &quot;greedy&quot;
     oak_config_path: oak_config.yaml
@@ -2181,6 +2189,8 @@ plugins:
     oak_adapter_string: &quot;sqlite:obo:&quot;
     validate_labels: true
     cache_labels: true
+    cache_enum_expansions: true
+    saturate_enum_caches: false
     cache_dir: cache
     cache_strategy: progressive  # or &quot;greedy&quot;
     oak_config_path: oak_config.yaml
