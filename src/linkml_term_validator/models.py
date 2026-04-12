@@ -26,7 +26,7 @@ class CacheStrategy(str, Enum):
     """
 
     PROGRESSIVE = "progressive"
-    """Lazily materialize enum caches on first use (default, scalable)."""
+    """Validate lazily and reuse positive cache hits (default, scalable)."""
 
     GREEDY = "greedy"
     """Expand entire enum upfront and cache all terms."""
@@ -238,6 +238,10 @@ class ValidationConfig(BaseModel):
         default=True,
         description="If True, cache expanded dynamic enum values to disk",
     )
+    saturate_enum_caches: bool = Field(
+        default=False,
+        description="If True, materialize full enum closures and mark enum caches complete",
+    )
     cache_strategy: CacheStrategy = Field(
         default=CacheStrategy.PROGRESSIVE,
         description="Caching strategy for dynamic enums: 'progressive' (default) or 'greedy'",
@@ -247,7 +251,8 @@ class ValidationConfig(BaseModel):
         description="Path to oak_config.yaml with per-prefix adapter settings",
     )
     cache_dir: Path = Field(
-        default=Path("cache"), description="Directory for caching ontology labels"
+        default=Path("cache"),
+        description="Directory for caching ontology labels and dynamic enum expansions",
     )
 
     def get_cache_dir(self) -> Path:

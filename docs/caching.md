@@ -45,6 +45,7 @@ Dynamic enums (those using `reachable_from`, `matches`, or `concepts`) can be ca
 cache/
 └── enums/
     ├── biologicalprocessenum_abc123.csv
+    ├── biologicalprocessenum_abc123.csv.complete
     ├── cellularcomponentenum_def456.csv
     └── ...
 ```
@@ -60,6 +61,8 @@ GO:0006260
 
 The cache filename includes a hash of the enum definition, so changes to source nodes or relationship types automatically invalidate the cache.
 
+An enum cache is only treated as a **full authoritative expansion** when a sibling `.complete` marker file exists. Unmarked enum cache CSVs are treated as append-only positive membership caches.
+
 ## Enum Caching Strategies
 
 The validator supports two strategies for caching dynamic enum values:
@@ -69,19 +72,20 @@ The validator supports two strategies for caching dynamic enum values:
 **Progressive caching** validates enums lazily:
 
 1. Check in-memory cache
-2. Check file cache
-3. On first use of a dynamic enum, materialize the full closure and save it
-4. Reuse the in-memory or file cache on subsequent lookups
+2. Check file cache for positive hits
+3. If the enum cache has a `.complete` marker, treat it as the full closure
+4. Otherwise fall back to ontology reachability checks and append valid hits
+5. Optionally use `--saturate-enum-caches` to materialize the full closure and write the `.complete` marker
 
 **Benefits:**
 - Avoids upfront expansion for enums that are never used
-- Warm runs do not repeat the same `reachable_from` traversals
+- Safely reuses existing partial caches from earlier runs or versions
 - Faster startup (no upfront expansion)
-- Still scales better than eager expansion across all enums in a schema
+- Can still be promoted to a closed cache when you want warm negative lookups too
 
 **Trade-offs:**
-- First use of a dynamic enum still pays the expansion cost
-- Large closures still occupy disk and memory once cached
+- Unseen valid terms still require ontology checks until the cache is saturated
+- Full warm negative lookups require either saturation or greedy mode
 
 ### Greedy Caching
 
@@ -104,10 +108,11 @@ The validator supports two strategies for caching dynamic enum values:
 ## Cache Behavior
 
 - **First run**: Queries ontology databases and saves label / enum caches
-- **Subsequent runs**: Loads warm caches from disk (very fast, no network/database access)
+- **Subsequent runs**: Loads warm label caches, positive enum hits, and any `.complete` enum closures from disk
 - **Cache location**: Configurable via `--cache-dir` flag
 - **Disable all file caching**: Use `--no-cache`
 - **Disable only enum expansion caching**: Use `--no-cache-enum-expansions`
+- **Close enum caches on demand**: Use `--saturate-enum-caches`
 
 ## Configuration
 
@@ -125,6 +130,9 @@ linkml-term-validator validate-data data.yaml -s schema.yaml --cache-strategy gr
 
 # Use progressive caching strategy (default, lazy validation)
 linkml-term-validator validate-data data.yaml -s schema.yaml --cache-strategy progressive
+
+# In progressive mode, fully materialize and mark enum caches complete
+linkml-term-validator validate-data data.yaml -s schema.yaml --saturate-enum-caches
 ```
 
 ### Python API
@@ -139,6 +147,7 @@ plugin = DynamicEnumPlugin(
     cache_labels=True,
     cache_enum_expansions=True,
     cache_strategy=CacheStrategy.PROGRESSIVE,
+    saturate_enum_caches=False,
 )
 
 # Greedy caching - expand all upfront
@@ -156,6 +165,7 @@ plugin = BindingValidationPlugin(
 # Set cache strategy globally
 cache_strategy: progressive  # or "greedy"
 cache_enum_expansions: true
+saturate_enum_caches: false
 
 # Configure ontology adapters
 ontology_adapters:
@@ -172,6 +182,7 @@ plugins:
     oak_adapter_string: "sqlite:obo:"
     cache_labels: true
     cache_enum_expansions: true
+    saturate_enum_caches: false
     cache_dir: cache
     cache_strategy: progressive  # or "greedy"
 ```
@@ -183,11 +194,11 @@ plugins:
 | Large ontologies (SNOMED, NCBI Taxonomy) | Progressive |
 | Small, stable enums (< 1000 terms) | Greedy |
 | First-time validation of new dataset | Progressive |
-| Repeated validation of same dataset | Either (after initial cache) |
+| Repeated validation of same dataset | Progressive + `--saturate-enum-caches`, or Greedy |
 | CI/CD pipelines | Greedy (deterministic) |
 | Interactive development | Progressive (faster startup) |
 
-**Rule of thumb**: Start with progressive (the default). Switch to greedy only if you need deterministic behavior or are validating the same small dataset repeatedly.
+**Rule of thumb**: Start with progressive (the default). Use `--saturate-enum-caches` when you want to close and reuse caches without switching the whole run to greedy mode.
 
 ## When to Clear Cache
 

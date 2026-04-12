@@ -189,8 +189,9 @@ linkml-term-validator validate-data [OPTIONS] DATA_PATHS...
 | `--config PATH` | Path | None | Path to OAK config file |
 | `--adapter TEXT` | String | `"sqlite:obo:"` | Default OAK adapter string |
 | `--cache-dir PATH` | Path | `cache` | Directory for caching ontology labels and dynamic enums |
-| `--cache-strategy TEXT` | String | `progressive` | Caching strategy for dynamic enums: `progressive` (lazy per enum) or `greedy` (expand upfront) |
+| `--cache-strategy TEXT` | String | `progressive` | Caching strategy for dynamic enums: `progressive` (positive-hit cache) or `greedy` (expand upfront) |
 | `--cache-enum-expansions/--no-cache-enum-expansions` | Flag | True | Enable or disable file-based caching of expanded dynamic enums |
+| `--saturate-enum-caches/--no-saturate-enum-caches` | Flag | False | In progressive mode, materialize full enum closures and mark caches complete |
 | `--no-cache` | Flag | False | Disable file-based label and enum caching |
 | `--labels` | Flag | False | Validate that labels match ontology canonical labels |
 | `--lenient/--no-lenient` | Flag | False | Lenient mode: don't fail when term IDs are not found in ontology |
@@ -436,6 +437,7 @@ Controls which ontology adapters to use for different prefixes, and optionally t
 # Cache strategy (optional): "progressive" (default) or "greedy"
 cache_strategy: progressive
 cache_enum_expansions: true
+saturate_enum_caches: false
 
 ontology_adapters:
   GO: sqlite:obo:go
