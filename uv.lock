@@ -834,6 +834,15 @@ wheels = [
 ]
 
 [[package]]
+name = "filelock"
+version = "3.25.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/94/b8/00651a0f559862f3bb7d6f7477b192afe3f583cc5e26403b44e59a55ab34/filelock-3.25.2.tar.gz", hash = "sha256:b64ece2b38f4ca29dd3e810287aa8c48182bbecd1ae6e9ae126c9b35f1382694", size = 40480 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a4/a5/842ae8f0c08b61d6484b52f99a03510a3a72d23141942d216ebe81fefbce/filelock-3.25.2-py3-none-any.whl", hash = "sha256:ca8afb0da15f229774c9ad1b455ed96e85a81373065fb10446672f64444ddf70", size = 26759 },
+]
+
+[[package]]
 name = "fqdn"
 version = "1.5.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1839,6 +1848,7 @@ wheels = [
 name = "linkml-term-validator"
 source = { editable = "." }
 dependencies = [
+    { name = "filelock" },
     { name = "linkml" },
     { name = "linkml-runtime" },
     { name = "oaklib" },
@@ -1862,6 +1872,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "filelock", specifier = ">=3.16.1" },
     { name = "linkml", specifier = ">=1.9.3" },
     { name = "linkml-runtime", specifier = ">=1.9.4" },
     { name = "oaklib", specifier = ">=0.6.23" },

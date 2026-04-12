@@ -27,6 +27,7 @@ from linkml_runtime.linkml_model import EnumDefinition
 from oaklib import get_adapter
 from ruamel.yaml import YAML
 
+from linkml_term_validator.cache_utils import atomic_write_csv, locked_cache_file
 from linkml_term_validator.models import CacheStrategy, ValidationConfig
 
 
@@ -226,26 +227,27 @@ class BaseOntologyPlugin(ValidationPlugin):
         """
         cache_file = self._get_cache_file(prefix)
 
-        # Load existing cache with timestamps preserved
-        existing = self._load_cache_with_timestamps(prefix)
+        # Lock, re-read, merge, and atomically replace the cache file so
+        # parallel validators do not lose entries or leave truncated files.
+        with locked_cache_file(cache_file):
+            existing = self._load_cache_with_timestamps(prefix)
 
-        # Only set new timestamp if entry is new or label changed
-        now = datetime.now().isoformat()
-        if curie not in existing or existing[curie]["label"] != label:
-            existing[curie] = {"label": label, "retrieved_at": now}
+            now = datetime.now().isoformat()
+            if curie not in existing or existing[curie]["label"] != label:
+                existing[curie] = {"label": label, "retrieved_at": now}
 
-        # Write back sorted by curie for deterministic output
-        with open(cache_file, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["curie", "label", "retrieved_at"], lineterminator="\n")
-            writer.writeheader()
-            for c in sorted(existing.keys()):
-                writer.writerow(
+            atomic_write_csv(
+                cache_file,
+                ["curie", "label", "retrieved_at"],
+                (
                     {
-                        "curie": c,
-                        "label": existing[c]["label"],
-                        "retrieved_at": existing[c]["retrieved_at"],
+                        "curie": cached_curie,
+                        "label": existing[cached_curie]["label"],
+                        "retrieved_at": existing[cached_curie]["retrieved_at"],
                     }
-                )
+                    for cached_curie in sorted(existing)
+                ),
+            )
 
     def _get_adapter(self, prefix: str) -> object | None:
         """Get an OAK adapter for a prefix.
@@ -460,16 +462,17 @@ class BaseOntologyPlugin(ValidationPlugin):
         cache_key = self._get_enum_cache_key(enum_def)
         cache_file = self._get_enum_cache_file(enum_def.name or "unknown", cache_key)
 
-        with open(cache_file, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["curie"], lineterminator="\n")
-            writer.writeheader()
-            for curie in sorted(values):
-                writer.writerow({"curie": curie})
+        with locked_cache_file(cache_file):
+            atomic_write_csv(
+                cache_file,
+                ["curie"],
+                ({"curie": curie} for curie in sorted(values)),
+            )
 
-        if complete:
-            self._mark_enum_cache_complete(enum_def)
-        else:
-            self._clear_enum_cache_complete_marker(enum_def)
+            if complete:
+                self._mark_enum_cache_complete(enum_def)
+            else:
+                self._clear_enum_cache_complete_marker(enum_def)
 
     def _add_to_enum_cache(self, enum_def: EnumDefinition, value: str) -> None:
         """Add a single value to the enum cache (progressive mode - appends).
@@ -485,16 +488,17 @@ class BaseOntologyPlugin(ValidationPlugin):
 
         cache_key = self._get_enum_cache_key(enum_def)
         cache_file = self._get_enum_cache_file(enum_def.name or "unknown", cache_key)
-        self._clear_enum_cache_complete_marker(enum_def)
 
-        # Check if file exists (need to write header if not)
-        file_exists = cache_file.exists()
-
-        with open(cache_file, "a", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["curie"], lineterminator="\n")
-            if not file_exists:
-                writer.writeheader()
-            writer.writerow({"curie": value})
+        with locked_cache_file(cache_file):
+            # Progressive caches append positive hits, but the append must still be
+            # serialized so concurrent validators do not interleave rows or headers.
+            self._clear_enum_cache_complete_marker(enum_def)
+            file_exists = cache_file.exists()
+            with open(cache_file, "a", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=["curie"], lineterminator="\n")
+                if not file_exists:
+                    writer.writeheader()
+                writer.writerow({"curie": value})
 
     def pre_process(self, context: ValidationContext) -> None:
         """Hook called before instances are processed.
