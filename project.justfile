@@ -51,3 +51,12 @@ clean-notebooks:
 [group('documentation')]
 jupyter:
   uv run jupyter lab notebooks/
+
+# Build Marp slide deck to HTML and PDF
+[group('documentation')]
+gen-slides:
+  @echo "Building slides with Marp..."
+  @mkdir -p docs/slides/output
+  npx @marp-team/marp-cli docs/slides/ltv-slides.md -o docs/slides/output/ltv-slides.html
+  npx @marp-team/marp-cli docs/slides/ltv-slides.md -o docs/slides/output/ltv-slides.pdf
+  @echo "✅ Slides built: docs/slides/output/ltv-slides.html and ltv-slides.pdf"
