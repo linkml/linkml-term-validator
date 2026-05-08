@@ -6,9 +6,10 @@ from pathlib import Path
 import time
 
 import pytest
+from linkml_runtime.linkml_model import EnumDefinition
 
 from linkml_term_validator.models import ValidationConfig
-from linkml_term_validator.plugins import PermissibleValueMeaningPlugin
+from linkml_term_validator.plugins import DynamicEnumPlugin, PermissibleValueMeaningPlugin
 from linkml_term_validator.validator import EnumValidator
 
 CONCURRENT_WRITE_DELAY = 0.2
@@ -96,6 +97,12 @@ def _read_terms_csv(cache_file: Path) -> list[dict[str, str]]:
         for row in reader:
             rows.append(dict(row))
     return rows
+
+
+def _read_enum_csv(cache_file: Path) -> list[str]:
+    """Helper to read enum cache CURIEs."""
+    with open(cache_file) as f:
+        return [row["curie"] for row in csv.DictReader(f)]
 
 
 class TestBasePluginCacheStability:
@@ -211,6 +218,21 @@ class TestBasePluginCacheStability:
     def test_concurrent_saves_preserve_all_entries(self, cache_dir):
         """Concurrent plugin writers should serialize cache updates safely."""
         _run_concurrent_cache_writers(cache_dir, _plugin_cache_worker)
+
+    def test_progressive_enum_cache_sorts_after_each_insert(self, cache_dir):
+        """Progressive enum cache writes should stay sorted by CURIE."""
+        plugin = DynamicEnumPlugin(cache_dir=cache_dir)
+        enum_def = EnumDefinition(name="SortedEnum")
+        cache_file = plugin._get_enum_cache_file(
+            enum_def.name or "unknown",
+            plugin._get_enum_cache_key(enum_def),
+        )
+
+        plugin._add_to_enum_cache(enum_def, "TEST:0000003")
+        assert _read_enum_csv(cache_file) == ["TEST:0000003"]
+
+        plugin._add_to_enum_cache(enum_def, "TEST:0000001")
+        assert _read_enum_csv(cache_file) == ["TEST:0000001", "TEST:0000003"]
 
 
 class TestValidatorCacheStability:
