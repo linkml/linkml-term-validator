@@ -475,9 +475,10 @@ class BaseOntologyPlugin(ValidationPlugin):
                 self._clear_enum_cache_complete_marker(enum_def)
 
     def _add_to_enum_cache(self, enum_def: EnumDefinition, value: str) -> None:
-        """Add a single value to the enum cache (progressive mode - appends).
+        """Add a single value to the enum cache (progressive mode).
 
-        Appends a single CURIE to the cache file. Creates file with header if needed.
+        Merges the CURIE with existing cached values and rewrites the cache sorted
+        by CURIE for deterministic output.
 
         Args:
             enum_def: Enum definition
@@ -490,15 +491,14 @@ class BaseOntologyPlugin(ValidationPlugin):
         cache_file = self._get_enum_cache_file(enum_def.name or "unknown", cache_key)
 
         with locked_cache_file(cache_file):
-            # Progressive caches append positive hits, but the append must still be
-            # serialized so concurrent validators do not interleave rows or headers.
+            existing = self._load_enum_cache(enum_def) or set()
+            existing.add(value)
             self._clear_enum_cache_complete_marker(enum_def)
-            file_exists = cache_file.exists()
-            with open(cache_file, "a", newline="") as f:
-                writer = csv.DictWriter(f, fieldnames=["curie"], lineterminator="\n")
-                if not file_exists:
-                    writer.writeheader()
-                writer.writerow({"curie": value})
+            atomic_write_csv(
+                cache_file,
+                ["curie"],
+                ({"curie": curie} for curie in sorted(existing)),
+            )
 
     def pre_process(self, context: ValidationContext) -> None:
         """Hook called before instances are processed.
