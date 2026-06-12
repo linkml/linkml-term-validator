@@ -9,6 +9,12 @@ The primary way to configure ontology access is through an `oak_config.yaml` fil
 ### Basic Structure
 
 ```yaml
+# Cache strategy for dynamic enums (optional)
+cache_strategy: progressive  # or "greedy"
+cache_enum_expansions: true
+saturate_enum_caches: false
+
+# Ontology adapter mappings
 ontology_adapters:
   # Prefix: adapter_string
   GO: sqlite:obo:go
@@ -221,6 +227,18 @@ linkml-term-validator validate-schema --no-cache schema.yaml
 
 This forces fresh lookups from the ontology source every time. Useful for testing or when you want guaranteed fresh data.
 
+**Cache strategy (data validation):**
+
+```bash
+# Progressive (default) - validates lazily, caches valid terms as encountered
+linkml-term-validator validate-data --cache-strategy progressive data.yaml -s schema.yaml
+
+# Greedy - expands entire enum upfront and caches all terms
+linkml-term-validator validate-data --cache-strategy greedy data.yaml -s schema.yaml
+```
+
+See [Caching](caching.md#enum-caching-strategies) for details on when to use each strategy.
+
 ### Validation Behavior
 
 **Strict mode:**
@@ -383,12 +401,16 @@ plugin = PermissibleValueMeaningPlugin(
 
 ```python
 from linkml_term_validator.plugins import DynamicEnumPlugin
+from linkml_term_validator.models import CacheStrategy
 
 plugin = DynamicEnumPlugin(
     oak_adapter_string="sqlite:obo:",
     oak_config_path="oak_config.yaml",
     cache_labels=True,
+    cache_enum_expansions=True,
+    saturate_enum_caches=False,
     cache_dir="cache",
+    cache_strategy=CacheStrategy.PROGRESSIVE,  # or GREEDY
 )
 ```
 
@@ -396,13 +418,17 @@ plugin = DynamicEnumPlugin(
 
 ```python
 from linkml_term_validator.plugins import BindingValidationPlugin
+from linkml_term_validator.models import CacheStrategy
 
 plugin = BindingValidationPlugin(
     oak_adapter_string="sqlite:obo:",
     oak_config_path="oak_config.yaml",
     validate_labels=True,  # Also check labels match ontology
     cache_labels=True,
+    cache_enum_expansions=True,
+    saturate_enum_caches=False,
     cache_dir="cache",
+    cache_strategy=CacheStrategy.PROGRESSIVE,  # or GREEDY
 )
 ```
 
@@ -425,14 +451,20 @@ plugins:
   "linkml_term_validator.plugins.DynamicEnumPlugin":
     oak_adapter_string: "sqlite:obo:"
     cache_labels: true
+    cache_enum_expansions: true
+    saturate_enum_caches: false
     cache_dir: cache
+    cache_strategy: progressive  # or "greedy"
     oak_config_path: oak_config.yaml
 
   "linkml_term_validator.plugins.BindingValidationPlugin":
     oak_adapter_string: "sqlite:obo:"
     validate_labels: true
     cache_labels: true
+    cache_enum_expansions: true
+    saturate_enum_caches: false
     cache_dir: cache
+    cache_strategy: progressive  # or "greedy"
     oak_config_path: oak_config.yaml
 ```
 
@@ -503,3 +535,10 @@ Or use `--no-cache` to bypass caching:
 ```bash
 linkml-term-validator validate-schema --no-cache schema.yaml
 ```
+
+## See Also
+
+- [CLI Reference](cli-reference.md) - Complete command-line documentation
+- [Plugin Reference](plugin-reference.md) - Python API documentation
+- [Ontology Access](ontology-access.md) - How OAK adapters work
+- [Caching](caching.md) - Understanding the caching system

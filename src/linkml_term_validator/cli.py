@@ -16,7 +16,7 @@ from linkml.validator import Validator  # type: ignore[import-untyped]
 from linkml.validator.loaders import default_loader_for_file  # type: ignore[import-untyped]
 from typing_extensions import Annotated
 
-from linkml_term_validator.models import ValidationConfig
+from linkml_term_validator.models import CacheStrategy, ValidationConfig
 from linkml_term_validator.plugins import (
     BindingValidationPlugin,
     DynamicEnumPlugin,
@@ -65,7 +65,7 @@ def validate_schema(
         Path,
         typer.Option(
             "--cache-dir",
-            help="Directory for caching ontology labels",
+            help="Directory for caching ontology labels and dynamic enum expansions",
         ),
     ] = Path("cache"),
     config: Annotated[
@@ -130,11 +130,10 @@ def validate_schema(
 
 @app.command()
 def validate_data(
-    data_path: Annotated[
-        Path,
+    data_paths: Annotated[
+        list[Path],
         typer.Argument(
-            help="Path to data file (YAML/JSON)",
-            exists=True,
+            help="Path(s) to data file(s) (YAML/JSON)",
         ),
     ],
     schema_path: Annotated[
@@ -172,7 +171,14 @@ def validate_data(
         bool,
         typer.Option(
             "--labels/--no-labels",
-            help="Validate labels match ontology",
+            help="Validate labels match ontology (default: enabled)",
+        ),
+    ] = True,
+    lenient: Annotated[
+        bool,
+        typer.Option(
+            "--lenient/--no-lenient",
+            help="Lenient mode: don't fail when term IDs are not found in ontology",
         ),
     ] = False,
     adapter: Annotated[
@@ -183,13 +189,34 @@ def validate_data(
             help="OAK adapter string (default: sqlite:obo:)",
         ),
     ] = "sqlite:obo:",
+    no_cache: Annotated[
+        bool,
+        typer.Option(
+            "--no-cache",
+            help="Disable file-based label and enum caching",
+        ),
+    ] = False,
     cache_dir: Annotated[
         Path,
         typer.Option(
             "--cache-dir",
-            help="Directory for caching ontology labels",
+            help="Directory for caching ontology labels and dynamic enum expansions",
         ),
     ] = Path("cache"),
+    cache_enum_expansions: Annotated[
+        bool,
+        typer.Option(
+            "--cache-enum-expansions/--no-cache-enum-expansions",
+            help="Enable file-based caching of expanded dynamic enum values",
+        ),
+    ] = True,
+    saturate_enum_caches: Annotated[
+        bool,
+        typer.Option(
+            "--saturate-enum-caches/--no-saturate-enum-caches",
+            help="Materialize full dynamic enum closures and mark enum caches complete",
+        ),
+    ] = False,
     config: Annotated[
         Optional[Path],
         typer.Option(
@@ -198,6 +225,13 @@ def validate_data(
             help="Path to oak_config.yaml",
         ),
     ] = None,
+    cache_strategy: Annotated[
+        str,
+        typer.Option(
+            "--cache-strategy",
+            help="Caching strategy for dynamic enums: 'progressive' (lazy, default) or 'greedy' (expand upfront)",
+        ),
+    ] = "progressive",
 ):
     """Validate data against dynamic enums and binding constraints.
 
@@ -205,11 +239,22 @@ def validate_data(
     - Dynamic enum definitions (reachable_from, matches, concepts)
     - Binding constraints on nested object fields
 
+    Accepts multiple data files - each is validated independently.
+
     Examples:
         linkml-term-validator validate-data data.yaml --schema schema.yaml
         linkml-term-validator validate-data data.yaml -s schema.yaml -t Person
-        linkml-term-validator validate-data data.yaml -s schema.yaml --labels
+        linkml-term-validator validate-data *.yaml -s schema.yaml --labels
     """
+    # Verify all data files exist
+    for data_path in data_paths:
+        if not data_path.exists():
+            typer.echo(f"❌ File not found: {data_path}", err=True)
+            raise typer.Exit(code=1)
+
+    # Parse cache strategy
+    strategy = CacheStrategy(cache_strategy)
+
     # Build plugin list based on options
     plugins = []
 
@@ -217,8 +262,12 @@ def validate_data(
         plugins.append(
             DynamicEnumPlugin(
                 oak_adapter_string=adapter,
+                cache_labels=not no_cache,
                 cache_dir=cache_dir,
                 oak_config_path=config,
+                cache_enum_expansions=cache_enum_expansions and not no_cache,
+                saturate_enum_caches=saturate_enum_caches and not no_cache,
+                cache_strategy=strategy,
             )
         )
 
@@ -227,8 +276,13 @@ def validate_data(
             BindingValidationPlugin(
                 oak_adapter_string=adapter,
                 validate_labels=validate_labels,
+                strict=not lenient,
+                cache_labels=not no_cache,
                 cache_dir=cache_dir,
                 oak_config_path=config,
+                cache_enum_expansions=cache_enum_expansions and not no_cache,
+                saturate_enum_caches=saturate_enum_caches and not no_cache,
+                cache_strategy=strategy,
             )
         )
 
@@ -242,21 +296,46 @@ def validate_data(
         validation_plugins=plugins,
     )
 
-    # Load and validate data
-    loader = default_loader_for_file(data_path)
-    report = validator.validate_source(loader, target_class=target_class)
+    # Validate each data file
+    total_issues = 0
+    failed_files = []
 
-    # Print results
-    if len(report.results) == 0:
+    for data_path in data_paths:
+        loader = default_loader_for_file(data_path)
+        report = validator.validate_source(loader, target_class=target_class)
+
+        if len(report.results) == 0:
+            if len(data_paths) > 1:
+                typer.echo(f"✅ {data_path.name}")
+        else:
+            failed_files.append(data_path)
+            total_issues += len(report.results)
+            if len(data_paths) > 1:
+                typer.echo(f"\n❌ {data_path.name} - {len(report.results)} issue(s):")
+            else:
+                typer.echo(f"\n❌ Validation failed with {len(report.results)} issue(s):\n")
+            for result in report.results:
+                severity_emoji = "❌" if result.severity.name == "ERROR" else "⚠️ "
+                typer.echo(f"  {severity_emoji} {result.severity.name}: {result.message}")
+                if result.context:
+                    for ctx in result.context:
+                        typer.echo(f"      {ctx}")
+
+    # Output summary
+    if len(data_paths) > 1:
+        typer.echo("")
+        if failed_files:
+            typer.echo(
+                f"Summary: {len(failed_files)}/{len(data_paths)} files failed, "
+                f"{total_issues} total issue(s)"
+            )
+        else:
+            typer.echo(f"✅ All {len(data_paths)} files passed validation")
+    elif not failed_files:
+        # Single file success
         typer.echo("✅ Validation passed")
-    else:
-        typer.echo(f"\n❌ Validation failed with {len(report.results)} issue(s):\n")
-        for result in report.results:
-            severity_emoji = "❌" if result.severity.name == "ERROR" else "⚠️ "
-            typer.echo(f"{severity_emoji} {result.severity.name}: {result.message}")
-            if result.context:
-                for ctx in result.context:
-                    typer.echo(f"    {ctx}")
+
+    if failed_files:
         raise typer.Exit(code=1)
 
 
@@ -293,13 +372,41 @@ def validate_all(
             help="Treat all warnings as errors (schema validation)",
         ),
     ] = False,
+    lenient: Annotated[
+        bool,
+        typer.Option(
+            "--lenient/--no-lenient",
+            help="Lenient mode: don't fail when term IDs are not found (data validation)",
+        ),
+    ] = False,
+    no_cache: Annotated[
+        bool,
+        typer.Option(
+            "--no-cache",
+            help="Disable file-based label and enum caching",
+        ),
+    ] = False,
     cache_dir: Annotated[
         Path,
         typer.Option(
             "--cache-dir",
-            help="Directory for caching ontology labels",
+            help="Directory for caching ontology labels and dynamic enum expansions",
         ),
     ] = Path("cache"),
+    cache_enum_expansions: Annotated[
+        bool,
+        typer.Option(
+            "--cache-enum-expansions/--no-cache-enum-expansions",
+            help="Enable file-based caching of expanded dynamic enum values",
+        ),
+    ] = True,
+    saturate_enum_caches: Annotated[
+        bool,
+        typer.Option(
+            "--saturate-enum-caches/--no-saturate-enum-caches",
+            help="Materialize full dynamic enum closures and mark enum caches complete",
+        ),
+    ] = False,
     config: Annotated[
         Optional[Path],
         typer.Option(
@@ -316,6 +423,13 @@ def validate_all(
             help="Verbose output",
         ),
     ] = False,
+    cache_strategy: Annotated[
+        str,
+        typer.Option(
+            "--cache-strategy",
+            help="Caching strategy for dynamic enums: 'progressive' (lazy, default) or 'greedy' (expand upfront)",
+        ),
+    ] = "progressive",
 ):
     """Validate schemas or data (auto-detect mode).
 
@@ -335,15 +449,20 @@ def validate_all(
     if schema_path:
         # Data validation mode - call validate_data directly
         validate_data(
-            data_path=input_path,
+            data_paths=[input_path],
             schema_path=schema_path,
             target_class=None,
             validate_bindings=True,
             validate_dynamic_enums=True,
-            validate_labels=False,
+            validate_labels=True,
+            lenient=lenient,
             adapter=adapter,
+            no_cache=no_cache,
             cache_dir=cache_dir,
+            cache_enum_expansions=cache_enum_expansions,
+            saturate_enum_caches=saturate_enum_caches,
             config=config,
+            cache_strategy=cache_strategy,
         )
     else:
         # Schema validation mode (backward compatible) - call validate_schema directly
@@ -351,11 +470,204 @@ def validate_all(
             schema_path=input_path,
             adapter=adapter,
             strict=strict,
-            no_cache=False,
+            no_cache=no_cache,
             cache_dir=cache_dir,
             config=config,
             verbose=verbose,
         )
+
+
+@app.command(name="migrate-cache")
+def migrate_cache(
+    cache_dir: Annotated[
+        Path,
+        typer.Option(
+            "--cache-dir",
+            help="Directory containing cache files",
+        ),
+    ] = Path("cache"),
+    adapter: Annotated[
+        str,
+        typer.Option(
+            "--adapter",
+            "-a",
+            help="OAK adapter string (default: sqlite:obo:)",
+        ),
+    ] = "sqlite:obo:",
+    config: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--config",
+            "-c",
+            help="Path to oak_config.yaml",
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Show what would change without writing",
+        ),
+    ] = False,
+    refresh_labels: Annotated[
+        bool,
+        typer.Option(
+            "--refresh-labels",
+            help="Re-fetch labels from ontology and update changed ones",
+        ),
+    ] = False,
+    sort_only: Annotated[
+        bool,
+        typer.Option(
+            "--sort-only",
+            help="Only sort and deduplicate cache files without fetching labels",
+        ),
+    ] = False,
+):
+    """Migrate and normalize cache files to eliminate spurious diffs.
+
+    This command normalizes existing cache files by:
+    - Sorting entries by CURIE for deterministic output
+    - Deduplicating entries (keeping the latest timestamp)
+    - Optionally re-fetching labels to update relabelings
+
+    Use this after upgrading linkml-term-validator to normalize existing
+    cache files and prevent spurious diffs in version control.
+
+    Examples:
+        linkml-term-validator migrate-cache
+        linkml-term-validator migrate-cache --refresh-labels
+        linkml-term-validator migrate-cache --dry-run
+        linkml-term-validator migrate-cache --sort-only
+    """
+    import csv
+    from datetime import datetime
+
+    from linkml_term_validator.plugins.dynamic_enum_plugin import DynamicEnumPlugin
+
+    if not cache_dir.exists():
+        typer.echo(f"Cache directory not found: {cache_dir}", err=True)
+        raise typer.Exit(code=1)
+
+    # Find all terms.csv files
+    terms_files = sorted(cache_dir.glob("*/terms.csv"))
+    if not terms_files:
+        typer.echo("No cache files found to migrate.")
+        return
+
+    # Create a plugin instance for label lookups if refreshing
+    plugin = None
+    if refresh_labels:
+        plugin = DynamicEnumPlugin(
+            oak_adapter_string=adapter,
+            cache_labels=False,  # Don't write cache during migration
+            cache_dir=cache_dir,
+            oak_config_path=config,
+        )
+
+    total_files = 0
+    total_updated = 0
+    total_relabeled = 0
+    total_removed_dupes = 0
+
+    for terms_file in terms_files:
+        total_files += 1
+
+        # Load existing entries preserving all data
+        entries: dict[str, dict[str, str]] = {}
+        dupes = 0
+        with open(terms_file) as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                curie = row["curie"]
+                if curie in entries:
+                    dupes += 1
+                    # Keep the one with the later timestamp
+                    existing_ts = entries[curie].get("retrieved_at", "")
+                    new_ts = row.get("retrieved_at", "")
+                    if new_ts > existing_ts:
+                        entries[curie] = {
+                            "label": row["label"],
+                            "retrieved_at": new_ts,
+                        }
+                else:
+                    entries[curie] = {
+                        "label": row["label"],
+                        "retrieved_at": row.get("retrieved_at", ""),
+                    }
+
+        total_removed_dupes += dupes
+
+        # Optionally refresh labels from ontology
+        relabeled = 0
+        if refresh_labels and plugin and not sort_only:
+            for curie in list(entries.keys()):
+                old_label = entries[curie]["label"]
+                new_label = plugin.get_ontology_label(curie)
+                if new_label and new_label != old_label:
+                    relabeled += 1
+                    if dry_run:
+                        typer.echo(f"  {curie}: '{old_label}' -> '{new_label}'")
+                    else:
+                        entries[curie] = {
+                            "label": new_label,
+                            "retrieved_at": datetime.now().isoformat(),
+                        }
+
+        total_relabeled += relabeled
+
+        # Check if file needs rewriting (sort order, dupes, relabelings)
+        sorted_curies = sorted(entries.keys())
+        needs_rewrite = dupes > 0 or relabeled > 0
+
+        # Check if already sorted
+        if not needs_rewrite:
+            existing_curies = []
+            with open(terms_file) as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    existing_curies.append(row["curie"])
+            if existing_curies != sorted_curies:
+                needs_rewrite = True
+
+        if needs_rewrite:
+            total_updated += 1
+            status_parts = []
+            if dupes > 0:
+                status_parts.append(f"{dupes} dupes removed")
+            if relabeled > 0:
+                status_parts.append(f"{relabeled} relabeled")
+            if not status_parts:
+                status_parts.append("sorted")
+            status = ", ".join(status_parts)
+
+            if dry_run:
+                typer.echo(f"  Would update {terms_file} ({status})")
+            else:
+                with open(terms_file, "w", newline="") as f:
+                    writer = csv.DictWriter(f, fieldnames=["curie", "label", "retrieved_at"], lineterminator="\n")
+                    writer.writeheader()
+                    for c in sorted_curies:
+                        writer.writerow(
+                            {
+                                "curie": c,
+                                "label": entries[c]["label"],
+                                "retrieved_at": entries[c]["retrieved_at"],
+                            }
+                        )
+                typer.echo(f"  Updated {terms_file} ({status})")
+        else:
+            if dry_run:
+                typer.echo(f"  {terms_file} - no changes needed")
+
+    # Summary
+    typer.echo(f"\nMigration {'preview' if dry_run else 'complete'}:")
+    typer.echo(f"  Files scanned: {total_files}")
+    typer.echo(f"  Files {'needing' if dry_run else 'updated'}: {total_updated}")
+    if total_removed_dupes > 0:
+        typer.echo(f"  Duplicates removed: {total_removed_dupes}")
+    if total_relabeled > 0:
+        typer.echo(f"  Labels updated: {total_relabeled}")
 
 
 def main():

@@ -125,6 +125,34 @@ Bindings allow you to constrain the values of nested object fields based on dyna
 
 - The value in the nested object's field matches the binding's range constraint
 - Optionally: the label in the nested object matches the ontology's canonical label
+- **Recursively validates all nested structures** - bindings on deeply nested classes are validated with full JSON path tracking
+
+### Explicit Label Field Declaration
+
+Use `implements` or `slot_uri` to explicitly declare which fields should be validated as labels:
+
+```yaml
+classes:
+  GOTerm:
+    attributes:
+      id:
+        identifier: true
+      name:
+        implements:
+          - rdfs:label  # Option 1: implements list
+      # OR
+      label:
+        slot_uri: rdfs:label  # Option 2: slot_uri
+```
+
+Supported label properties:
+
+- `rdfs:label` - Standard RDF label
+- `skos:prefLabel` - SKOS preferred label
+- `schema:name` - Schema.org name
+- `oboInOwl:hasExactSynonym` - OBO exact synonym
+
+If no `implements` or `slot_uri` is specified, the validator falls back to looking for a field named `label` (convention-based).
 
 ### Example
 
