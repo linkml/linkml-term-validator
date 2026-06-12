@@ -223,6 +223,9 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         if not isinstance(instance, dict) or self.schema_view is None:
             return
 
+        # Precompute once per call instead of rebuilding on every slot
+        all_class_names = {c.name for c in self.schema_view.all_classes().values()}
+
         # Check each slot in the current instance
         for slot_name, value in instance.items():
             slot_path = f"{path}.{slot_name}" if path else slot_name
@@ -255,7 +258,7 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             if slot_def and slot_def.range:
                 nested_class = slot_def.range
                 # Only recurse if the range is a class (not a type like string)
-                if nested_class in [c.name for c in self.schema_view.all_classes().values()]:
+                if nested_class in all_class_names:
                     values = value if isinstance(value, list) else [value]
                     for i, val in enumerate(values):
                         if isinstance(val, dict):
