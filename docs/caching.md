@@ -2,13 +2,20 @@
 
 The validator uses **multi-level caching** to speed up repeated validations and avoid redundant ontology queries.
 
+## Cache Types
+
+There are two types of caches:
+
+1. **Label cache** - Maps CURIEs to their canonical labels (for label validation)
+2. **Enum cache** - Stores expanded dynamic enum values (for closure validation)
+
 ## In-Memory Cache
 
-During a single validation run, ontology labels are cached in memory. If multiple permissible values reference the same term, it's only looked up once.
+During a single validation run, ontology labels and enum values are cached in memory. If multiple fields reference the same term or enum, lookups are only done once.
 
 This cache exists only for the duration of the validation process and is discarded afterward.
 
-## File-Based Cache
+## Label Cache (File-Based)
 
 Labels are persisted to CSV files in the cache directory (default: `./cache`):
 
@@ -22,9 +29,7 @@ cache/
     └── terms.csv      # UBERON term labels
 ```
 
-### Cache File Format
-
-Cache files use a simple CSV format:
+### Label Cache Format
 
 ```csv
 curie,label,retrieved_at
@@ -32,12 +37,82 @@ GO:0008150,biological_process,2025-11-15T10:30:00
 GO:0007049,cell cycle,2025-11-15T10:30:01
 ```
 
+## Enum Cache (Dynamic Enums)
+
+Dynamic enums (those using `reachable_from`, `matches`, or `concepts`) can be cached to avoid expensive ontology traversals. Enum caches are stored in:
+
+```
+cache/
+└── enums/
+    ├── biologicalprocessenum_abc123.csv
+    ├── biologicalprocessenum_abc123.csv.complete
+    ├── cellularcomponentenum_def456.csv
+    └── ...
+```
+
+### Enum Cache Format
+
+```csv
+curie
+GO:0008150
+GO:0007049
+GO:0006260
+```
+
+The cache filename includes a hash of the enum definition, so changes to source nodes or relationship types automatically invalidate the cache.
+
+An enum cache is only treated as a **full authoritative expansion** when a sibling `.complete` marker file exists. Unmarked enum cache CSVs are treated as append-only positive membership caches.
+
+## Enum Caching Strategies
+
+The validator supports two strategies for caching dynamic enum values:
+
+### Progressive Caching (Default)
+
+**Progressive caching** validates enums lazily:
+
+1. Check in-memory cache
+2. Check file cache for positive hits
+3. If the enum cache has a `.complete` marker, treat it as the full closure
+4. Otherwise fall back to ontology reachability checks and append valid hits
+5. Optionally use `--saturate-enum-caches` to materialize the full closure and write the `.complete` marker
+
+**Benefits:**
+- Avoids upfront expansion for enums that are never used
+- Safely reuses existing partial caches from earlier runs or versions
+- Faster startup (no upfront expansion)
+- Can still be promoted to a closed cache when you want warm negative lookups too
+
+**Trade-offs:**
+- Unseen valid terms still require ontology checks until the cache is saturated
+- Full warm negative lookups require either saturation or greedy mode
+
+### Greedy Caching
+
+**Greedy caching** expands the entire enum upfront:
+
+1. On first access, query ontology for ALL descendants
+2. Cache the complete set
+3. Subsequent lookups are simple set membership checks
+
+**Benefits:**
+- Deterministic - same results every time
+- No per-term ontology queries after initial expansion
+- Good for smaller, frequently-validated enums
+
+**Trade-offs:**
+- Slow startup for large ontologies
+- Memory-intensive for large closures
+- May cache terms never actually used
+
 ## Cache Behavior
 
-- **First run**: Queries ontology databases, saves results to cache
-- **Subsequent runs**: Loads from cache files (very fast, no network/database access)
+- **First run**: Queries ontology databases and saves label / enum caches
+- **Subsequent runs**: Loads warm label caches, positive enum hits, and any `.complete` enum closures from disk
 - **Cache location**: Configurable via `--cache-dir` flag
-- **Disable caching**: Use `--no-cache` flag
+- **Disable all file caching**: Use `--no-cache`
+- **Disable only enum expansion caching**: Use `--no-cache-enum-expansions`
+- **Close enum caches on demand**: Use `--saturate-enum-caches`
 
 ## Configuration
 
@@ -49,17 +124,54 @@ linkml-term-validator validate-schema --cache-dir /path/to/cache schema.yaml
 
 # Disable caching
 linkml-term-validator validate-schema --no-cache schema.yaml
+
+# Use greedy caching strategy (expand all upfront)
+linkml-term-validator validate-data data.yaml -s schema.yaml --cache-strategy greedy
+
+# Use progressive caching strategy (default, lazy validation)
+linkml-term-validator validate-data data.yaml -s schema.yaml --cache-strategy progressive
+
+# In progressive mode, fully materialize and mark enum caches complete
+linkml-term-validator validate-data data.yaml -s schema.yaml --saturate-enum-caches
 ```
 
 ### Python API
 
 ```python
-from linkml_term_validator.plugins import DynamicEnumPlugin
+from linkml_term_validator.plugins import DynamicEnumPlugin, BindingValidationPlugin
+from linkml_term_validator.models import CacheStrategy
 
+# Progressive caching (default) - recommended for large ontologies
 plugin = DynamicEnumPlugin(
     cache_dir="/path/to/cache",
-    cache_labels=True  # Enable/disable file-based caching
+    cache_labels=True,
+    cache_enum_expansions=True,
+    cache_strategy=CacheStrategy.PROGRESSIVE,
+    saturate_enum_caches=False,
 )
+
+# Greedy caching - expand all upfront
+plugin = BindingValidationPlugin(
+    cache_dir="/path/to/cache",
+    cache_labels=True,
+    cache_enum_expansions=True,
+    cache_strategy=CacheStrategy.GREEDY,
+)
+```
+
+### YAML Configuration (oak_config.yaml)
+
+```yaml
+# Set cache strategy globally
+cache_strategy: progressive  # or "greedy"
+cache_enum_expansions: true
+saturate_enum_caches: false
+
+# Configure ontology adapters
+ontology_adapters:
+  GO: sqlite:obo:go
+  HP: sqlite:obo:hp
+  CL: sqlite:obo:cl
 ```
 
 ### linkml-validate Configuration
@@ -69,8 +181,24 @@ plugins:
   "linkml_term_validator.plugins.DynamicEnumPlugin":
     oak_adapter_string: "sqlite:obo:"
     cache_labels: true
+    cache_enum_expansions: true
+    saturate_enum_caches: false
     cache_dir: cache
+    cache_strategy: progressive  # or "greedy"
 ```
+
+## Choosing a Cache Strategy
+
+| Use Case | Recommended Strategy |
+|----------|---------------------|
+| Large ontologies (SNOMED, NCBI Taxonomy) | Progressive |
+| Small, stable enums (< 1000 terms) | Greedy |
+| First-time validation of new dataset | Progressive |
+| Repeated validation of same dataset | Progressive + `--saturate-enum-caches`, or Greedy |
+| CI/CD pipelines | Greedy (deterministic) |
+| Interactive development | Progressive (faster startup) |
+
+**Rule of thumb**: Start with progressive (the default). Use `--saturate-enum-caches` when you want to close and reuse caches without switching the whole run to greedy mode.
 
 ## When to Clear Cache
 
@@ -96,9 +224,64 @@ Caching provides significant performance improvements:
 - **Cached validations**: Typically < 100ms (CSV file reads)
 - **No network dependency**: Cached validations work offline
 
+## Reproducibility: Versioning Ontology Snapshots
+
+A key benefit of file-based caching is **reproducible validation**. By committing the cache directory alongside your schema, you create a versioned snapshot of the ontology state.
+
+### Why This Matters
+
+Ontologies evolve over time:
+
+- Labels change (e.g., "cell cycle process" → "cell cycle")
+- Terms are deprecated or merged
+- New terms are added
+- Hierarchies are restructured
+
+Without a snapshot, validation results may differ depending on when you run them—the same data might pass today but fail next month after an ontology update.
+
+### Versioning Strategy
+
+```
+my-schema/
+├── schema.yaml           # Your LinkML schema
+├── cache/                # Ontology snapshot (commit this!)
+│   ├── go/
+│   │   └── terms.csv
+│   └── cl/
+│       └── terms.csv
+└── .gitignore            # DON'T ignore cache/
+```
+
+When you release a schema version, the cache captures the exact ontology labels at that point in time. Anyone validating against that schema version gets consistent results.
+
+### Workflow
+
+1. **Initial setup**: Run validation to populate cache
+2. **Commit cache**: Include `cache/` in version control
+3. **Release together**: Schema + cache = reproducible validation
+4. **Update intentionally**: When you want new ontology labels, clear cache and regenerate
+
+```bash
+# Populate cache for a new release
+rm -rf cache/
+linkml-term-validator validate-schema schema.yaml
+git add cache/
+git commit -m "Update ontology snapshot for v2.0"
+```
+
+### Trade-offs
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| **Commit cache** | Reproducible, offline, fast | May miss ontology updates |
+| **Fresh lookups** | Always current | Results vary over time, slower |
+
+For most use cases, **reproducibility trumps currency**—you want validation to behave consistently.
+
 ## Cache Safety
 
 The cache is **read-only during validation** and only contains:
+
 - CURIEs (ontology identifiers)
 - Canonical labels
 - Timestamps

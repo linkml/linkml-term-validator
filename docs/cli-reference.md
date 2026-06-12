@@ -166,17 +166,19 @@ Consider adding these to oak_config.yaml to enable validation.
 
 Validates data instances against dynamic enums and binding constraints.
 
+Accepts multiple data files - each is validated independently with a summary at the end.
+
 ### Syntax
 
 ```bash
-linkml-term-validator validate-data [OPTIONS] DATA_PATH
+linkml-term-validator validate-data [OPTIONS] DATA_PATHS...
 ```
 
 ### Arguments
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `DATA_PATH` | Path | Yes | Path to data file (`.yaml`, `.json`) |
+| `DATA_PATHS` | Path(s) | Yes | One or more paths to data files (`.yaml`, `.json`) |
 
 ### Options
 
@@ -186,9 +188,13 @@ linkml-term-validator validate-data [OPTIONS] DATA_PATH
 | `--target-class TEXT` | String | None | Target class name to validate against |
 | `--config PATH` | Path | None | Path to OAK config file |
 | `--adapter TEXT` | String | `"sqlite:obo:"` | Default OAK adapter string |
-| `--cache-dir PATH` | Path | `cache` | Directory for caching ontology labels |
-| `--no-cache` | Flag | False | Disable file-based caching |
+| `--cache-dir PATH` | Path | `cache` | Directory for caching ontology labels and dynamic enums |
+| `--cache-strategy TEXT` | String | `progressive` | Caching strategy for dynamic enums: `progressive` (positive-hit cache) or `greedy` (expand upfront) |
+| `--cache-enum-expansions/--no-cache-enum-expansions` | Flag | True | Enable or disable file-based caching of expanded dynamic enums |
+| `--saturate-enum-caches/--no-saturate-enum-caches` | Flag | False | In progressive mode, materialize full enum closures and mark caches complete |
+| `--no-cache` | Flag | False | Disable file-based label and enum caching |
 | `--labels` | Flag | False | Validate that labels match ontology canonical labels |
+| `--lenient/--no-lenient` | Flag | False | Lenient mode: don't fail when term IDs are not found in ontology |
 | `--no-dynamic-enums` | Flag | False | Skip dynamic enum validation |
 | `--no-bindings` | Flag | False | Skip binding constraint validation |
 | `--verbose` | Flag | False | Show detailed validation information |
@@ -238,6 +244,28 @@ linkml-term-validator validate-data data.yaml \
   --no-bindings
 ```
 
+**Validate multiple files:**
+
+```bash
+linkml-term-validator validate-data data1.yaml data2.yaml data3.yaml \
+  --schema schema.yaml
+```
+
+**Validate all YAML files (shell glob):**
+
+```bash
+linkml-term-validator validate-data data/*.yaml \
+  --schema schema.yaml
+```
+
+**With greedy caching (expand all terms upfront):**
+
+```bash
+linkml-term-validator validate-data data.yaml \
+  --schema schema.yaml \
+  --cache-strategy greedy
+```
+
 **Full validation with all options:**
 
 ```bash
@@ -246,21 +274,41 @@ linkml-term-validator validate-data data.yaml \
   --target-class GeneAnnotation \
   --config oak_config.yaml \
   --cache-dir cache \
+  --cache-strategy progressive \
   --labels \
   --verbose
 ```
 
 ### Output
 
-**Success (no issues):**
+**Success (single file):**
 
 ```
-✅ Validation passed!
+✅ Validation passed
+```
 
-Validation Summary:
-  Dynamic enums validated: 5
-  Bindings validated: 3
-  Issues found: 0
+**Success (multiple files):**
+
+```
+✅ data1.yaml
+✅ data2.yaml
+✅ data3.yaml
+
+✅ All 3 files passed validation
+```
+
+**Partial failure (multiple files):**
+
+```
+✅ data1.yaml
+
+❌ data2.yaml - 2 issue(s):
+  ❌ ERROR: Value 'GO:0005575' not in enum 'BiologicalProcessEnum'
+  ❌ ERROR: Value 'CL:9999999' not in enum 'CellTypeEnum'
+
+✅ data3.yaml
+
+Summary: 1/3 files failed, 2 total issue(s)
 ```
 
 **Failure (dynamic enum violation):**
@@ -383,9 +431,14 @@ linkml-term-validator validate-data \
 
 ### oak_config.yaml
 
-Controls which ontology adapters to use for different prefixes:
+Controls which ontology adapters to use for different prefixes, and optionally the caching behavior:
 
 ```yaml
+# Cache strategy (optional): "progressive" (default) or "greedy"
+cache_strategy: progressive
+cache_enum_expansions: true
+saturate_enum_caches: false
+
 ontology_adapters:
   GO: sqlite:obo:go
   CHEBI: sqlite:obo:chebi
