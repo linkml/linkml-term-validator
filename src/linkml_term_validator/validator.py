@@ -11,6 +11,7 @@ from linkml_runtime.utils.schemaview import SchemaView
 from oaklib import get_adapter
 from ruamel.yaml import YAML
 
+from linkml_term_validator.cache_utils import atomic_write_csv, locked_cache_file
 from linkml_term_validator.models import (
     SeverityLevel,
     ValidationConfig,
@@ -142,8 +143,35 @@ class EnumValidator:
                 cached[row["curie"]] = row["label"]
         return cached
 
+    def _load_cache_with_timestamps(self, prefix: str) -> dict[str, dict[str, str]]:
+        """Load cached labels with timestamps for a prefix.
+
+        Args:
+            prefix: Ontology prefix
+
+        Returns:
+            Dict mapping CURIEs to {"label": ..., "retrieved_at": ...}
+        """
+        cache_file = self._get_cache_file(prefix)
+        if not cache_file.exists():
+            return {}
+
+        cached: dict[str, dict[str, str]] = {}
+        with open(cache_file) as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                cached[row["curie"]] = {
+                    "label": row["label"],
+                    "retrieved_at": row.get("retrieved_at", ""),
+                }
+        return cached
+
     def _save_to_cache(self, prefix: str, curie: str, label: str) -> None:
         """Save a label to the cache.
+
+        Preserves existing timestamps for unchanged entries.
+        Only new or changed entries get a fresh timestamp.
+        Entries are sorted by CURIE for deterministic output.
 
         Args:
             prefix: Ontology prefix
@@ -154,18 +182,25 @@ class EnumValidator:
             return
 
         cache_file = self._get_cache_file(prefix)
-        file_exists = cache_file.exists()
 
-        with open(cache_file, "a", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["curie", "label", "retrieved_at"])
-            if not file_exists:
-                writer.writeheader()
-            writer.writerow(
-                {
-                    "curie": curie,
-                    "label": label,
-                    "retrieved_at": datetime.now().isoformat(),
-                }
+        with locked_cache_file(cache_file):
+            existing = self._load_cache_with_timestamps(prefix)
+
+            now = datetime.now().isoformat()
+            if curie not in existing or existing[curie]["label"] != label:
+                existing[curie] = {"label": label, "retrieved_at": now}
+
+            atomic_write_csv(
+                cache_file,
+                ["curie", "label", "retrieved_at"],
+                (
+                    {
+                        "curie": cached_curie,
+                        "label": existing[cached_curie]["label"],
+                        "retrieved_at": existing[cached_curie]["retrieved_at"],
+                    }
+                    for cached_curie in sorted(existing)
+                ),
             )
 
     def _get_adapter(self, prefix: str) -> object | None:
