@@ -7,6 +7,7 @@ A key use case for linkml-term-validator is preventing AI systems from hallucina
 Language models frequently hallucinate identifiers like gene IDs, ontology terms, and other structured references. These fake identifiers often appear structurally correct (e.g., `GO:9999999`, `CHEBI:88888`) but don't actually exist in the source ontologies.
 
 This creates serious data quality issues:
+
 - **Invalid references** that break data integration
 - **Nonsense annotations** that corrupt curated datasets
 - **False confidence** in AI-generated content
@@ -34,6 +35,9 @@ This dramatically reduces hallucinations because the AI must get **two interdepe
 ### 1. Define Schemas with Binding Constraints
 
 ```yaml
+prefixes:
+  rdfs: http://www.w3.org/2000/01/rdf-schema#
+
 classes:
   GeneAnnotation:
     slots:
@@ -50,6 +54,10 @@ classes:
     slots:
       - id        # AI must provide both
       - label     # fields correctly
+    slot_usage:
+      label:
+        implements:
+          - rdfs:label  # Explicit: this field should match ontology label
 
 enums:
   BiologicalProcessEnum:
@@ -60,6 +68,8 @@ enums:
       relationship_types:
         - rdfs:subClassOf
 ```
+
+The `implements: [rdfs:label]` declaration explicitly tells the validator that this field should be validated against the ontology's `rdfs:label`. This is more robust than relying on naming conventions.
 
 ### 2. Validate AI-Generated Outputs Before Committing
 
@@ -89,6 +99,7 @@ if len(report.results) > 0:
 The most effective approach embeds validation **during AI generation** rather than treating it as a filtering step afterward. This transforms hallucination resistance from a detection problem into a generation constraint.
 
 **Pattern:**
+
 1. AI generates structured output with id+label pairs
 2. Validate immediately with `BindingValidationPlugin(validate_labels=True)`
 3. If validation fails, provide error messages back to AI with retry opportunity
