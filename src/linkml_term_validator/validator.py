@@ -1,23 +1,18 @@
 """Validator for external terms in LinkML schemas."""
 
-import csv
-import re
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from linkml_runtime.linkml_model import EnumDefinition, PermissibleValue
 from linkml_runtime.utils.schemaview import SchemaView
-from oaklib import get_adapter
-from ruamel.yaml import YAML
 
-from linkml_term_validator.cache_utils import atomic_write_csv, locked_cache_file
 from linkml_term_validator.models import (
     SeverityLevel,
     ValidationConfig,
     ValidationIssue,
     ValidationResult,
 )
+from linkml_term_validator.utils import OntologyAccess, get_prefix, normalize_string
 
 
 class EnumValidator:
@@ -25,6 +20,9 @@ class EnumValidator:
 
     This validator checks that `meaning` fields in permissible values
     reference valid ontology terms with correct labels.
+
+    Ontology access (adapter management and label caching) is delegated to a
+    shared :class:`~linkml_term_validator.utils.OntologyAccess` instance.
 
     Examples:
         >>> from pathlib import Path
@@ -39,29 +37,22 @@ class EnumValidator:
             config: Configuration for validation behavior
         """
         self.config = config
-        self._label_cache: dict[str, Optional[str]] = {}
-        self._adapter_cache: dict[str, Optional[object]] = {}
-        self._oak_config: dict[str, str] = {}
-        self._unknown_prefixes: set[str] = set()
-
-        if config.oak_config_path and config.oak_config_path.exists():
-            self._load_oak_config()
+        self.ontology = OntologyAccess(
+            oak_adapter_string=config.oak_adapter_string,
+            cache_labels=config.cache_labels,
+            cache_dir=config.cache_dir,
+            oak_config_path=config.oak_config_path,
+        )
 
         if config.cache_labels:
             config.get_cache_dir()
 
-    def _load_oak_config(self) -> None:
-        """Load oak_config.yaml to get per-prefix adapter settings."""
-        if self.config.oak_config_path is None:
-            return
-        yaml = YAML(typ="safe")
-        with open(self.config.oak_config_path) as f:
-            config_data = yaml.load(f)
+    # =========================================================================
+    # Ontology-access delegation (see linkml_term_validator.utils.OntologyAccess)
+    # =========================================================================
 
-        if "ontology_adapters" in config_data:
-            self._oak_config = config_data["ontology_adapters"]
-
-    def _get_prefix(self, curie: str) -> Optional[str]:
+    @staticmethod
+    def _get_prefix(curie: str) -> Optional[str]:
         """Extract prefix from a CURIE.
 
         Args:
@@ -78,9 +69,7 @@ class EnumValidator:
             'CHEBI'
             >>> validator._get_prefix("invalid")
         """
-        if ":" not in curie:
-            return None
-        return curie.split(":", 1)[0]
+        return get_prefix(curie)
 
     def _is_prefix_configured(self, prefix: str) -> bool:
         """Check if a prefix is configured in oak_config.yaml.
@@ -97,7 +86,7 @@ class EnumValidator:
             >>> validator._is_prefix_configured("GO")
             False
         """
-        return prefix in self._oak_config and bool(self._oak_config[prefix])
+        return self.ontology.is_prefix_configured(prefix)
 
     def _get_cache_file(self, prefix: str) -> Path:
         """Get the cache file path for a prefix.
@@ -113,9 +102,7 @@ class EnumValidator:
             >>> validator._get_cache_file("GO")
             PosixPath('cache/go/terms.csv')
         """
-        prefix_dir = self.config.cache_dir / prefix.lower()
-        prefix_dir.mkdir(parents=True, exist_ok=True)
-        return prefix_dir / "terms.csv"
+        return self.ontology.get_cache_file(prefix)
 
     def _load_cache(self, prefix: str) -> dict[str, str]:
         """Load cached labels for a prefix.
@@ -132,16 +119,7 @@ class EnumValidator:
             >>> isinstance(cache, dict)
             True
         """
-        cache_file = self._get_cache_file(prefix)
-        if not cache_file.exists():
-            return {}
-
-        cached = {}
-        with open(cache_file) as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                cached[row["curie"]] = row["label"]
-        return cached
+        return self.ontology.load_cache(prefix)
 
     def _load_cache_with_timestamps(self, prefix: str) -> dict[str, dict[str, str]]:
         """Load cached labels with timestamps for a prefix.
@@ -152,56 +130,21 @@ class EnumValidator:
         Returns:
             Dict mapping CURIEs to {"label": ..., "retrieved_at": ...}
         """
-        cache_file = self._get_cache_file(prefix)
-        if not cache_file.exists():
-            return {}
-
-        cached: dict[str, dict[str, str]] = {}
-        with open(cache_file) as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                cached[row["curie"]] = {
-                    "label": row["label"],
-                    "retrieved_at": row.get("retrieved_at", ""),
-                }
-        return cached
+        return self.ontology.load_cache_with_timestamps(prefix)
 
     def _save_to_cache(self, prefix: str, curie: str, label: str) -> None:
         """Save a label to the cache.
 
-        Preserves existing timestamps for unchanged entries.
-        Only new or changed entries get a fresh timestamp.
-        Entries are sorted by CURIE for deterministic output.
+        Preserves existing timestamps for unchanged entries. Only new or changed
+        entries get a fresh timestamp. Entries are sorted by CURIE for
+        deterministic output.
 
         Args:
             prefix: Ontology prefix
             curie: Full CURIE
             label: Label to cache
         """
-        if not self.config.cache_labels:
-            return
-
-        cache_file = self._get_cache_file(prefix)
-
-        with locked_cache_file(cache_file):
-            existing = self._load_cache_with_timestamps(prefix)
-
-            now = datetime.now().isoformat()
-            if curie not in existing or existing[curie]["label"] != label:
-                existing[curie] = {"label": label, "retrieved_at": now}
-
-            atomic_write_csv(
-                cache_file,
-                ["curie", "label", "retrieved_at"],
-                (
-                    {
-                        "curie": cached_curie,
-                        "label": existing[cached_curie]["label"],
-                        "retrieved_at": existing[cached_curie]["retrieved_at"],
-                    }
-                    for cached_curie in sorted(existing)
-                ),
-            )
+        self.ontology.save_to_cache(prefix, curie, label)
 
     def _get_adapter(self, prefix: str) -> object | None:
         """Get an OAK adapter for a prefix.
@@ -212,38 +155,7 @@ class EnumValidator:
         Returns:
             OAK adapter or None if unavailable
         """
-        if prefix in self._adapter_cache:
-            return self._adapter_cache[prefix]
-
-        adapter_string = None
-
-        if prefix in self._oak_config:
-            configured = self._oak_config[prefix]
-            if not configured:
-                self._adapter_cache[prefix] = None
-                return None
-            adapter_string = configured
-        elif self._oak_config:
-            # oak_config is loaded but prefix not in it - don't fall back to default
-            self._adapter_cache[prefix] = None
-            return None
-        elif self.config.oak_adapter_string == "sqlite:obo:":
-            adapter_string = f"sqlite:obo:{prefix.lower()}"
-
-        if adapter_string:
-            try:
-                adapter = get_adapter(adapter_string)
-                self._adapter_cache[prefix] = adapter
-                return adapter
-            except Exception as e:
-                # Failed to get adapter (e.g., network error, missing database)
-                # Cache None so we don't keep trying
-                print(f"Warning: Could not load adapter for prefix '{prefix}': {e}")
-                self._adapter_cache[prefix] = None
-                return None
-
-        self._adapter_cache[prefix] = None
-        return None
+        return self.ontology.get_adapter(prefix)
 
     def get_ontology_label(self, curie: str) -> Optional[str]:
         """Get the label for an ontology term.
@@ -261,34 +173,7 @@ class EnumValidator:
             >>> # This would return the actual label if ontology is accessible
             >>> validator.get_ontology_label("GO:0008150")  # doctest: +SKIP
         """
-        if curie in self._label_cache:
-            return self._label_cache[curie]
-
-        prefix = self._get_prefix(curie)
-        if not prefix:
-            return None
-
-        if self.config.cache_labels:
-            cached = self._load_cache(prefix)
-            if curie in cached:
-                label = cached[curie]
-                self._label_cache[curie] = label
-                return label
-
-        adapter = self._get_adapter(prefix)
-        if adapter is None:
-            if not self._is_prefix_configured(prefix):
-                self._unknown_prefixes.add(prefix)
-            self._label_cache[curie] = None
-            return None
-
-        label = adapter.label(curie)  # type: ignore[attr-defined]
-        self._label_cache[curie] = label
-
-        if label and self.config.cache_labels:
-            self._save_to_cache(prefix, curie, label)
-
-        return label
+        return self.ontology.get_label(curie)
 
     @staticmethod
     def normalize_string(s: str) -> str:
@@ -308,9 +193,24 @@ class EnumValidator:
             >>> EnumValidator.normalize_string("T-Cell Receptor")
             't cell receptor'
         """
-        s = re.sub(r"[^\w\s]", " ", s)
-        s = re.sub(r"\s+", " ", s)
-        return s.strip().lower()
+        return normalize_string(s)
+
+    def get_unknown_prefixes(self) -> set[str]:
+        """Get the set of unknown prefixes encountered.
+
+        Returns:
+            Set of prefixes that were not configured
+
+        Examples:
+            >>> validator = EnumValidator(ValidationConfig())
+            >>> validator.get_unknown_prefixes()
+            set()
+        """
+        return self.ontology.get_unknown_prefixes()
+
+    # =========================================================================
+    # Enum validation
+    # =========================================================================
 
     def extract_aliases(
         self, pv: PermissibleValue, value_name: str
@@ -478,16 +378,3 @@ class EnumValidator:
             result.issues.extend(issues)
 
         return result
-
-    def get_unknown_prefixes(self) -> set[str]:
-        """Get the set of unknown prefixes encountered.
-
-        Returns:
-            Set of prefixes that were not configured
-
-        Examples:
-            >>> validator = EnumValidator(ValidationConfig())
-            >>> validator.get_unknown_prefixes()
-            set()
-        """
-        return self._unknown_prefixes

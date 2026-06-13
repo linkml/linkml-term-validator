@@ -17,18 +17,16 @@ Example:
 import csv
 import hashlib
 import re
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal, Optional
 
 from linkml.validator.plugins import ValidationPlugin  # type: ignore[import-untyped]
 from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]
 from linkml_runtime.linkml_model import EnumDefinition
-from oaklib import get_adapter
-from ruamel.yaml import YAML
 
 from linkml_term_validator.cache_utils import atomic_write_csv, locked_cache_file
 from linkml_term_validator.models import CacheStrategy, ValidationConfig
+from linkml_term_validator.utils import OntologyAccess, get_prefix, normalize_string
 
 
 class BaseOntologyPlugin(ValidationPlugin):
@@ -78,47 +76,48 @@ class BaseOntologyPlugin(ValidationPlugin):
             cache_strategy=cache_strategy,
         )
 
-        # In-memory caches
-        self._label_cache: dict[str, Optional[str]] = {}
-        self._adapter_cache: dict[str, object | None] = {}
+        # Shared ontology access (adapter management + label caching).
+        self.ontology = OntologyAccess(
+            oak_adapter_string=self.config.oak_adapter_string,
+            cache_labels=self.config.cache_labels,
+            cache_dir=self.config.cache_dir,
+            oak_config_path=self.config.oak_config_path,
+        )
+
+        # Enum-expansion caches (plugin-specific, not shared).
         self._enum_cache: dict[str, set[str]] = {}  # enum_name -> cached values
         self._closed_enum_caches: set[str] = set()  # enum_name -> cache is known complete
-        self._unknown_prefixes: set[str] = set()
 
-        # Load OAK config if provided (may override cache_strategy)
-        self._oak_config: dict[str, str] = {}
-        if self.config.oak_config_path and self.config.oak_config_path.exists():
-            self._load_oak_config()
+        # Read plugin-specific extras (cache strategy/flags) from the same
+        # oak_config.yaml the ontology service already parsed.
+        if self.ontology.loaded_config:
+            self._load_oak_config_extras(self.ontology.loaded_config)
 
     @property
     def cache_strategy(self) -> CacheStrategy:
         """Get the cache strategy for dynamic enums."""
         return self.config.cache_strategy
 
-    def _load_oak_config(self) -> None:
-        """Load OAK configuration from YAML file.
+    def _load_oak_config_extras(self, config: dict[str, Any]) -> None:
+        """Apply plugin-specific overrides from the parsed oak_config.yaml.
 
-        Loads ontology_adapters and optionally cache_strategy from the config file.
+        The ``ontology_adapters`` mapping is handled by the shared
+        :class:`~linkml_term_validator.utils.OntologyAccess`. This reads the
+        remaining cache-strategy keys from the same already-parsed config.
+
+        Args:
+            config: Parsed oak_config.yaml contents
         """
-        if self.config.oak_config_path is None:
-            return
-        yaml = YAML(typ="safe")
-        with open(self.config.oak_config_path) as f:
-            config = yaml.load(f)
-            if "ontology_adapters" in config:
-                self._oak_config = config["ontology_adapters"]
-            # Override cache_strategy from YAML if specified
-            if "cache_strategy" in config:
-                strategy_str = config["cache_strategy"]
-                self.config.cache_strategy = CacheStrategy(strategy_str)
-            if "cache_enum_expansions" in config:
-                self.config.cache_enum_expansions = self._parse_bool_config_value(
-                    config["cache_enum_expansions"], "cache_enum_expansions"
-                )
-            if "saturate_enum_caches" in config:
-                self.config.saturate_enum_caches = self._parse_bool_config_value(
-                    config["saturate_enum_caches"], "saturate_enum_caches"
-                )
+        if "cache_strategy" in config:
+            self.config.cache_strategy = CacheStrategy(config["cache_strategy"])
+        if "cache_enum_expansions" in config:
+            self.config.cache_enum_expansions = self._parse_bool_config_value(
+                config["cache_enum_expansions"], "cache_enum_expansions"
+            )
+        if "saturate_enum_caches" in config:
+            self.config.saturate_enum_caches = self._parse_bool_config_value(
+                config["saturate_enum_caches"], "saturate_enum_caches"
+            )
 
     @staticmethod
     def _parse_bool_config_value(value: Any, field_name: str) -> bool:
@@ -133,222 +132,51 @@ class BaseOntologyPlugin(ValidationPlugin):
                 return False
         raise ValueError(f"{field_name} must be a boolean or 'true'/'false', got: {value!r}")
 
-    def _get_prefix(self, curie: str) -> Optional[str]:
-        """Extract prefix from a CURIE.
+    # =========================================================================
+    # Ontology-access delegation (see linkml_term_validator.utils.OntologyAccess)
+    # =========================================================================
 
-        Args:
-            curie: A CURIE like "GO:0008150"
-
-        Returns:
-            The prefix (e.g., "GO") or None if invalid
-        """
-        if ":" not in curie:
-            return None
-        return curie.split(":", 1)[0]
+    @staticmethod
+    def _get_prefix(curie: str) -> Optional[str]:
+        """Extract prefix from a CURIE (e.g., "GO" from "GO:0008150")."""
+        return get_prefix(curie)
 
     def _is_prefix_configured(self, prefix: str) -> bool:
-        """Check if a prefix is configured in oak_config.yaml.
-
-        Args:
-            prefix: Ontology prefix (e.g., "GO")
-
-        Returns:
-            True if prefix has a non-empty adapter configured
-        """
-        return prefix in self._oak_config and bool(self._oak_config[prefix])
+        """Check if a prefix has a non-empty adapter configured in oak_config."""
+        return self.ontology.is_prefix_configured(prefix)
 
     def _get_cache_file(self, prefix: str) -> Path:
-        """Get the cache file path for a prefix.
-
-        Args:
-            prefix: Ontology prefix
-
-        Returns:
-            Path to the cache CSV file
-        """
-        prefix_dir = self.config.cache_dir / prefix.lower()
-        prefix_dir.mkdir(parents=True, exist_ok=True)
-        return prefix_dir / "terms.csv"
+        """Get the cache file path for a prefix."""
+        return self.ontology.get_cache_file(prefix)
 
     def _load_cache(self, prefix: str) -> dict[str, str]:
-        """Load cached labels for a prefix.
-
-        Args:
-            prefix: Ontology prefix
-
-        Returns:
-            Dict mapping CURIEs to labels
-        """
-        cache_file = self._get_cache_file(prefix)
-        if not cache_file.exists():
-            return {}
-
-        cached = {}
-        with open(cache_file) as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                cached[row["curie"]] = row["label"]
-        return cached
+        """Load cached labels for a prefix as a CURIE -> label dict."""
+        return self.ontology.load_cache(prefix)
 
     def _load_cache_with_timestamps(self, prefix: str) -> dict[str, dict[str, str]]:
-        """Load cached labels with timestamps for a prefix.
-
-        Args:
-            prefix: Ontology prefix
-
-        Returns:
-            Dict mapping CURIEs to {"label": ..., "retrieved_at": ...}
-        """
-        cache_file = self._get_cache_file(prefix)
-        if not cache_file.exists():
-            return {}
-
-        cached: dict[str, dict[str, str]] = {}
-        with open(cache_file) as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                cached[row["curie"]] = {
-                    "label": row["label"],
-                    "retrieved_at": row.get("retrieved_at", ""),
-                }
-        return cached
+        """Load cached labels with timestamps for a prefix."""
+        return self.ontology.load_cache_with_timestamps(prefix)
 
     def _save_to_cache(self, prefix: str, curie: str, label: str) -> None:
-        """Save a label to the cache.
-
-        Preserves existing timestamps for unchanged entries.
-        Only new or changed entries get a fresh timestamp.
-        Entries are sorted by CURIE for deterministic output.
-
-        Args:
-            prefix: Ontology prefix
-            curie: Full CURIE
-            label: Label to cache
-        """
-        cache_file = self._get_cache_file(prefix)
-
-        # Lock, re-read, merge, and atomically replace the cache file so
-        # parallel validators do not lose entries or leave truncated files.
-        with locked_cache_file(cache_file):
-            existing = self._load_cache_with_timestamps(prefix)
-
-            now = datetime.now().isoformat()
-            if curie not in existing or existing[curie]["label"] != label:
-                existing[curie] = {"label": label, "retrieved_at": now}
-
-            atomic_write_csv(
-                cache_file,
-                ["curie", "label", "retrieved_at"],
-                (
-                    {
-                        "curie": cached_curie,
-                        "label": existing[cached_curie]["label"],
-                        "retrieved_at": existing[cached_curie]["retrieved_at"],
-                    }
-                    for cached_curie in sorted(existing)
-                ),
-            )
+        """Save a label to the cache (locked, atomic, timestamp-preserving)."""
+        self.ontology.save_to_cache(prefix, curie, label)
 
     def _get_adapter(self, prefix: str) -> object | None:
-        """Get an OAK adapter for a prefix.
-
-        Args:
-            prefix: Ontology prefix
-
-        Returns:
-            OAK adapter or None if unavailable
-        """
-        if prefix in self._adapter_cache:
-            return self._adapter_cache[prefix]
-
-        adapter_string = None
-
-        if prefix in self._oak_config:
-            configured = self._oak_config[prefix]
-            if not configured:
-                self._adapter_cache[prefix] = None
-                return None
-            adapter_string = configured
-        elif self._oak_config:
-            # oak_config is loaded but prefix not in it - don't fall back to default
-            self._adapter_cache[prefix] = None
-            return None
-        elif self.config.oak_adapter_string == "sqlite:obo:":
-            adapter_string = f"sqlite:obo:{prefix.lower()}"
-
-        if adapter_string:
-            adapter = get_adapter(adapter_string)
-            self._adapter_cache[prefix] = adapter
-            return adapter
-
-        self._adapter_cache[prefix] = None
-        return None
+        """Get an OAK adapter for a prefix (or None if unavailable)."""
+        return self.ontology.get_adapter(prefix)
 
     def get_ontology_label(self, curie: str) -> Optional[str]:
-        """Get the label for an ontology term.
-
-        Uses multi-level caching: in-memory, then file, then adapter.
-
-        Args:
-            curie: A CURIE like "GO:0008150"
-
-        Returns:
-            The label or None if not found
-        """
-        if curie in self._label_cache:
-            return self._label_cache[curie]
-
-        prefix = self._get_prefix(curie)
-        if not prefix:
-            return None
-
-        if self.config.cache_labels:
-            cached = self._load_cache(prefix)
-            if curie in cached:
-                label = cached[curie]
-                self._label_cache[curie] = label
-                return label
-
-        adapter = self._get_adapter(prefix)
-        if adapter is None:
-            if not self._is_prefix_configured(prefix):
-                self._unknown_prefixes.add(prefix)
-            self._label_cache[curie] = None
-            return None
-
-        label = adapter.label(curie)  # type: ignore[attr-defined]
-        self._label_cache[curie] = label
-
-        if label and self.config.cache_labels:
-            self._save_to_cache(prefix, curie, label)
-
-        return label
+        """Get the label for an ontology term using multi-level caching."""
+        return self.ontology.get_label(curie)
 
     @staticmethod
     def normalize_string(s: str) -> str:
-        """Normalize a string for comparison.
-
-        Removes punctuation and converts to lowercase.
-
-        Args:
-            s: String to normalize
-
-        Returns:
-            Normalized string
-        """
-        # Remove all punctuation and convert to lowercase
-        normalized = re.sub(r"[^\w\s]", " ", s.lower())
-        # Collapse multiple spaces
-        normalized = re.sub(r"\s+", " ", normalized)
-        return normalized.strip()
+        """Normalize a string for comparison (lowercase, depunctuated)."""
+        return normalize_string(s)
 
     def get_unknown_prefixes(self) -> set[str]:
-        """Get set of prefixes that were encountered but not configured.
-
-        Returns:
-            Set of unknown prefix strings
-        """
-        return self._unknown_prefixes
+        """Get set of prefixes that were encountered but not configured."""
+        return self.ontology.get_unknown_prefixes()
 
     # =========================================================================
     # Enum Caching
