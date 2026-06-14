@@ -61,8 +61,9 @@ def test_validator_initialization():
     config = ValidationConfig(cache_labels=False)
     validator = EnumValidator(config)
     assert validator.config == config
-    assert len(validator._label_cache) == 0
-    assert len(validator._adapter_cache) == 0
+    # Ontology access (and its caches) is delegated to a shared service.
+    assert len(validator.ontology._label_cache) == 0
+    assert len(validator.ontology._adapter_cache) == 0
 
 
 def test_extract_aliases():

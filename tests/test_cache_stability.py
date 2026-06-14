@@ -10,38 +10,36 @@ from linkml_runtime.linkml_model import EnumDefinition
 
 from linkml_term_validator.models import ValidationConfig
 from linkml_term_validator.plugins import DynamicEnumPlugin, PermissibleValueMeaningPlugin
+from linkml_term_validator.utils import OntologyAccess
 from linkml_term_validator.validator import EnumValidator
 
 CONCURRENT_WRITE_DELAY = 0.2
 
 
-class SlowPermissibleValueMeaningPlugin(PermissibleValueMeaningPlugin):
-    """Delay cache reloads to widen the concurrent write window in tests."""
+class SlowOntologyAccess(OntologyAccess):
+    """Delay cache reloads to widen the concurrent write window in tests.
 
-    def _load_cache_with_timestamps(self, prefix: str) -> dict[str, dict[str, str]]:
-        cached = super()._load_cache_with_timestamps(prefix)
-        time.sleep(CONCURRENT_WRITE_DELAY)
-        return cached
+    Both the plugin and the standalone validator delegate cache writes to a
+    shared OntologyAccess, so a single slow service covers both paths.
+    """
 
-
-class SlowEnumValidator(EnumValidator):
-    """Delay cache reloads to widen the concurrent write window in tests."""
-
-    def _load_cache_with_timestamps(self, prefix: str) -> dict[str, dict[str, str]]:
-        cached = super()._load_cache_with_timestamps(prefix)
+    def load_cache_with_timestamps(self, prefix: str) -> dict[str, dict[str, str]]:
+        cached = super().load_cache_with_timestamps(prefix)
         time.sleep(CONCURRENT_WRITE_DELAY)
         return cached
 
 
 def _plugin_cache_worker(cache_dir: str, curie: str, barrier) -> None:
-    plugin = SlowPermissibleValueMeaningPlugin(cache_labels=True, cache_dir=Path(cache_dir))
+    plugin = PermissibleValueMeaningPlugin(cache_labels=True, cache_dir=Path(cache_dir))
+    plugin.ontology = SlowOntologyAccess(cache_labels=True, cache_dir=Path(cache_dir))
     barrier.wait()
     plugin._save_to_cache("GO", curie, f"label-{curie}")
 
 
 def _validator_cache_worker(cache_dir: str, curie: str, barrier) -> None:
     config = ValidationConfig(cache_labels=True, cache_dir=Path(cache_dir))
-    validator = SlowEnumValidator(config)
+    validator = EnumValidator(config)
+    validator.ontology = SlowOntologyAccess(cache_labels=True, cache_dir=Path(cache_dir))
     barrier.wait()
     validator._save_to_cache("GO", curie, f"label-{curie}")
 
