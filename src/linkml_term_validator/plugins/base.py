@@ -465,23 +465,25 @@ class BaseOntologyPlugin(ValidationPlugin):
             return False  # Term doesn't exist or adapter lookup failed
 
         predicates = query.relationship_types if query.relationship_types else ["rdfs:subClassOf"]
+        include_self = query.include_self if hasattr(query, "include_self") else True
 
         # Check if value is reachable from any source node
         for source_node in query.source_nodes:
+            # Reflexive case: the source node itself.
+            if include_self and value == source_node:
+                return True
+
             if query.traverse_up:
-                # Check if source_node is an ancestor of value
-                ancestors = adapter.ancestors(value, predicates=predicates)  # type: ignore[attr-defined]
-                if ancestors and source_node in ancestors:
+                # value must be an ancestor of source_node (we traverse up from
+                # the source), i.e. value appears among source_node's ancestors.
+                ancestors = adapter.ancestors(source_node, predicates=predicates)  # type: ignore[attr-defined]
+                if ancestors and value in ancestors:
                     return True
             else:
-                # Check if value is a descendant of source_node
-                # We do this by checking if source_node is an ancestor of value
+                # value must be a descendant of source_node, i.e. source_node
+                # appears among value's ancestors.
                 ancestors = adapter.ancestors(value, predicates=predicates)  # type: ignore[attr-defined]
                 if ancestors and source_node in ancestors:
-                    return True
-                # Also check include_self
-                include_self = query.include_self if hasattr(query, "include_self") else True
-                if include_self and value == source_node:
                     return True
 
         return False
