@@ -18,7 +18,11 @@ Uses the local simpleobo test ontology (offline). Hierarchy:
 from pathlib import Path
 
 import pytest
-from linkml_runtime.linkml_model.meta import EnumDefinition, ReachabilityQuery
+from linkml_runtime.linkml_model.meta import (
+    AnonymousEnumExpression,
+    EnumDefinition,
+    ReachabilityQuery,
+)
 
 from linkml_term_validator.plugins import DynamicEnumPlugin
 
@@ -97,3 +101,52 @@ def test_failed_expansion_is_not_cached_as_complete(tmp_path):
 
     # And the cache must not have been marked complete.
     assert plugin._is_enum_cache_complete(enum_def) is False
+
+
+def _base_enum() -> EnumDefinition:
+    return EnumDefinition(
+        name="E",
+        reachable_from=ReachabilityQuery(
+            source_nodes=["TEST:0000001"],
+            relationship_types=["rdfs:subClassOf"],
+        ),
+    )
+
+
+def _with_inherits() -> EnumDefinition:
+    e = _base_enum()
+    e.inherits = ["ParentEnum"]
+    return e
+
+
+def _with_include() -> EnumDefinition:
+    e = _base_enum()
+    e.include = [AnonymousEnumExpression(concepts=["TEST:0000006"])]
+    return e
+
+
+def _with_minus() -> EnumDefinition:
+    e = _base_enum()
+    e.minus = [AnonymousEnumExpression(concepts=["TEST:0000006"])]
+    return e
+
+
+@pytest.mark.parametrize(
+    "variant",
+    [_with_inherits, _with_include, _with_minus],
+    ids=["inherits", "include", "minus"],
+)
+def test_cache_key_changes_with_set_operation_clause(tmp_path, variant):
+    """#36: include / minus / inherits must participate in the enum cache key.
+
+    Two enums identical except for one of these clauses must not collide on
+    the same cache file, otherwise editing the clause returns stale results.
+    """
+    plugin = DynamicEnumPlugin(
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+    base_key = plugin._get_enum_cache_key(_base_enum())
+    variant_key = plugin._get_enum_cache_key(variant())
+    assert base_key != variant_key

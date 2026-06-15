@@ -185,9 +185,9 @@ class BaseOntologyPlugin(ValidationPlugin):
     def _get_enum_cache_key(self, enum_def: EnumDefinition) -> str:
         """Generate a cache key from enum definition.
 
-        The key is based on the dynamic query parameters (source_nodes,
-        relationship_types, include_self, traverse_up) so the cache is
-        invalidated when the enum definition changes.
+        The key incorporates every dynamic construct that affects the expanded
+        value set (reachable_from, concepts, include, minus, inherits) so the
+        cache is invalidated when any of them changes.
 
         Args:
             enum_def: Enum definition
@@ -198,18 +198,49 @@ class BaseOntologyPlugin(ValidationPlugin):
         key_parts = [enum_def.name or ""]
 
         if enum_def.reachable_from:
-            query = enum_def.reachable_from
-            key_parts.append(f"rf:{','.join(sorted(query.source_nodes or []))}")
-            key_parts.append(f"rt:{','.join(sorted(query.relationship_types or []))}")
-            key_parts.append(f"is:{query.include_self if hasattr(query, 'include_self') else True}")
-            key_parts.append(f"tu:{query.traverse_up if hasattr(query, 'traverse_up') else False}")
+            key_parts.append(f"rf:{self._reachability_key(enum_def.reachable_from)}")
 
         if enum_def.concepts:
             key_parts.append(f"c:{','.join(sorted(enum_def.concepts))}")
 
+        # Set-operation clauses also change the expanded value set; sort so the
+        # key is independent of clause ordering.
+        if enum_def.include:
+            key_parts.append(
+                "inc:" + ",".join(sorted(self._enum_expression_key(e) for e in enum_def.include))
+            )
+        if enum_def.minus:
+            key_parts.append(
+                "min:" + ",".join(sorted(self._enum_expression_key(e) for e in enum_def.minus))
+            )
+        if enum_def.inherits:
+            key_parts.append(f"inh:{','.join(sorted(enum_def.inherits))}")
+
         # Create a short hash for filename
         key_string = "|".join(key_parts)
         return hashlib.md5(key_string.encode()).hexdigest()[:12]
+
+    @staticmethod
+    def _reachability_key(query: Any) -> str:
+        """Serialize a reachable_from query deterministically for cache keys."""
+        parts = [
+            f"rf:{','.join(sorted(query.source_nodes or []))}",
+            f"rt:{','.join(sorted(query.relationship_types or []))}",
+            f"is:{query.include_self if hasattr(query, 'include_self') else True}",
+            f"tu:{query.traverse_up if hasattr(query, 'traverse_up') else False}",
+        ]
+        return "|".join(parts)
+
+    def _enum_expression_key(self, expr: Any) -> str:
+        """Serialize an include/minus enum expression deterministically."""
+        parts: list[str] = []
+        if getattr(expr, "reachable_from", None):
+            parts.append(self._reachability_key(expr.reachable_from))
+        if getattr(expr, "concepts", None):
+            parts.append(f"c:{','.join(sorted(expr.concepts))}")
+        if getattr(expr, "permissible_values", None):
+            parts.append(f"pv:{','.join(sorted(expr.permissible_values))}")
+        return "(" + "|".join(parts) + ")"
 
     def _get_enum_cache_file(self, enum_name: str, cache_key: str) -> Path:
         """Get the cache file path for an enum.
