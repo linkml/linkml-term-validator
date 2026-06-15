@@ -56,3 +56,44 @@ def test_traverse_up_includes_ancestors_not_descendants(plugin):
     assert plugin.is_value_in_enum("TEST:0000001", enum_def) is True
     # Child-two is a sibling, not an ancestor → invalid.
     assert plugin.is_value_in_enum("TEST:0000003", enum_def) is False
+
+
+class _BoomAdapter:
+    """Adapter stub whose graph queries fail, simulating a backend outage."""
+
+    def descendants(self, *args, **kwargs):
+        raise RuntimeError("ontology backend unavailable")
+
+    def ancestors(self, *args, **kwargs):
+        raise RuntimeError("ontology backend unavailable")
+
+
+def test_failed_expansion_is_not_cached_as_complete(tmp_path):
+    """#35: a failed reachable_from expansion must not be persisted as complete.
+
+    Previously the OAK query exception was swallowed, yielding an empty set
+    that was written to disk and marked complete — poisoning every later run.
+    """
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=True,  # caching on, so we can inspect the marker
+        cache_dir=tmp_path / "cache",
+    )
+    # Force the adapter for the TEST prefix to fail on graph queries.
+    plugin.ontology._adapter_cache["TEST"] = _BoomAdapter()
+
+    enum_def = EnumDefinition(
+        name="BoomEnum",
+        reachable_from=ReachabilityQuery(
+            source_nodes=["TEST:0000005"],
+            relationship_types=["rdfs:subClassOf"],
+        ),
+    )
+
+    # The failure must surface, not be silently swallowed.
+    with pytest.raises(RuntimeError):
+        plugin.expand_enum(enum_def, use_cache=True)
+
+    # And the cache must not have been marked complete.
+    assert plugin._is_enum_cache_complete(enum_def) is False

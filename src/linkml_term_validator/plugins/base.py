@@ -687,30 +687,29 @@ class BaseOntologyPlugin(ValidationPlugin):
         # Get relationship types (predicates)
         predicates = query.relationship_types if query.relationship_types else ["rdfs:subClassOf"]
 
-        # Use OAK to get descendants or ancestors
+        # Use OAK to get descendants or ancestors. A query failure is allowed to
+        # propagate: expand_enum writes its cache only after a fully successful
+        # expansion, so a partial/empty result is never persisted as complete
+        # (see #35).
         for source_node in query.source_nodes:
-            try:
-                if query.traverse_up:
-                    # Get ancestors
-                    ancestors_result = adapter.ancestors(  # type: ignore[attr-defined]
-                        source_node,
-                        predicates=predicates,
-                        reflexive=query.include_self if hasattr(query, "include_self") else False,
-                    )
-                    if ancestors_result:
-                        values.update(ancestors_result)
-                else:
-                    # Get descendants (default)
-                    descendants_result = adapter.descendants(  # type: ignore[attr-defined]
-                        source_node,
-                        predicates=predicates,
-                        reflexive=query.include_self if hasattr(query, "include_self") else True,
-                    )
-                    if descendants_result:
-                        values.update(descendants_result)
-            except Exception:
-                # If OAK query fails, skip this source node
-                pass
+            if query.traverse_up:
+                # Get ancestors
+                ancestors_result = adapter.ancestors(  # type: ignore[attr-defined]
+                    source_node,
+                    predicates=predicates,
+                    reflexive=query.include_self if hasattr(query, "include_self") else False,
+                )
+                if ancestors_result:
+                    values.update(ancestors_result)
+            else:
+                # Get descendants (default)
+                descendants_result = adapter.descendants(  # type: ignore[attr-defined]
+                    source_node,
+                    predicates=predicates,
+                    reflexive=query.include_self if hasattr(query, "include_self") else True,
+                )
+                if descendants_result:
+                    values.update(descendants_result)
 
         return values
 
