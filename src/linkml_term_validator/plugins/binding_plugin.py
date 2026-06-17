@@ -132,6 +132,8 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         self.slot_properties_map: dict[str, dict[str, set[str]]] = {}
         # Map enum_name -> set of expanded values (for dynamic enums)
         self.expanded_enums: dict[str, set[str]] = {}
+        # Set of all class names in the current schema
+        self._class_names: set[str] = set()
 
     def pre_process(self, context: ValidationContext) -> None:
         """Extract all bindings, slot properties, and optionally expand dynamic enums.
@@ -150,8 +152,10 @@ class BindingValidationPlugin(BaseOntologyPlugin):
 
         # Track which enums are referenced by bindings
         self._referenced_enums: set[str] = set()
+        all_classes = list(self.schema_view.all_classes().values())
+        self._class_names = {cls.name for cls in all_classes}
 
-        for cls in self.schema_view.all_classes().values():
+        for cls in all_classes:
             class_properties: dict[str, set[str]] = {}
             for slot in self.schema_view.class_induced_slots(cls.name):
                 if slot.bindings:
@@ -223,9 +227,6 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         if not isinstance(instance, dict) or self.schema_view is None:
             return
 
-        # Precompute once per call instead of rebuilding on every slot
-        all_class_names = {c.name for c in self.schema_view.all_classes().values()}
-
         # Check each slot in the current instance
         for slot_name, value in instance.items():
             slot_path = f"{path}.{slot_name}" if path else slot_name
@@ -258,7 +259,7 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             if slot_def and slot_def.range:
                 nested_class = slot_def.range
                 # Only recurse if the range is a class (not a type like string)
-                if nested_class in all_class_names:
+                if nested_class in self._class_names:
                     values = value if isinstance(value, list) else [value]
                     for i, val in enumerate(values):
                         if isinstance(val, dict):
