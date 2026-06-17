@@ -4,6 +4,7 @@ Covers regression tests for:
 - #34 traverse_up must include ancestors, not behave like traverse_down
 - #35 a failed expansion must not be cached as a complete closure
 - #36 the enum cache key must change when include/minus/inherits change
+- #37 include_self defaults and explicit values must be consistent
 
 Uses the local simpleobo test ontology (offline). Hierarchy:
 
@@ -16,6 +17,7 @@ Uses the local simpleobo test ontology (offline). Hierarchy:
 """
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from linkml_runtime.linkml_model.meta import (
@@ -60,6 +62,64 @@ def test_traverse_up_includes_ancestors_not_descendants(plugin):
     assert plugin.is_value_in_enum("TEST:0000001", enum_def) is True
     # Child-two is a sibling, not an ancestor → invalid.
     assert plugin.is_value_in_enum("TEST:0000003", enum_def) is False
+
+
+@pytest.mark.parametrize(
+    ("traverse_up", "source_node", "reachable_node"),
+    [
+        (False, "TEST:0000002", "TEST:0000004"),
+        (True, "TEST:0000002", "TEST:0000001"),
+    ],
+    ids=["descendants", "ancestors"],
+)
+def test_missing_include_self_defaults_to_excluding_source_node(
+    plugin, traverse_up, source_node, reachable_node
+):
+    """#37: missing include_self should consistently exclude the source node."""
+    query = SimpleNamespace(
+        source_nodes=[source_node],
+        relationship_types=["rdfs:subClassOf"],
+        traverse_up=traverse_up,
+    )
+
+    assert plugin._is_value_in_reachable_from(source_node, query) is False
+    assert plugin._is_value_in_reachable_from(reachable_node, query) is True
+
+    expanded = plugin._expand_reachable_from(query)
+    assert source_node not in expanded
+    assert reachable_node in expanded
+
+
+@pytest.mark.parametrize(
+    ("traverse_up", "source_node", "reachable_node"),
+    [
+        (False, "TEST:0000002", "TEST:0000004"),
+        (True, "TEST:0000002", "TEST:0000001"),
+    ],
+    ids=["descendants", "ancestors"],
+)
+@pytest.mark.parametrize(
+    ("include_self", "source_is_reachable"),
+    [(False, False), (True, True)],
+    ids=["include-self-false", "include-self-true"],
+)
+def test_include_self_is_honored_in_progressive_and_expanded_paths(
+    plugin, traverse_up, source_node, reachable_node, include_self, source_is_reachable
+):
+    """#37: include_self should behave the same in per-value and expanded paths."""
+    query = ReachabilityQuery(
+        source_nodes=[source_node],
+        relationship_types=["rdfs:subClassOf"],
+        traverse_up=traverse_up,
+        include_self=include_self,
+    )
+
+    assert plugin._is_value_in_reachable_from(source_node, query) is source_is_reachable
+    assert plugin._is_value_in_reachable_from(reachable_node, query) is True
+
+    expanded = plugin._expand_reachable_from(query)
+    assert (source_node in expanded) is source_is_reachable
+    assert reachable_node in expanded
 
 
 class _BoomAdapter:

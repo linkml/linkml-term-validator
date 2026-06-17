@@ -221,12 +221,17 @@ class BaseOntologyPlugin(ValidationPlugin):
         return hashlib.md5(key_string.encode()).hexdigest()[:12]
 
     @staticmethod
+    def _reachable_from_include_self(query: Any) -> bool:
+        """Return the effective include_self value for a reachable_from query."""
+        return bool(getattr(query, "include_self", False))
+
+    @staticmethod
     def _reachability_key(query: Any) -> str:
         """Serialize a reachable_from query deterministically for cache keys."""
         parts = [
             f"rf:{','.join(sorted(query.source_nodes or []))}",
             f"rt:{','.join(sorted(query.relationship_types or []))}",
-            f"is:{query.include_self if hasattr(query, 'include_self') else True}",
+            f"is:{BaseOntologyPlugin._reachable_from_include_self(query)}",
             f"tu:{query.traverse_up if hasattr(query, 'traverse_up') else False}",
         ]
         return "|".join(parts)
@@ -496,7 +501,7 @@ class BaseOntologyPlugin(ValidationPlugin):
             return False  # Term doesn't exist or adapter lookup failed
 
         predicates = query.relationship_types if query.relationship_types else ["rdfs:subClassOf"]
-        include_self = query.include_self if hasattr(query, "include_self") else True
+        include_self = self._reachable_from_include_self(query)
 
         # Check if value is reachable from any source node
         for source_node in query.source_nodes:
@@ -507,13 +512,21 @@ class BaseOntologyPlugin(ValidationPlugin):
             if query.traverse_up:
                 # value must be an ancestor of source_node (we traverse up from
                 # the source), i.e. value appears among source_node's ancestors.
-                ancestors = adapter.ancestors(source_node, predicates=predicates)  # type: ignore[attr-defined]
+                ancestors = adapter.ancestors(  # type: ignore[attr-defined]
+                    source_node,
+                    predicates=predicates,
+                    reflexive=include_self,
+                )
                 if ancestors and value in ancestors:
                     return True
             else:
                 # value must be a descendant of source_node, i.e. source_node
                 # appears among value's ancestors.
-                ancestors = adapter.ancestors(value, predicates=predicates)  # type: ignore[attr-defined]
+                ancestors = adapter.ancestors(  # type: ignore[attr-defined]
+                    value,
+                    predicates=predicates,
+                    reflexive=include_self,
+                )
                 if ancestors and source_node in ancestors:
                     return True
 
@@ -722,13 +735,14 @@ class BaseOntologyPlugin(ValidationPlugin):
         # propagate: expand_enum writes its cache only after a fully successful
         # expansion, so a partial/empty result is never persisted as complete
         # (see #35).
+        include_self = self._reachable_from_include_self(query)
         for source_node in query.source_nodes:
             if query.traverse_up:
                 # Get ancestors
                 ancestors_result = adapter.ancestors(  # type: ignore[attr-defined]
                     source_node,
                     predicates=predicates,
-                    reflexive=query.include_self if hasattr(query, "include_self") else False,
+                    reflexive=include_self,
                 )
                 if ancestors_result:
                     values.update(ancestors_result)
@@ -737,7 +751,7 @@ class BaseOntologyPlugin(ValidationPlugin):
                 descendants_result = adapter.descendants(  # type: ignore[attr-defined]
                     source_node,
                     predicates=predicates,
-                    reflexive=query.include_self if hasattr(query, "include_self") else True,
+                    reflexive=include_self,
                 )
                 if descendants_result:
                     values.update(descendants_result)
