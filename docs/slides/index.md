@@ -6,4 +6,4 @@ View the linkml-term-validator presentation:
 
 ## Preview
 
-<iframe src="ltv-slides.html" width="100%" height="600px" style="border:1px solid #ccc; border-radius: 4px;"></iframe>
+<iframe src="ltv-slides.html" title="Preview of linkml-term-validator presentation" loading="lazy" width="100%" height="600px" style="border:1px solid #ccc; border-radius: 4px;"></iframe>

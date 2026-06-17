@@ -57,6 +57,6 @@ jupyter:
 gen-slides:
   @echo "Building slides with Marp..."
   @mkdir -p docs/slides/output
-  npx @marp-team/marp-cli docs/slides/ltv-slides.md -o docs/slides/output/ltv-slides.html
-  npx @marp-team/marp-cli docs/slides/ltv-slides.md -o docs/slides/output/ltv-slides.pdf
+  npx @marp-team/marp-cli@3.9.0 docs/slides/ltv-slides.md -o docs/slides/output/ltv-slides.html
+  npx @marp-team/marp-cli@3.9.0 docs/slides/ltv-slides.md -o docs/slides/output/ltv-slides.pdf
   @echo "✅ Slides built: docs/slides/output/ltv-slides.html and ltv-slides.pdf"
