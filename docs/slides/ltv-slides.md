@@ -3,7 +3,7 @@ marp: true
 theme: default
 paginate: true
 backgroundColor: #fff
-backgroundImage: url('https://marp.app/assets/hero-background.svg')
+backgroundImage: url('../assets/hero-background.svg')
 ---
 
 <!-- _class: lead -->
