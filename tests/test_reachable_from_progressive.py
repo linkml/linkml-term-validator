@@ -23,6 +23,8 @@ import pytest
 from linkml_runtime.linkml_model.meta import (
     AnonymousEnumExpression,
     EnumDefinition,
+    MatchQuery,
+    PermissibleValue,
     ReachabilityQuery,
 )
 
@@ -191,6 +193,28 @@ def _with_minus() -> EnumDefinition:
     return e
 
 
+def _with_top_level_permissible_value(meaning: str) -> EnumDefinition:
+    e = _base_enum()
+    e.permissible_values = {"EXTRA": PermissibleValue(text="EXTRA", meaning=meaning)}
+    return e
+
+
+def _with_include_match(pattern: str) -> EnumDefinition:
+    e = _base_enum()
+    e.include = [AnonymousEnumExpression(matches=MatchQuery(identifier_pattern=pattern))]
+    return e
+
+
+def _with_include_permissible_value(meaning: str) -> EnumDefinition:
+    e = _base_enum()
+    e.include = [
+        AnonymousEnumExpression(
+            permissible_values={"EXTRA": PermissibleValue(text="EXTRA", meaning=meaning)}
+        )
+    ]
+    return e
+
+
 @pytest.mark.parametrize(
     "variant",
     [_with_inherits, _with_include, _with_minus],
@@ -210,3 +234,55 @@ def test_cache_key_changes_with_set_operation_clause(tmp_path, variant):
     base_key = plugin._get_enum_cache_key(_base_enum())
     variant_key = plugin._get_enum_cache_key(variant())
     assert base_key != variant_key
+
+
+def test_cache_key_changes_with_top_level_matches_clause(tmp_path):
+    """#36: matches clauses must participate in the enum cache key."""
+    plugin = DynamicEnumPlugin(
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+    enum1 = EnumDefinition(name="E", matches=MatchQuery(identifier_pattern="TEST:000000[12]"))
+    enum2 = EnumDefinition(name="E", matches=MatchQuery(identifier_pattern="TEST:000000[34]"))
+
+    assert plugin._get_enum_cache_key(enum1) != plugin._get_enum_cache_key(enum2)
+
+
+def test_cache_key_changes_with_top_level_permissible_value_meaning(tmp_path):
+    """#36: top-level permissible value meanings affect expanded enum values."""
+    plugin = DynamicEnumPlugin(
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+
+    key1 = plugin._get_enum_cache_key(_with_top_level_permissible_value("TEST:0000002"))
+    key2 = plugin._get_enum_cache_key(_with_top_level_permissible_value("TEST:0000003"))
+    assert key1 != key2
+
+
+def test_cache_key_changes_with_include_match_clause(tmp_path):
+    """#36: include/minus expression matches clauses must affect the cache key."""
+    plugin = DynamicEnumPlugin(
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+
+    key1 = plugin._get_enum_cache_key(_with_include_match("TEST:000000[12]"))
+    key2 = plugin._get_enum_cache_key(_with_include_match("TEST:000000[34]"))
+    assert key1 != key2
+
+
+def test_cache_key_changes_with_include_permissible_value_meaning(tmp_path):
+    """#36: include/minus expression permissible value meanings affect the cache key."""
+    plugin = DynamicEnumPlugin(
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+
+    key1 = plugin._get_enum_cache_key(_with_include_permissible_value("TEST:0000002"))
+    key2 = plugin._get_enum_cache_key(_with_include_permissible_value("TEST:0000003"))
+    assert key1 != key2

@@ -16,6 +16,7 @@ Example:
 
 import csv
 import hashlib
+import json
 import re
 from pathlib import Path
 from typing import Any, Literal, Optional
@@ -203,6 +204,12 @@ class BaseOntologyPlugin(ValidationPlugin):
         if enum_def.concepts:
             key_parts.append(f"c:{','.join(sorted(enum_def.concepts))}")
 
+        if enum_def.matches:
+            key_parts.append(f"m:{self._matches_key(enum_def.matches)}")
+
+        if enum_def.permissible_values:
+            key_parts.append(f"pv:{self._permissible_values_key(enum_def.permissible_values)}")
+
         # Set-operation clauses also change the expanded value set; sort so the
         # key is independent of clause ordering.
         if enum_def.include:
@@ -229,22 +236,50 @@ class BaseOntologyPlugin(ValidationPlugin):
     def _reachability_key(query: Any) -> str:
         """Serialize a reachable_from query deterministically for cache keys."""
         parts = [
-            f"rf:{','.join(sorted(query.source_nodes or []))}",
+            f"sn:{','.join(sorted(query.source_nodes or []))}",
             f"rt:{','.join(sorted(query.relationship_types or []))}",
             f"is:{BaseOntologyPlugin._reachable_from_include_self(query)}",
             f"tu:{query.traverse_up if hasattr(query, 'traverse_up') else False}",
         ]
         return "|".join(parts)
 
+    @staticmethod
+    def _matches_key(query: Any) -> str:
+        """Serialize a matches query deterministically for cache keys."""
+        source_ontology = getattr(query, "source_ontology", None)
+        return json.dumps(
+            {
+                "identifier_pattern": getattr(query, "identifier_pattern", None),
+                "source_ontology": str(source_ontology) if source_ontology is not None else None,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+
+    @staticmethod
+    def _permissible_values_key(permissible_values: Any) -> str:
+        """Serialize permissible values as the expanded names and meanings."""
+        parts = []
+        items = permissible_values.items() if hasattr(permissible_values, "items") else permissible_values._items()
+        for pv_name, pv in items:
+            if isinstance(pv, dict):
+                meaning = pv.get("meaning")
+            else:
+                meaning = getattr(pv, "meaning", None)
+            parts.append([str(pv_name), str(meaning) if meaning is not None else None])
+        return json.dumps(sorted(parts), separators=(",", ":"))
+
     def _enum_expression_key(self, expr: Any) -> str:
         """Serialize an include/minus enum expression deterministically."""
         parts: list[str] = []
         if getattr(expr, "reachable_from", None):
             parts.append(self._reachability_key(expr.reachable_from))
+        if getattr(expr, "matches", None):
+            parts.append(f"m:{self._matches_key(expr.matches)}")
         if getattr(expr, "concepts", None):
             parts.append(f"c:{','.join(sorted(expr.concepts))}")
         if getattr(expr, "permissible_values", None):
-            parts.append(f"pv:{','.join(sorted(expr.permissible_values))}")
+            parts.append(f"pv:{self._permissible_values_key(expr.permissible_values)}")
         return "(" + "|".join(parts) + ")"
 
     def _get_enum_cache_file(self, enum_name: str, cache_key: str) -> Path:
