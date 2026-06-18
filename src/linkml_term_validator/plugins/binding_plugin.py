@@ -627,10 +627,52 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             ontology_label = self.get_ontology_label(field_value)
 
             if ontology_label:
-                normalized_provided = self.normalize_string(provided_label)
+                if isinstance(provided_label, str):
+                    provided_labels = [provided_label]
+                elif isinstance(provided_label, list):
+                    provided_labels = [label for label in provided_label if isinstance(label, str)]
+                    if not provided_labels:
+                        yield ValidationResult(
+                            type="binding_label_invalid",
+                            severity=Severity.WARN,
+                            message=(
+                                f"Label field '{label_field}' for '{field_value}' must contain "
+                                f"a string label, got '{provided_label}'"
+                            ),
+                            instance=instance,
+                            instantiates=target_class,
+                            context=[
+                                f"path: {path}",
+                                f"slot: {slot_name}",
+                                f"label_field: {label_field}",
+                                f"curie: {field_value}",
+                            ],
+                        )
+                        continue
+                else:
+                    yield ValidationResult(
+                        type="binding_label_invalid",
+                        severity=Severity.WARN,
+                        message=(
+                            f"Label field '{label_field}' for '{field_value}' must be a string "
+                            f"or list of strings, got {type(provided_label).__name__}"
+                        ),
+                        instance=instance,
+                        instantiates=target_class,
+                        context=[
+                            f"path: {path}",
+                            f"slot: {slot_name}",
+                            f"label_field: {label_field}",
+                            f"curie: {field_value}",
+                        ],
+                    )
+                    continue
+
                 normalized_ontology = self.normalize_string(ontology_label)
 
-                if normalized_provided != normalized_ontology:
+                if not any(
+                    self.normalize_string(label) == normalized_ontology for label in provided_labels
+                ):
                     yield ValidationResult(
                         type="binding_label_mismatch",
                         severity=Severity.WARN,
