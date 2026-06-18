@@ -42,6 +42,7 @@ nav:
       - CLI Reference: cli-reference.md
       - Plugin Reference: plugin-reference.md
   - Explanation:
+      - Presentation: slides/index.md
       - Semantic Artefacts Primer: ontologies-primer.md
       - Enumerations: enumerations.md
       - Bindings Explained: bindings-explained.md
