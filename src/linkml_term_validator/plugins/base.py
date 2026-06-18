@@ -16,6 +16,7 @@ Example:
 
 import csv
 import hashlib
+import json
 import re
 from pathlib import Path
 from typing import Any, Literal, Optional
@@ -185,9 +186,9 @@ class BaseOntologyPlugin(ValidationPlugin):
     def _get_enum_cache_key(self, enum_def: EnumDefinition) -> str:
         """Generate a cache key from enum definition.
 
-        The key is based on the dynamic query parameters (source_nodes,
-        relationship_types, include_self, traverse_up) so the cache is
-        invalidated when the enum definition changes.
+        The key incorporates every dynamic construct that affects the expanded
+        value set (reachable_from, concepts, include, minus, inherits) so the
+        cache is invalidated when any of them changes.
 
         Args:
             enum_def: Enum definition
@@ -198,18 +199,88 @@ class BaseOntologyPlugin(ValidationPlugin):
         key_parts = [enum_def.name or ""]
 
         if enum_def.reachable_from:
-            query = enum_def.reachable_from
-            key_parts.append(f"rf:{','.join(sorted(query.source_nodes or []))}")
-            key_parts.append(f"rt:{','.join(sorted(query.relationship_types or []))}")
-            key_parts.append(f"is:{query.include_self if hasattr(query, 'include_self') else True}")
-            key_parts.append(f"tu:{query.traverse_up if hasattr(query, 'traverse_up') else False}")
+            key_parts.append(f"rf:{self._reachability_key(enum_def.reachable_from)}")
 
         if enum_def.concepts:
             key_parts.append(f"c:{','.join(sorted(enum_def.concepts))}")
 
+        if enum_def.matches:
+            key_parts.append(f"m:{self._matches_key(enum_def.matches)}")
+
+        if enum_def.permissible_values:
+            key_parts.append(f"pv:{self._permissible_values_key(enum_def.permissible_values)}")
+
+        # Set-operation clauses also change the expanded value set; sort so the
+        # key is independent of clause ordering.
+        if enum_def.include:
+            key_parts.append(
+                "inc:" + ",".join(sorted(self._enum_expression_key(e) for e in enum_def.include))
+            )
+        if enum_def.minus:
+            key_parts.append(
+                "min:" + ",".join(sorted(self._enum_expression_key(e) for e in enum_def.minus))
+            )
+        if enum_def.inherits:
+            key_parts.append(f"inh:{','.join(sorted(enum_def.inherits))}")
+
         # Create a short hash for filename
         key_string = "|".join(key_parts)
         return hashlib.md5(key_string.encode()).hexdigest()[:12]
+
+    @staticmethod
+    def _reachable_from_include_self(query: Any) -> bool:
+        """Return the effective include_self value for a reachable_from query."""
+        return bool(getattr(query, "include_self", False))
+
+    @staticmethod
+    def _reachability_key(query: Any) -> str:
+        """Serialize a reachable_from query deterministically for cache keys."""
+        parts = [
+            f"sn:{','.join(sorted(query.source_nodes or []))}",
+            f"rt:{','.join(sorted(query.relationship_types or []))}",
+            f"is:{BaseOntologyPlugin._reachable_from_include_self(query)}",
+            f"tu:{query.traverse_up if hasattr(query, 'traverse_up') else False}",
+        ]
+        return "|".join(parts)
+
+    @staticmethod
+    def _matches_key(query: Any) -> str:
+        """Serialize a matches query deterministically for cache keys."""
+        source_ontology = getattr(query, "source_ontology", None)
+        return json.dumps(
+            {
+                "identifier_pattern": getattr(query, "identifier_pattern", None),
+                "source_ontology": str(source_ontology) if source_ontology is not None else None,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+
+    @staticmethod
+    def _permissible_values_key(permissible_values: Any) -> str:
+        """Serialize permissible values as the expanded names and meanings."""
+        parts = []
+        items = permissible_values.items() if hasattr(permissible_values, "items") else permissible_values._items()
+        for pv_name, pv in items:
+            if isinstance(pv, dict):
+                meaning = pv.get("meaning")
+            else:
+                meaning = getattr(pv, "meaning", None)
+            parts.append([str(pv_name), str(meaning) if meaning is not None else None])
+        return json.dumps(sorted(parts), separators=(",", ":"))
+
+    def _enum_expression_key(self, expr: Any) -> str:
+        """Serialize an include/minus enum expression deterministically."""
+        parts: list[str] = []
+        if getattr(expr, "reachable_from", None):
+            parts.append(self._reachability_key(expr.reachable_from))
+        if getattr(expr, "matches", None):
+            parts.append(f"m:{self._matches_key(expr.matches)}")
+        if getattr(expr, "concepts", None):
+            parts.append(f"c:{','.join(sorted(expr.concepts))}")
+        if getattr(expr, "permissible_values", None):
+            parts.append(f"pv:{self._permissible_values_key(expr.permissible_values)}")
+        return "(" + "|".join(parts) + ")"
 
     def _get_enum_cache_file(self, enum_name: str, cache_key: str) -> Path:
         """Get the cache file path for an enum.
@@ -465,23 +536,33 @@ class BaseOntologyPlugin(ValidationPlugin):
             return False  # Term doesn't exist or adapter lookup failed
 
         predicates = query.relationship_types if query.relationship_types else ["rdfs:subClassOf"]
+        include_self = self._reachable_from_include_self(query)
 
         # Check if value is reachable from any source node
         for source_node in query.source_nodes:
+            # Reflexive case: the source node itself.
+            if include_self and value == source_node:
+                return True
+
             if query.traverse_up:
-                # Check if source_node is an ancestor of value
-                ancestors = adapter.ancestors(value, predicates=predicates)  # type: ignore[attr-defined]
-                if ancestors and source_node in ancestors:
+                # value must be an ancestor of source_node (we traverse up from
+                # the source), i.e. value appears among source_node's ancestors.
+                ancestors = adapter.ancestors(  # type: ignore[attr-defined]
+                    source_node,
+                    predicates=predicates,
+                    reflexive=include_self,
+                )
+                if ancestors and value in ancestors:
                     return True
             else:
-                # Check if value is a descendant of source_node
-                # We do this by checking if source_node is an ancestor of value
-                ancestors = adapter.ancestors(value, predicates=predicates)  # type: ignore[attr-defined]
+                # value must be a descendant of source_node, i.e. source_node
+                # appears among value's ancestors.
+                ancestors = adapter.ancestors(  # type: ignore[attr-defined]
+                    value,
+                    predicates=predicates,
+                    reflexive=include_self,
+                )
                 if ancestors and source_node in ancestors:
-                    return True
-                # Also check include_self
-                include_self = query.include_self if hasattr(query, "include_self") else True
-                if include_self and value == source_node:
                     return True
 
         return False
@@ -685,30 +766,30 @@ class BaseOntologyPlugin(ValidationPlugin):
         # Get relationship types (predicates)
         predicates = query.relationship_types if query.relationship_types else ["rdfs:subClassOf"]
 
-        # Use OAK to get descendants or ancestors
+        # Use OAK to get descendants or ancestors. A query failure is allowed to
+        # propagate: expand_enum writes its cache only after a fully successful
+        # expansion, so a partial/empty result is never persisted as complete
+        # (see #35).
+        include_self = self._reachable_from_include_self(query)
         for source_node in query.source_nodes:
-            try:
-                if query.traverse_up:
-                    # Get ancestors
-                    ancestors_result = adapter.ancestors(  # type: ignore[attr-defined]
-                        source_node,
-                        predicates=predicates,
-                        reflexive=query.include_self if hasattr(query, "include_self") else False,
-                    )
-                    if ancestors_result:
-                        values.update(ancestors_result)
-                else:
-                    # Get descendants (default)
-                    descendants_result = adapter.descendants(  # type: ignore[attr-defined]
-                        source_node,
-                        predicates=predicates,
-                        reflexive=query.include_self if hasattr(query, "include_self") else True,
-                    )
-                    if descendants_result:
-                        values.update(descendants_result)
-            except Exception:
-                # If OAK query fails, skip this source node
-                pass
+            if query.traverse_up:
+                # Get ancestors
+                ancestors_result = adapter.ancestors(  # type: ignore[attr-defined]
+                    source_node,
+                    predicates=predicates,
+                    reflexive=include_self,
+                )
+                if ancestors_result:
+                    values.update(ancestors_result)
+            else:
+                # Get descendants (default)
+                descendants_result = adapter.descendants(  # type: ignore[attr-defined]
+                    source_node,
+                    predicates=predicates,
+                    reflexive=include_self,
+                )
+                if descendants_result:
+                    values.update(descendants_result)
 
         return values
 
