@@ -312,6 +312,67 @@ classes:
     assert "title" not in label_slots
 
 
+def test_binding_plugin_non_string_label_reports_warning(plugin_cache_dir):
+    """Non-string label values should report a validation result, not crash."""
+    plugin = BindingValidationPlugin(validate_labels=True, cache_dir=plugin_cache_dir)
+    plugin.get_ontology_label = lambda curie: "child term one"  # type: ignore[method-assign]
+
+    results = list(
+        plugin._validate_label(
+            value={"label": None},
+            field_value="TEST:0000002",
+            slot_name="term",
+            instance={"term": {"id": "TEST:0000002", "label": None}},
+            target_class="Annotation",
+            path="term",
+        )
+    )
+
+    assert len(results) == 1
+    assert results[0].type == "binding_label_invalid"
+    assert "must be a string" in results[0].message
+
+
+def test_binding_plugin_list_label_matches_any_string(plugin_cache_dir):
+    """Multivalued label slots should pass when any string label matches."""
+    plugin = BindingValidationPlugin(validate_labels=True, cache_dir=plugin_cache_dir)
+    plugin.get_ontology_label = lambda curie: "child term one"  # type: ignore[method-assign]
+
+    results = list(
+        plugin._validate_label(
+            value={"label": ["alternate label", "child term one"]},
+            field_value="TEST:0000002",
+            slot_name="term",
+            instance={"term": {"id": "TEST:0000002", "label": ["alternate label", "child term one"]}},
+            target_class="Annotation",
+            path="term",
+        )
+    )
+
+    assert results == []
+
+
+def test_binding_plugin_list_label_mismatch_reports_warning(plugin_cache_dir):
+    """Multivalued label slots should warn when no string label matches."""
+    plugin = BindingValidationPlugin(validate_labels=True, cache_dir=plugin_cache_dir)
+    plugin.get_ontology_label = lambda curie: "child term one"  # type: ignore[method-assign]
+
+    results = list(
+        plugin._validate_label(
+            value={"label": ["alternate label", "wrong label"]},
+            field_value="TEST:0000002",
+            slot_name="term",
+            instance={"term": {"id": "TEST:0000002", "label": ["alternate label", "wrong label"]}},
+            target_class="Annotation",
+            path="term",
+        )
+    )
+
+    assert len(results) == 1
+    assert results[0].type == "binding_label_mismatch"
+    assert "child term one" in results[0].message
+
+
 def test_binding_plugin_validates_nested_bindings(plugin_cache_dir, tmp_path):
     """Test that BindingValidationPlugin recurses into nested structures.
 
