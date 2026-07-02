@@ -1122,7 +1122,57 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#offline-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Offline Mode
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Offline Mode">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#preparing-a-cache-for-offline-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Preparing a cache for offline use
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#uncached-terms-are-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Uncached terms are errors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration_1" class="md-nav__link">
     <span class="md-ellipsis">
       
         Configuration
@@ -1497,7 +1547,57 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#offline-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Offline Mode
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Offline Mode">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#preparing-a-cache-for-offline-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Preparing a cache for offline use
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#uncached-terms-are-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Uncached terms are errors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration_1" class="md-nav__link">
     <span class="md-ellipsis">
       
         Configuration
@@ -1779,7 +1879,61 @@ GO:0006260
 <li><strong>Disable only enum expansion caching</strong>: Use <code>--no-cache-enum-expansions</code></li>
 <li><strong>Close enum caches on demand</strong>: Use <code>--saturate-enum-caches</code></li>
 </ul>
-<h2 id="configuration">Configuration</h2>
+<h2 id="offline-mode">Offline Mode</h2>
+<p>Offline mode (<code>--offline</code>) forces validation to run <strong>entirely from the cache</strong>,
+with a guarantee that no external ontology access ever happens. In offline mode
+the validator never builds an OAK adapter, so it cannot download an ontology
+database or contact a remote service (OLS, etc.). Every label and enum-membership
+check is resolved exclusively from the CSV cache in <code>--cache-dir</code>.</p>
+<p>This is useful for:</p>
+<ul>
+<li><strong>Air-gapped or network-restricted environments</strong> where outbound access is unavailable or forbidden</li>
+<li><strong>CI/CD pipelines</strong> that must be reproducible and must not depend on remote ontology services</li>
+<li><strong>Guaranteeing determinism</strong> — results depend only on the committed cache, never on live ontology state</li>
+</ul>
+<h3 id="preparing-a-cache-for-offline-use">Preparing a cache for offline use</h3>
+<p>Because offline mode only reads the cache, the cache must already contain
+everything the validation needs:</p>
+<ul>
+<li><strong>Labels</strong>: run the same validation online at least once (with caching enabled) so the required labels are written to <code>cache/&lt;prefix&gt;/terms.csv</code>.</li>
+<li><strong>Dynamic enums</strong>: materialize full enum closures with <code>--saturate-enum-caches</code> (or <code>--cache-strategy greedy</code>) so the <code>.complete</code> marker is written. A dynamic enum without a complete cache cannot be validated offline (membership can only be confirmed from a materialized closure); in that case each value is reported as an error whose message points you at the unmaterialized closure rather than claiming the data is invalid. Note that <code>--saturate-enum-caches</code> is a <strong>no-op offline</strong> (it cannot build the closure without ontology access), so run it online.</li>
+</ul>
+<p>A typical workflow is to populate the cache online once, commit the <code>cache/</code>
+directory to version control, and then validate offline everywhere else:</p>
+<pre><code class="language-bash"># 1. Populate the cache online (materializing dynamic enum closures)
+linkml-term-validator validate-data data.yaml -s schema.yaml \
+  --cache-dir cache --saturate-enum-caches
+
+# 2. Commit the cache, then validate offline anywhere (no network access)
+linkml-term-validator validate-data data.yaml -s schema.yaml \
+  --cache-dir cache --offline
+</code></pre>
+<p>Offline mode reads the cache even when <code>--no-cache</code> /
+<code>cache_labels=False</code> is set — since the cache is the only permitted source,
+reading it is always enabled.</p>
+<h3 id="uncached-terms-are-errors">Uncached terms are errors</h3>
+<p>In offline mode a term that cannot be resolved from the cache is always reported
+as an <strong>ERROR</strong> (non-zero exit code), regardless of <code>--strict</code> or whether the
+prefix is configured in <code>oak_config.yaml</code>. This is stricter than online
+validation, where an unconfigured prefix is treated as "skipped" (INFO). The
+guarantee is deliberate: an offline run must not pass green while silently
+leaving terms unvalidated. No exception is raised — every miss is collected and
+surfaced in the normal validation report alongside any other issues, and the
+command exits non-zero if any errors were found. To make an offline run pass,
+populate the cache (labels and, for dynamic enums, a materialized <code>.complete</code>
+closure) so every referenced term is present.</p>
+<h3 id="configuration">Configuration</h3>
+<pre><code class="language-bash"># CLI: force offline validation on any command
+linkml-term-validator validate-schema schema.yaml --offline
+linkml-term-validator validate-data data.yaml -s schema.yaml --offline
+linkml-term-validator validate-text-file document.md --offline
+</code></pre>
+<pre><code class="language-python"># Python API: pass offline=True to any plugin or to ValidationConfig
+from linkml_term_validator.plugins import DynamicEnumPlugin
+
+plugin = DynamicEnumPlugin(cache_dir=&quot;cache&quot;, offline=True)
+</code></pre>
+<h2 id="configuration_1">Configuration</h2>
 <h3 id="cli">CLI</h3>
 <pre><code class="language-bash"># Use custom cache directory
 linkml-term-validator validate-schema --cache-dir /path/to/cache schema.yaml
