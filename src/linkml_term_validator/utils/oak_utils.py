@@ -261,7 +261,6 @@ class OntologyAccess:
         # ontology database or hit a remote service, so returning None here is
         # the single chokepoint that guarantees no external access.
         if self.offline:
-            self._adapter_cache[prefix] = None
             return None
 
         if prefix in self._adapter_cache:

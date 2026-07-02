@@ -263,6 +263,25 @@ class EnumValidator:
 
         return aliases
 
+    def _unresolved_is_error(self, prefix: Optional[str]) -> bool:
+        """Whether a term that could not be resolved should be an error.
+
+        Offline mode always errors (no lookup is permitted, so an incomplete
+        cache must never pass silently), as does strict mode or a configured
+        prefix; an unconfigured prefix without either is downgraded instead.
+        """
+        return (
+            bool(prefix and self._is_prefix_configured(prefix))
+            or self.config.strict_mode
+            or self.config.offline
+        )
+
+    def _unresolved_error_message(self, term: str, online_message: str) -> str:
+        """Build the error message for an unresolved term (offline-aware)."""
+        if self.config.offline:
+            return f"Term {term} not found in offline cache"
+        return online_message
+
     def validate_enum(
         self, enum_def: EnumDefinition, enum_name: str
     ) -> list[ValidationIssue]:
@@ -289,25 +308,15 @@ class EnumValidator:
 
             if actual_label is None:
                 prefix = self._get_prefix(meaning)
-                # In offline mode a cache miss is always an error: the term could
-                # not be resolved from the cache and no lookup is permitted, so an
-                # incomplete cache must never pass silently (see issue #51).
-                if (
-                    (prefix and self._is_prefix_configured(prefix))
-                    or self.config.strict_mode
-                    or self.config.offline
-                ):
-                    message = (
-                        f"Term {meaning} not found in offline cache"
-                        if self.config.offline
-                        else f"Could not retrieve label for {meaning}"
-                    )
+                if self._unresolved_is_error(prefix):
                     issues.append(
                         ValidationIssue(
                             enum_name=enum_name,
                             value_name=value_name,
                             severity=SeverityLevel.ERROR,
-                            message=message,
+                            message=self._unresolved_error_message(
+                                meaning, f"Could not retrieve label for {meaning}"
+                            ),
                             meaning=meaning,
                             expected_label=None,
                             actual_label=None,
@@ -425,24 +434,15 @@ class EnumValidator:
 
             if actual_label is None:
                 prefix = self._get_prefix(curie)
-                # Offline mode: an uncached term is always an error (no lookup is
-                # permitted), so an incomplete cache never passes silently (#51).
-                if (
-                    (prefix and self._is_prefix_configured(prefix))
-                    or self.config.strict_mode
-                    or self.config.offline
-                ):
-                    message = (
-                        f"Term {curie} not found in offline cache"
-                        if self.config.offline
-                        else f"Unresolvable CURIE: {curie}"
-                    )
+                if self._unresolved_is_error(prefix):
                     issues.append(
                         ValidationIssue(
                             enum_name=location,
                             value_name=curie,
                             severity=SeverityLevel.ERROR,
-                            message=message,
+                            message=self._unresolved_error_message(
+                                curie, f"Unresolvable CURIE: {curie}"
+                            ),
                             meaning=curie,
                             expected_label=expected_label,
                             actual_label=None,

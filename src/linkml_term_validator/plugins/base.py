@@ -424,6 +424,28 @@ class BaseOntologyPlugin(ValidationPlugin):
     # Progressive Validation (for cache_strategy="progressive")
     # =========================================================================
 
+    def _offline_dynamic_enum_unmaterialized(self, enum_def: EnumDefinition) -> bool:
+        """Whether offline validation cannot confirm membership of a dynamic enum.
+
+        In offline mode a dynamic enum can only be validated from a materialized
+        (``.complete``) closure. Without one, membership cannot be confirmed and a
+        failed check is a cache-incompleteness problem, not a data error.
+        """
+        return (
+            self.config.offline
+            and self.is_dynamic_enum(enum_def)
+            and not self._is_enum_cache_complete(enum_def)
+        )
+
+    @staticmethod
+    def _offline_unmaterialized_enum_message(value: str, enum_name: Optional[str]) -> str:
+        """Diagnostic for an unmaterialized dynamic enum under offline validation."""
+        return (
+            f"Cannot validate '{value}' against dynamic enum '{enum_name}' offline: "
+            "enum closure not materialized in cache "
+            "(run online with --saturate-enum-caches or --cache-strategy greedy)"
+        )
+
     def is_value_in_enum(
         self, value: str, enum_def: EnumDefinition, schema_view: Any = None
     ) -> bool:
@@ -467,9 +489,15 @@ class BaseOntologyPlugin(ValidationPlugin):
         # Progressive mode only treats a cache as authoritative when it carries an
         # explicit completion marker. Otherwise fall back to ontology checks or
         # opt-in saturation so legacy append-only caches remain safe.
+        #
+        # Offline mode never saturates: expansion would build no adapter and yield
+        # an empty/partial set, which _save_enum_cache would then persist WITH a
+        # .complete marker, poisoning the cache for future runs. Skip it so offline
+        # falls through to per-value checks (which surface a clear diagnostic).
         if (
             self.config.cache_enum_expansions
             and self.config.saturate_enum_caches
+            and not self.config.offline
             and self.is_dynamic_enum(enum_def)
             and schema_view is not None
         ):

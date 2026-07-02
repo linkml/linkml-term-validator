@@ -234,15 +234,26 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
 
             # Use progressive validation (checks cache, then ontology, adds to cache if valid)
             if not self.is_value_in_enum(val_str, enum_def, self.schema_view):
+                # Offline with an unmaterialized dynamic enum is a cache problem,
+                # not a data error - report it as such rather than "not in enum".
+                if self._offline_dynamic_enum_unmaterialized(enum_def):
+                    message = self._offline_unmaterialized_enum_message(val_str, enum_def.name)
+                    validation_note = "validation: offline (enum cache not materialized)"
+                else:
+                    message = (
+                        f"Value '{val_str}' not in dynamic enum "
+                        f"'{enum_def.name}' (expanded from ontology)"
+                    )
+                    validation_note = "validation: progressive (lazy)"
                 yield ValidationResult(
                     type="dynamic_enum_validation",
                     severity=Severity.ERROR,
-                    message=f"Value '{val_str}' not in dynamic enum '{enum_def.name}' (expanded from ontology)",
+                    message=message,
                     instance=instance,
                     instantiates=target_class,
                     context=[
                         f"slot: {slot_name}",
                         f"enum: {enum_def.name}",
-                        "validation: progressive (lazy)",
+                        validation_note,
                     ],
                 )

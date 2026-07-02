@@ -107,6 +107,36 @@ def test_validate_schema_offline_uncached_is_error(runner, tests_data_dir, tmp_p
     assert "validation skipped" not in result.output
 
 
+def test_validate_data_offline_empty_cache_is_error(runner, tests_data_dir, tmp_path):
+    """Offline data validation fails (non-zero) with an empty cache, and the
+    dynamic-enum diagnostic points at the unmaterialized closure, not the data."""
+    schema_path = tests_data_dir / "dynamic_enum_schema.yaml"
+    data_path = tests_data_dir / "dynamic_enum_valid_data.yaml"
+    config_path = tests_data_dir / "test_oak_config.yaml"
+    cache_dir = tmp_path / "cache"  # empty → nothing is materialized
+
+    result = runner.invoke(
+        app,
+        [
+            "validate-data",
+            str(data_path),
+            "--schema",
+            str(schema_path),
+            "--target-class",
+            "Sample",
+            "--config",
+            str(config_path),
+            "--offline",
+            "--no-bindings",
+            "--cache-dir",
+            str(cache_dir),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "not materialized" in result.output
+
+
 def test_validate_data_offline_uses_cache(runner, tests_data_dir, tmp_path):
     """Offline data validation passes when the enum cache is pre-populated."""
     schema_path = tests_data_dir / "dynamic_enum_schema.yaml"

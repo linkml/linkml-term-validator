@@ -134,7 +134,7 @@ Because offline mode only reads the cache, the cache must already contain
 everything the validation needs:
 
 - **Labels**: run the same validation online at least once (with caching enabled) so the required labels are written to `cache/<prefix>/terms.csv`.
-- **Dynamic enums**: materialize full enum closures with `--saturate-enum-caches` (or `--cache-strategy greedy`) so the `.complete` marker is written. A dynamic enum without a complete cache cannot be validated offline (membership can only be confirmed from a materialized closure).
+- **Dynamic enums**: materialize full enum closures with `--saturate-enum-caches` (or `--cache-strategy greedy`) so the `.complete` marker is written. A dynamic enum without a complete cache cannot be validated offline (membership can only be confirmed from a materialized closure); in that case each value is reported as an error whose message points you at the unmaterialized closure rather than claiming the data is invalid. Note that `--saturate-enum-caches` is a **no-op offline** (it cannot build the closure without ontology access), so run it online.
 
 A typical workflow is to populate the cache online once, commit the `cache/`
 directory to version control, and then validate offline everywhere else:

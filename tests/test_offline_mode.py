@@ -77,8 +77,35 @@ def test_offline_without_cache_cannot_validate_dynamic_enum(tmp_path):
         cache_dir=tmp_path / "cache",
         offline=True,
     )
+    enum_def = _root_descendants_enum()
     # No adapter and no cache → the value cannot be confirmed as a member.
-    assert offline.is_value_in_enum("TEST:0000002", _root_descendants_enum()) is False
+    assert offline.is_value_in_enum("TEST:0000002", enum_def) is False
+    # The failure is a cache-incompleteness problem, not a data error.
+    assert offline._offline_dynamic_enum_unmaterialized(enum_def) is True
+    assert "not materialized" in offline._offline_unmaterialized_enum_message(
+        "TEST:0000002", enum_def.name
+    )
+
+
+def test_offline_saturate_does_not_poison_cache(tmp_path):
+    """Offline + saturate must not write an empty closure marked complete.
+
+    Saturation offline would expand to an empty set (no adapter) and, without a
+    guard, persist it with a `.complete` marker - poisoning the cache so every
+    value looks invalid on later runs.
+    """
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_dir=tmp_path / "cache",
+        offline=True,
+        saturate_enum_caches=True,
+    )
+    enum_def = _root_descendants_enum()
+
+    assert plugin.is_value_in_enum("TEST:0000002", enum_def) is False
+    # No completion marker should have been written.
+    assert plugin._is_enum_cache_complete(enum_def) is False
+    assert plugin._get_enum_cache_marker_file(enum_def).exists() is False
 
 
 # =============================================================================
