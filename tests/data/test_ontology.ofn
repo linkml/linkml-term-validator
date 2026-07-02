@@ -1,0 +1,20 @@
+Prefix(:=<http://example.org/test/>)
+Prefix(TEST:=<http://example.org/TEST_>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+
+Ontology(<http://example.org/test>
+  Declaration(Class(TEST:0000001))
+  AnnotationAssertion(rdfs:label TEST:0000001 "root term")
+
+  Declaration(Class(TEST:0000002))
+  AnnotationAssertion(rdfs:label TEST:0000002 "child term one")
+  SubClassOf(TEST:0000002 TEST:0000001)
+
+  Declaration(Class(TEST:0000003))
+  AnnotationAssertion(rdfs:label TEST:0000003 "child term two")
+  SubClassOf(TEST:0000003 TEST:0000001)
+
+  Declaration(Class(TEST:0000004))
+  AnnotationAssertion(rdfs:label TEST:0000004 "grandchild term")
+  SubClassOf(TEST:0000004 TEST:0000002)
+)

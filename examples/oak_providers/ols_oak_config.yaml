@@ -1,0 +1,4 @@
+cache_strategy: progressive
+cache_enum_expansions: false
+ontology_adapters:
+  GO: "ols:"

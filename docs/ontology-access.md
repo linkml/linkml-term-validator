@@ -11,6 +11,7 @@ An **adapter** is OAK's abstraction for accessing ontology sources. Different ad
 - **`ols:`** - Ontology Lookup Service (online, no local download required)
 - **`bioportal:`** - NCBO BioPortal (requires API key)
 - **`ubergraph:`** - Ubergraph SPARQL endpoint
+- **`owl:`** - Local Functional OWL files (requires `oaklib>=0.7.0rc7` for graph traversal)
 
 ## Default Behavior
 
@@ -29,7 +30,7 @@ You can override the adapter for specific prefixes using an `oak_config.yaml` fi
 ```yaml
 ontology_adapters:
   GO: sqlite:obo:go           # Use local GO database
-  CHEBI: ols:                 # Use OLS for CHEBI
+  CHEBI: "ols:"               # Use OLS for CHEBI (expanded to ols:chebi)
   MY_CUSTOM: simpleobo:my_ontology.obo  # Use local OBO file
   SKIP_THIS: ""               # Skip validation for this prefix
 ```
@@ -105,8 +106,8 @@ Uses the Ontology Lookup Service (EBI). Online service, no local downloads.
 
 ```yaml
 ontology_adapters:
-  GO: ols:
-  CHEBI: ols:
+  GO: "ols:"     # shorthand for ols:go
+  CHEBI: "ols:"  # shorthand for ols:chebi
 ```
 
 **Pros:**
@@ -119,6 +120,42 @@ ontology_adapters:
 - Slower than local adapters
 - Subject to rate limiting
 - Service availability dependence
+- Best used with progressive validation; greedy expansion requires descendant support and may be slow for large ontologies
+
+### ubergraph:
+
+Uses the Ubergraph SPARQL endpoint. Online service, no local downloads.
+
+**Usage:**
+
+```yaml
+ontology_adapters:
+  GO: "ubergraph:"
+  CL: "ubergraph:"
+```
+
+**Pros:**
+- No local downloads
+- Supports graph traversal over OBO ontologies
+- Useful for integration checks against a shared endpoint
+
+**Cons:**
+- Requires internet connection
+- Slower than local adapters
+- Service availability dependence
+
+### owl:
+
+Uses local Functional OWL files.
+
+**Usage:**
+
+```yaml
+ontology_adapters:
+  MY_CUSTOM: owl:path/to/my_ontology.ofn
+```
+
+**Version note:** graph traversal with `owl:` requires `oaklib>=0.7.0rc7`. With `oaklib 0.6.23`, the Functional OWL implementation does not expose the traversal methods needed by dynamic enum validation.
 
 ### bioportal:
 
@@ -137,8 +174,8 @@ linkml-term-validator validate-schema --config oak_config.yaml schema.yaml
 
 ```yaml
 ontology_adapters:
-  GO: bioportal:
-  CHEBI: bioportal:
+  GO: "bioportal:"
+  CHEBI: "bioportal:"
 ```
 
 ## Unknown Prefixes
@@ -172,3 +209,4 @@ ontology_adapters:
 - [Configuration](configuration.md) - Complete configuration guide
 - [Caching](caching.md) - How ontology data is cached
 - [Validation Types](validation-types.md) - Understanding the validation plugins
+- Runnable provider examples in `examples/oak_providers/`

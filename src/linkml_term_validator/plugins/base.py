@@ -16,10 +16,13 @@ Example:
 
 import csv
 import hashlib
+import inspect
 import json
+import logging
 import re
 from pathlib import Path
 from typing import Any, Literal, Optional
+from urllib.parse import quote
 
 from linkml.validator.plugins import ValidationPlugin  # type: ignore[import-untyped]
 from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]
@@ -28,6 +31,8 @@ from linkml_runtime.linkml_model import EnumDefinition
 from linkml_term_validator.cache_utils import atomic_write_csv, locked_cache_file
 from linkml_term_validator.models import CacheStrategy, ValidationConfig
 from linkml_term_validator.utils import OntologyAccess, get_prefix, normalize_string
+
+logger = logging.getLogger(__name__)
 
 
 class BaseOntologyPlugin(ValidationPlugin):
@@ -578,7 +583,7 @@ class BaseOntologyPlugin(ValidationPlugin):
             return False
 
         # Check if value exists in ontology first
-        label = adapter.label(value)  # type: ignore[attr-defined]
+        label = self.get_ontology_label(value)
         if label is None:
             return False  # Term doesn't exist or adapter lookup failed
 
@@ -590,12 +595,16 @@ class BaseOntologyPlugin(ValidationPlugin):
             # Reflexive case: the source node itself.
             if include_self and value == source_node:
                 return True
+            if value == source_node:
+                continue
 
             if query.traverse_up:
                 # value must be an ancestor of source_node (we traverse up from
                 # the source), i.e. value appears among source_node's ancestors.
-                ancestors = adapter.ancestors(  # type: ignore[attr-defined]
-                    source_node,
+                ancestors = self._call_graph_traversal(
+                    adapter=adapter,
+                    method_name="ancestors",
+                    start_curie=source_node,
                     predicates=predicates,
                     reflexive=include_self,
                 )
@@ -604,8 +613,10 @@ class BaseOntologyPlugin(ValidationPlugin):
             else:
                 # value must be a descendant of source_node, i.e. source_node
                 # appears among value's ancestors.
-                ancestors = adapter.ancestors(  # type: ignore[attr-defined]
-                    value,
+                ancestors = self._call_graph_traversal(
+                    adapter=adapter,
+                    method_name="ancestors",
+                    start_curie=value,
                     predicates=predicates,
                     reflexive=include_self,
                 )
@@ -613,6 +624,38 @@ class BaseOntologyPlugin(ValidationPlugin):
                     return True
 
         return False
+
+    @staticmethod
+    def _call_graph_traversal(
+        adapter: object,
+        method_name: str,
+        start_curie: str,
+        predicates: list[str],
+        reflexive: bool,
+    ) -> set[str]:
+        """Call an OAK traversal method across adapter signature variants."""
+        method = getattr(adapter, method_name, None)
+        if method is None:
+            return set()
+
+        kwargs: dict[str, Any] = {"predicates": predicates}
+        supports_reflexive = False
+        try:
+            supports_reflexive = "reflexive" in inspect.signature(method).parameters
+        except (TypeError, ValueError):
+            pass
+        if supports_reflexive:
+            kwargs["reflexive"] = reflexive
+
+        # Some adapters typed as accepting ``Union[str, list[str]]`` still treat
+        # bare strings as iterables of characters. Passing a list is portable.
+        results = method([start_curie], **kwargs)
+        values = set(results or [])
+        if reflexive:
+            values.add(start_curie)
+        else:
+            values.discard(start_curie)
+        return values
 
     # =========================================================================
     # Dynamic Enum Expansion (for cache_strategy="greedy")
@@ -827,8 +870,10 @@ class BaseOntologyPlugin(ValidationPlugin):
         for source_node in query.source_nodes:
             if query.traverse_up:
                 # Get ancestors
-                ancestors_result = adapter.ancestors(  # type: ignore[attr-defined]
-                    source_node,
+                ancestors_result = self._call_graph_traversal(
+                    adapter=adapter,
+                    method_name="ancestors",
+                    start_curie=source_node,
                     predicates=predicates,
                     reflexive=include_self,
                 )
@@ -836,14 +881,67 @@ class BaseOntologyPlugin(ValidationPlugin):
                     values.update(ancestors_result)
             else:
                 # Get descendants (default)
-                descendants_result = adapter.descendants(  # type: ignore[attr-defined]
-                    source_node,
+                descendants_result = self._call_graph_traversal(
+                    adapter=adapter,
+                    method_name="descendants",
+                    start_curie=source_node,
                     predicates=predicates,
                     reflexive=include_self,
                 )
+                if not descendants_result:
+                    descendants_result = self._ols_descendants(
+                        adapter=adapter,
+                        source_node=source_node,
+                        predicates=predicates,
+                        reflexive=include_self,
+                    )
                 if descendants_result:
                     values.update(descendants_result)
 
+        return values
+
+    @staticmethod
+    def _ols_descendants(
+        adapter: object,
+        source_node: str,
+        predicates: list[str],
+        reflexive: bool,
+    ) -> set[str]:
+        """Fallback descendant expansion for OAK OLS adapters without descendants()."""
+        if predicates != ["rdfs:subClassOf"]:
+            logger.debug(
+                "Skipping OLS descendant fallback for %s because only rdfs:subClassOf "
+                "is supported by the fallback, got predicates=%s",
+                source_node,
+                predicates,
+            )
+            return set()
+
+        client = getattr(adapter, "client", None)
+        focus_ontology = getattr(adapter, "focus_ontology", None)
+        curie_to_uri = getattr(adapter, "curie_to_uri", None)
+        if not client or not focus_ontology or not curie_to_uri or not hasattr(client, "get_paged"):
+            return set()
+
+        iri = curie_to_uri(source_node)
+        if not iri:
+            return set()
+
+        # OLS4 requires double-encoded IRIs in term-path endpoints.
+        encoded_iri = quote(quote(iri, safe=""), safe="")
+        records = client.get_paged(
+            f"ontologies/{focus_ontology}/terms/{encoded_iri}/descendants",
+            key="terms",
+        )
+        values = {
+            record["obo_id"]
+            for record in records
+            if isinstance(record, dict) and isinstance(record.get("obo_id"), str)
+        }
+        if reflexive:
+            values.add(source_node)
+        else:
+            values.discard(source_node)
         return values
 
     def _expand_matches(self, query: Any) -> set[str]:
