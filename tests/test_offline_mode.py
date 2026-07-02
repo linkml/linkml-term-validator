@@ -148,6 +148,8 @@ def test_binding_greedy_offline_unmaterialized_reports_diagnostic(tmp_path):
     plugin.schema_view = SchemaView(str(Path("tests/data/dynamic_enum_schema.yaml")))
     # Greedy pre_process skips offline-unmaterialized enums, so expanded_enums is
     # empty here - exactly the state _validate_against_enum must handle.
+    # TEST:0000002 is deliberately absent from the empty tmp_path cache: with no
+    # adapter and no cached closure it can't be confirmed, so the diagnostic fires.
 
     results = list(
         plugin._validate_against_enum(

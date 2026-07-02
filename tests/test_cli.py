@@ -142,9 +142,10 @@ def test_validate_data_offline_empty_cache_is_error(runner, tests_data_dir, tmp_
 
     assert result.exit_code == 1
     assert "not materialized" in result.output
-    # The failed offline run must not have poisoned the cache with a bogus
-    # ".complete" marker.
+    # The failed offline run must not have poisoned the cache: neither a bogus
+    # ".complete" marker (the authoritative flag) nor a stray enum data file.
     assert not list(cache_dir.glob("enums/*.complete"))
+    assert not list(cache_dir.glob("enums/*.csv"))
 
 
 def test_validate_data_offline_uses_cache(runner, tests_data_dir, tmp_path):

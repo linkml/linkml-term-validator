@@ -186,11 +186,10 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                 enum_def = self.schema_view.get_enum(enum_name)
                 if not (enum_def and self.is_dynamic_enum(enum_def)):
                     continue
-                # Offline can only pre-expand a dynamic enum from a materialized
-                # (.complete) closure. Otherwise skip it so _validate_against_enum
-                # falls back to per-value validation and surfaces the clear
-                # "not materialized" diagnostic (and nothing bogus gets cached).
-                if self.config.offline and not self._is_enum_cache_complete(enum_def):
+                # Offline, skip pre-expanding an un-materialized enum so
+                # _validate_against_enum falls back to per-value validation and
+                # surfaces the clear "not materialized" diagnostic (nothing cached).
+                if self._offline_skip_pre_expansion(enum_def):
                     continue
                 self.expanded_enums[enum_name] = self.expand_enum(enum_def, self.schema_view)
 

@@ -437,6 +437,17 @@ class BaseOntologyPlugin(ValidationPlugin):
             and not self._is_enum_cache_complete(enum_def)
         )
 
+    def _offline_skip_pre_expansion(self, enum_def: EnumDefinition) -> bool:
+        """Whether greedy pre-expansion of a dynamic enum must be skipped offline.
+
+        Offline, a dynamic enum can only be pre-expanded from a materialized
+        (``.complete``) closure; otherwise expansion builds no adapter and yields
+        a bogus set. In that case it is skipped so validation falls back to the
+        per-value path, which surfaces the clear diagnostic and writes nothing.
+        Shared by the plugin ``pre_process`` implementations to avoid drift.
+        """
+        return self.config.offline and not self._is_enum_cache_complete(enum_def)
+
     @staticmethod
     def _offline_unmaterialized_enum_message(value: str, enum_name: Optional[str]) -> str:
         """Diagnostic for an unmaterialized dynamic enum under offline validation."""
