@@ -20,6 +20,7 @@ from linkml.validator.validation_context import ValidationContext  # type: ignor
 
 from linkml_term_validator.models import CacheStrategy
 from linkml_term_validator.plugins.base import BaseOntologyPlugin
+from linkml_term_validator.utils import obsolete_term_message
 
 
 class DynamicEnumPlugin(BaseOntologyPlugin):
@@ -245,6 +246,16 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
                 if self._offline_dynamic_enum_unmaterialized(enum_def):
                     message = self._offline_unmaterialized_enum_message(val_str, enum_def.name)
                     validation_note = "validation: offline (enum cache not materialized)"
+                elif self.is_obsolete(val_str):
+                    # The term exists but is deprecated, so it is never a member of
+                    # an active-hierarchy enum. Say so explicitly - "not in enum"
+                    # would send the user hunting for a term that should simply be
+                    # replaced with its successor.
+                    message = (
+                        f"{obsolete_term_message(val_str)}; "
+                        f"not valid for dynamic enum '{enum_def.name}'"
+                    )
+                    validation_note = "validation: progressive (obsolete term)"
                 else:
                     message = (
                         f"Value '{val_str}' not in dynamic enum "

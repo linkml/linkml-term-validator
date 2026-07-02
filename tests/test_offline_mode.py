@@ -188,6 +188,57 @@ def test_offline_schema_uncached_term_is_error(tmp_path):
     assert any("offline cache" in issue.message for issue in result.issues)
 
 
+def test_offline_never_connects_even_with_obsolete_check(tmp_path, monkeypatch):
+    """Offline validation with a populated cache: no errors, no connection.
+
+    Guards the whole offline contract against regressions in the obsolete-term
+    handling: `get_adapter` is patched to raise, so any attempt to reach an
+    ontology service - including the new `is_obsolete` path - fails the test
+    loudly instead of silently going to the network.
+    """
+    from linkml.validator import Validator  # type: ignore[import-untyped]
+    from linkml.validator.loaders import YamlLoader  # type: ignore[import-untyped]
+
+    cache_dir = tmp_path / "cache"
+    schema = Path("tests/data/dynamic_enum_schema.yaml")
+    data = tmp_path / "data.yaml"
+    # Both values are valid members of their dynamic enums:
+    #   TEST:0000006 (cell_cycle) is a descendant of TEST:0000005
+    #   TEST:0000004 (grandchild) is a descendant of TEST:0000001
+    data.write_text("- id: s1\n  process_type: TEST:0000006\n  term: TEST:0000004\n")
+
+    # Phase 1 (online): greedy expansion materializes complete enum closures and
+    # warms the label cache from the local simpleobo ontology.
+    online = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_dir=cache_dir,
+        cache_strategy="greedy",
+    )
+    Validator(schema=str(schema), validation_plugins=[online]).validate_source(
+        YamlLoader(data), target_class="Sample"
+    )
+
+    # Phase 2 (offline): forbid every external connection.
+    def _boom(*args, **kwargs):
+        raise AssertionError("external connection attempted in offline mode")
+
+    monkeypatch.setattr("linkml_term_validator.utils.oak_utils.get_adapter", _boom)
+
+    offline = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_dir=cache_dir,
+        offline=True,
+    )
+    report = Validator(
+        schema=str(schema), validation_plugins=[offline]
+    ).validate_source(YamlLoader(data), target_class="Sample")
+
+    # Valid, fully-cached data validates clean with no connection attempt.
+    assert len(report.results) == 0, report.results
+    # And the obsolete check itself stays offline-safe (returns None, no connect).
+    assert offline.is_obsolete("TEST:0000007") is None
+
+
 def test_offline_schema_passes_when_cache_populated(tmp_path):
     """Offline schema validation passes once the needed labels are cached."""
     cache_dir = tmp_path / "cache"

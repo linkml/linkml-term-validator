@@ -189,6 +189,10 @@ class BaseOntologyPlugin(ValidationPlugin):
         """Get set of prefixes that were encountered but not configured."""
         return self.ontology.get_unknown_prefixes()
 
+    def is_obsolete(self, curie: str) -> Optional[bool]:
+        """Return whether an ontology term is obsolete (None if undeterminable)."""
+        return self.ontology.is_obsolete(curie)
+
     # =========================================================================
     # Enum Caching
     # =========================================================================
@@ -598,30 +602,46 @@ class BaseOntologyPlugin(ValidationPlugin):
             if value == source_node:
                 continue
 
-            if query.traverse_up:
-                # value must be an ancestor of source_node (we traverse up from
-                # the source), i.e. value appears among source_node's ancestors.
-                ancestors = self._call_graph_traversal(
-                    adapter=adapter,
-                    method_name="ancestors",
-                    start_curie=source_node,
-                    predicates=predicates,
-                    reflexive=include_self,
+            # A traversal failure for one submitted value must not abort the
+            # whole run. Remote adapters can raise here rather than returning an
+            # empty result - notably OLS answers the ancestors endpoint for an
+            # obsolete (detached) term with a payload that omits ``_embedded``,
+            # which its OAK adapter dereferences straight into a KeyError. Treat
+            # any such failure as "not reachable via this source node".
+            try:
+                if query.traverse_up:
+                    # value must be an ancestor of source_node (we traverse up
+                    # from the source), i.e. value appears among source_node's
+                    # ancestors.
+                    ancestors = self._call_graph_traversal(
+                        adapter=adapter,
+                        method_name="ancestors",
+                        start_curie=source_node,
+                        predicates=predicates,
+                        reflexive=include_self,
+                    )
+                    if ancestors and value in ancestors:
+                        return True
+                else:
+                    # value must be a descendant of source_node, i.e. source_node
+                    # appears among value's ancestors.
+                    ancestors = self._call_graph_traversal(
+                        adapter=adapter,
+                        method_name="ancestors",
+                        start_curie=value,
+                        predicates=predicates,
+                        reflexive=include_self,
+                    )
+                    if ancestors and source_node in ancestors:
+                        return True
+            except Exception as e:  # noqa: BLE001 - adapters raise varied errors
+                logger.debug(
+                    "Reachability check failed for %s from %s: %s",
+                    value,
+                    source_node,
+                    e,
                 )
-                if ancestors and value in ancestors:
-                    return True
-            else:
-                # value must be a descendant of source_node, i.e. source_node
-                # appears among value's ancestors.
-                ancestors = self._call_graph_traversal(
-                    adapter=adapter,
-                    method_name="ancestors",
-                    start_curie=value,
-                    predicates=predicates,
-                    reflexive=include_self,
-                )
-                if ancestors and source_node in ancestors:
-                    return True
+                continue
 
         return False
 
@@ -649,6 +669,13 @@ class BaseOntologyPlugin(ValidationPlugin):
 
         # Some adapters typed as accepting ``Union[str, list[str]]`` still treat
         # bare strings as iterables of characters. Passing a list is portable.
+        #
+        # A failure here is deliberately allowed to propagate: greedy
+        # expand_enum only caches a closure after a fully successful expansion,
+        # so swallowing the error would let a partial/empty result be persisted
+        # as ``.complete`` (see #35). Per-value progressive checks that need to
+        # tolerate a single unreachable term catch the failure at their own call
+        # site instead.
         results = method([start_curie], **kwargs)
         values = set(results or [])
         if reflexive:

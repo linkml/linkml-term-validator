@@ -238,6 +238,24 @@ ERROR: Term GO:9999999 not found in ontology
 2. Check for typos
 3. Configure the correct OAK adapter
 
+### "Term is obsolete" Error
+
+```
+ERROR: Ontology term GO:0000005 is obsolete
+```
+
+**Cause:** the term still exists in the ontology but has been deprecated. Unlike
+a fake/non-existent CURIE, an obsolete term still resolves to a label, so it is
+reported separately rather than as "not found".
+
+**Solution:** replace it with the current term. Many obsolete terms record a
+successor (`term replaced by` / `consider`) in the ontology.
+
+> **Note on remote services (OLS):** a non-existent CURIE makes OLS answer with
+> HTTP 404, and an obsolete term's ancestors query returns an empty payload.
+> LTV handles both so a single bad value is reported as an ordinary validation
+> result instead of aborting the whole run.
+
 ### "Label mismatch" Warning
 
 ```
