@@ -100,6 +100,7 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         cache_dir: Path | str = Path("cache"),
         oak_config_path: Optional[Path | str] = None,
         cache_strategy: Literal["progressive", "greedy"] | CacheStrategy = CacheStrategy.PROGRESSIVE,
+        offline: bool = False,
     ):
         """Initialize binding validation plugin.
 
@@ -113,6 +114,8 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             cache_dir: Directory for label cache files
             oak_config_path: Path to oak_config.yaml for per-prefix adapters
             cache_strategy: Caching strategy for dynamic enums ('progressive' or 'greedy')
+            offline: If True, force offline validation: never build OAK adapters
+                and resolve everything exclusively from the file cache
         """
         super().__init__(
             oak_adapter_string=oak_adapter_string,
@@ -122,6 +125,7 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             cache_dir=cache_dir,
             oak_config_path=oak_config_path,
             cache_strategy=cache_strategy,
+            offline=offline,
         )
         self.validate_labels = validate_labels
         self.strict = strict
@@ -180,8 +184,14 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         if self.cache_strategy == CacheStrategy.GREEDY:
             for enum_name in self._referenced_enums:
                 enum_def = self.schema_view.get_enum(enum_name)
-                if enum_def and self.is_dynamic_enum(enum_def):
-                    self.expanded_enums[enum_name] = self.expand_enum(enum_def, self.schema_view)
+                if not (enum_def and self.is_dynamic_enum(enum_def)):
+                    continue
+                # Offline, skip pre-expanding an un-materialized enum so
+                # _validate_against_enum falls back to per-value validation and
+                # surfaces the clear "not materialized" diagnostic (nothing cached).
+                if self._offline_skip_pre_expansion(enum_def):
+                    continue
+                self.expanded_enums[enum_name] = self.expand_enum(enum_def, self.schema_view)
 
     def process(self, instance: dict, context: ValidationContext) -> Iterator[ValidationResult]:
         """Validate binding constraints on nested fields.
@@ -340,8 +350,9 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                 path=path,
             )
 
-        # Check term existence for configured prefixes (strict mode)
-        if self.strict and isinstance(field_value, str):
+        # Check term existence for configured prefixes (strict mode). Offline mode
+        # always checks existence so an uncached term can't pass silently (#51).
+        if (self.strict or self.config.offline) and isinstance(field_value, str):
             yield from self._validate_term_exists(
                 field_value=field_value,
                 field_path=field_path,
@@ -470,40 +481,54 @@ class BindingValidationPlugin(BaseOntologyPlugin):
 
         is_dynamic = self.is_dynamic_enum(enum_def)
 
-        # For dynamic enums with progressive caching, use lazy validation
-        if is_dynamic and self.cache_strategy == CacheStrategy.PROGRESSIVE:
+        if is_dynamic:
+            # Use the greedy pre-expanded set when the enum was materialized;
+            # otherwise validate per value. The per-value branch covers progressive
+            # mode AND greedy dynamic enums that were not pre-expanded (e.g. an
+            # un-materialized enum offline), where it surfaces the clear offline
+            # diagnostic instead of silently passing via the static path below.
+            if enum_name in self.expanded_enums:
+                valid_values = self.expanded_enums[enum_name]
+                if field_value not in valid_values:
+                    yield ValidationResult(
+                        type="binding_validation",
+                        severity=Severity.ERROR,
+                        message=f"Value '{field_value}' not in dynamic enum '{enum_name}' (expanded from ontology)",
+                        instance=instance,
+                        instantiates=target_class,
+                        context=[
+                            f"path: {path}",
+                            f"slot: {slot_name}",
+                            f"field: {field_path}",
+                            f"allowed_values: {len(valid_values)} terms",
+                        ],
+                    )
+                return
+
             is_valid = self.is_value_in_enum(field_value, enum_def, self.schema_view)
             if not is_valid:
+                # Offline with an unmaterialized dynamic enum is a cache problem,
+                # not a data error - report it as such rather than "not in enum".
+                if self._offline_dynamic_enum_unmaterialized(enum_def):
+                    message = self._offline_unmaterialized_enum_message(field_value, enum_name)
+                    validation_note = "validation: offline (enum cache not materialized)"
+                else:
+                    message = (
+                        f"Value '{field_value}' not in dynamic enum "
+                        f"'{enum_name}' (expanded from ontology)"
+                    )
+                    validation_note = "validation: progressive (lazy)"
                 yield ValidationResult(
                     type="binding_validation",
                     severity=Severity.ERROR,
-                    message=f"Value '{field_value}' not in dynamic enum '{enum_name}' (expanded from ontology)",
+                    message=message,
                     instance=instance,
                     instantiates=target_class,
                     context=[
                         f"path: {path}",
                         f"slot: {slot_name}",
                         f"field: {field_path}",
-                        "validation: progressive (lazy)",
-                    ],
-                )
-            return
-
-        # For greedy mode with pre-expanded values
-        if is_dynamic and enum_name in self.expanded_enums:
-            valid_values = self.expanded_enums[enum_name]
-            if field_value not in valid_values:
-                yield ValidationResult(
-                    type="binding_validation",
-                    severity=Severity.ERROR,
-                    message=f"Value '{field_value}' not in dynamic enum '{enum_name}' (expanded from ontology)",
-                    instance=instance,
-                    instantiates=target_class,
-                    context=[
-                        f"path: {path}",
-                        f"slot: {slot_name}",
-                        f"field: {field_path}",
-                        f"allowed_values: {len(valid_values)} terms",
+                        validation_note,
                     ],
                 )
             return
@@ -567,24 +592,32 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         if not prefix:
             return
 
-        # Only check existence for configured prefixes
-        if not self._is_prefix_configured(prefix):
+        # Only check existence for configured prefixes. In offline mode every term
+        # must be resolvable from the cache regardless of prefix configuration, so
+        # unconfigured prefixes are checked too (see issue #51).
+        if not self._is_prefix_configured(prefix) and not self.config.offline:
             return
 
         # Try to get the label - if None, term doesn't exist
         ontology_label = self.get_ontology_label(field_value)
         if ontology_label is None:
+            if self.config.offline:
+                message = f"Term '{field_value}' not found in offline cache"
+                prefix_context = f"prefix: {prefix} (offline: cache-only)"
+            else:
+                message = f"Term '{field_value}' not found in ontology"
+                prefix_context = f"prefix: {prefix} (configured in oak_config)"
             yield ValidationResult(
                 type="term_not_found",
                 severity=Severity.ERROR,
-                message=f"Term '{field_value}' not found in ontology",
+                message=message,
                 instance=instance,
                 instantiates=target_class,
                 context=[
                     f"path: {path}",
                     f"slot: {slot_name}",
                     f"field: {field_path}",
-                    f"prefix: {prefix} (configured in oak_config)",
+                    prefix_context,
                 ],
             )
 

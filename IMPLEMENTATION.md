@@ -176,7 +176,7 @@ linkml-term-validator/
 dependencies = [
   "typer >= 0.9.0",
   "linkml-runtime >=1.9.4",
-  "oaklib>=0.6.23",          # NEW
+  "oaklib>=0.7.1",           # NEW
   "pydantic>=2.0.0",         # NEW
   "ruamel-yaml>=0.18.15",    # NEW
 ]

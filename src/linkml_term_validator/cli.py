@@ -77,6 +77,13 @@ def validate_schema(
             help="Path to oak_config.yaml",
         ),
     ] = None,
+    offline: Annotated[
+        bool,
+        typer.Option(
+            "--offline",
+            help="Force offline validation: resolve only from the cache, never access ontology services",
+        ),
+    ] = False,
     verbose: Annotated[
         bool,
         typer.Option(
@@ -94,6 +101,7 @@ def validate_schema(
         linkml-term-validator validate-schema schema.yaml
         linkml-term-validator validate-schema --strict schema.yaml
         linkml-term-validator validate-schema --config oak_config.yaml schema.yaml
+        linkml-term-validator validate-schema --offline schema.yaml
     """
     validation_config = ValidationConfig(
         oak_adapter_string=adapter,
@@ -101,6 +109,7 @@ def validate_schema(
         cache_labels=not no_cache,
         cache_dir=cache_dir,
         oak_config_path=config,
+        offline=offline,
     )
 
     validator = EnumValidator(validation_config)
@@ -109,8 +118,10 @@ def validate_schema(
     if verbose or result.has_errors() or result.has_warnings():
         result.print_summary(verbose=verbose)
 
+    # In offline mode unresolved terms are reported as errors above (not skipped),
+    # so the "validation skipped / add to oak_config" note would be misleading.
     unknown_prefixes = validator.get_unknown_prefixes()
-    if unknown_prefixes:
+    if unknown_prefixes and not offline:
         typer.echo("\n⚠️  Unknown prefixes encountered (validation skipped):")
         for prefix in sorted(unknown_prefixes):
             typer.echo(f"  - {prefix}")
@@ -233,6 +244,13 @@ def validate_data(
             help="Caching strategy for dynamic enums: 'progressive' (lazy, default) or 'greedy' (expand upfront)",
         ),
     ] = "progressive",
+    offline: Annotated[
+        bool,
+        typer.Option(
+            "--offline",
+            help="Force offline validation: resolve only from the cache, never access ontology services",
+        ),
+    ] = False,
 ):
     """Validate data against dynamic enums and binding constraints.
 
@@ -246,6 +264,7 @@ def validate_data(
         linkml-term-validator validate-data data.yaml --schema schema.yaml
         linkml-term-validator validate-data data.yaml -s schema.yaml -t Person
         linkml-term-validator validate-data *.yaml -s schema.yaml --labels
+        linkml-term-validator validate-data data.yaml -s schema.yaml --offline
     """
     # Verify all data files exist
     for data_path in data_paths:
@@ -269,6 +288,7 @@ def validate_data(
                 cache_enum_expansions=cache_enum_expansions and not no_cache,
                 saturate_enum_caches=saturate_enum_caches and not no_cache,
                 cache_strategy=strategy,
+                offline=offline,
             )
         )
 
@@ -284,6 +304,7 @@ def validate_data(
                 cache_enum_expansions=cache_enum_expansions and not no_cache,
                 saturate_enum_caches=saturate_enum_caches and not no_cache,
                 cache_strategy=strategy,
+                offline=offline,
             )
         )
 
@@ -431,6 +452,13 @@ def validate_all(
             help="Caching strategy for dynamic enums: 'progressive' (lazy, default) or 'greedy' (expand upfront)",
         ),
     ] = "progressive",
+    offline: Annotated[
+        bool,
+        typer.Option(
+            "--offline",
+            help="Force offline validation: resolve only from the cache, never access ontology services",
+        ),
+    ] = False,
 ):
     """Validate schemas or data (auto-detect mode).
 
@@ -464,6 +492,7 @@ def validate_all(
             saturate_enum_caches=saturate_enum_caches,
             config=config,
             cache_strategy=cache_strategy,
+            offline=offline,
         )
     else:
         # Schema validation mode (backward compatible) - call validate_schema directly
@@ -474,6 +503,7 @@ def validate_all(
             no_cache=no_cache,
             cache_dir=cache_dir,
             config=config,
+            offline=offline,
             verbose=verbose,
         )
 
@@ -740,6 +770,13 @@ def validate_text_file(
             help="Directory for caching ontology labels",
         ),
     ] = Path("cache"),
+    offline: Annotated[
+        bool,
+        typer.Option(
+            "--offline",
+            help="Force offline validation: resolve only from the cache, never access ontology services",
+        ),
+    ] = False,
     verbose: Annotated[
         bool,
         typer.Option(
@@ -805,6 +842,7 @@ def validate_text_file(
         cache_labels=not no_cache,
         cache_dir=cache_dir,
         oak_config_path=config,
+        offline=offline,
     )
     validator = EnumValidator(validation_config)
 
@@ -825,8 +863,10 @@ def validate_text_file(
                 f"  ❌ {issue.enum_name} {issue.value_name}: {issue.message}"
             )
 
+    # Offline mode reports unresolved terms as errors, so the "skipped" note
+    # (and the oak_config suggestion) would be misleading there.
     unknown_prefixes = validator.get_unknown_prefixes()
-    if unknown_prefixes:
+    if unknown_prefixes and not offline:
         typer.echo("\n⚠️  Unknown prefixes encountered (validation skipped):")
         for prefix in sorted(unknown_prefixes):
             typer.echo(f"  - {prefix}")

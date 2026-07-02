@@ -225,3 +225,61 @@ def test_get_label_extracts_ols4_direct_label():
     access = OntologyAccess(cache_labels=False)
 
     assert access._get_adapter_label(DummyOlsAdapter(), "GO:0008150") == "biological_process"
+
+
+# =============================================================================
+# Offline mode (see issue #51): guarantee no external access, cache-only
+# =============================================================================
+
+
+def test_offline_never_builds_adapter():
+    """In offline mode get_adapter always returns None (no ontology access)."""
+    access = OntologyAccess(offline=True, oak_config_path=TEST_OAK_CONFIG)
+    # TEST is configured, but offline mode still refuses to build an adapter.
+    assert access.get_adapter("TEST") is None
+    assert access.get_adapter("GO") is None
+
+
+def test_offline_resolves_labels_from_cache(tmp_path):
+    """Offline mode resolves labels from the file cache without any adapter."""
+    # Populate the cache first (online-style write).
+    writer = OntologyAccess(cache_labels=True, cache_dir=tmp_path)
+    writer.save_to_cache("GO", "GO:0008150", "biological process")
+
+    # Offline reader points at a default adapter string that would require a
+    # download if it were ever built - but offline mode never builds it.
+    access = OntologyAccess(
+        oak_adapter_string="sqlite:obo:",
+        cache_labels=False,
+        cache_dir=tmp_path,
+        offline=True,
+    )
+    assert access.get_label("GO:0008150") == "biological process"
+
+
+def test_offline_cache_miss_returns_none(tmp_path):
+    """A cache miss in offline mode returns None instead of reaching out."""
+    access = OntologyAccess(cache_dir=tmp_path, offline=True)
+    assert access.get_label("GO:9999999") is None
+
+
+def test_offline_reads_cache_even_when_cache_labels_disabled(tmp_path):
+    """Offline mode consults the cache even when label writing is disabled."""
+    writer = OntologyAccess(cache_labels=True, cache_dir=tmp_path)
+    writer.save_to_cache("GO", "GO:0000001", "a")
+
+    access = OntologyAccess(cache_labels=False, cache_dir=tmp_path, offline=True)
+    assert access.get_label("GO:0000001") == "a"
+
+
+def test_offline_resolves_local_ontology_from_cache_not_adapter(tmp_path):
+    """Offline mode does not fall back to the configured local ontology adapter."""
+    # TEST is configured to a local simpleobo file, which would resolve online.
+    access = OntologyAccess(
+        cache_labels=False,
+        cache_dir=tmp_path,
+        oak_config_path=TEST_OAK_CONFIG,
+        offline=True,
+    )
+    # Nothing cached yet, and offline refuses the adapter, so it is unresolved.
+    assert access.get_label("TEST:0000001") is None

@@ -114,6 +114,74 @@ The validator supports two strategies for caching dynamic enum values:
 - **Disable only enum expansion caching**: Use `--no-cache-enum-expansions`
 - **Close enum caches on demand**: Use `--saturate-enum-caches`
 
+## Offline Mode
+
+Offline mode (`--offline`) forces validation to run **entirely from the cache**,
+with a guarantee that no external ontology access ever happens. In offline mode
+the validator never builds an OAK adapter, so it cannot download an ontology
+database or contact a remote service (OLS, etc.). Every label and enum-membership
+check is resolved exclusively from the CSV cache in `--cache-dir`.
+
+This is useful for:
+
+- **Air-gapped or network-restricted environments** where outbound access is unavailable or forbidden
+- **CI/CD pipelines** that must be reproducible and must not depend on remote ontology services
+- **Guaranteeing determinism** — results depend only on the committed cache, never on live ontology state
+
+### Preparing a cache for offline use
+
+Because offline mode only reads the cache, the cache must already contain
+everything the validation needs:
+
+- **Labels**: run the same validation online at least once (with caching enabled) so the required labels are written to `cache/<prefix>/terms.csv`.
+- **Dynamic enums**: materialize full enum closures with `--saturate-enum-caches` (or `--cache-strategy greedy`) so the `.complete` marker is written. A dynamic enum without a complete cache cannot be validated offline (membership can only be confirmed from a materialized closure); in that case each value is reported as an error whose message points you at the unmaterialized closure rather than claiming the data is invalid. Note that `--saturate-enum-caches` is a **no-op offline** (it cannot build the closure without ontology access), so run it online.
+
+A typical workflow is to populate the cache online once, commit the `cache/`
+directory to version control, and then validate offline everywhere else:
+
+```bash
+# 1. Populate the cache online (materializing dynamic enum closures)
+linkml-term-validator validate-data data.yaml -s schema.yaml \
+  --cache-dir cache --saturate-enum-caches
+
+# 2. Commit the cache, then validate offline anywhere (no network access)
+linkml-term-validator validate-data data.yaml -s schema.yaml \
+  --cache-dir cache --offline
+```
+
+Offline mode reads the cache even when `--no-cache` /
+`cache_labels=False` is set — since the cache is the only permitted source,
+reading it is always enabled.
+
+### Uncached terms are errors
+
+In offline mode a term that cannot be resolved from the cache is always reported
+as an **ERROR** (non-zero exit code), regardless of `--strict` or whether the
+prefix is configured in `oak_config.yaml`. This is stricter than online
+validation, where an unconfigured prefix is treated as "skipped" (INFO). The
+guarantee is deliberate: an offline run must not pass green while silently
+leaving terms unvalidated. No exception is raised — every miss is collected and
+surfaced in the normal validation report alongside any other issues, and the
+command exits non-zero if any errors were found. To make an offline run pass,
+populate the cache (labels and, for dynamic enums, a materialized `.complete`
+closure) so every referenced term is present.
+
+### Configuration
+
+```bash
+# CLI: force offline validation on any command
+linkml-term-validator validate-schema schema.yaml --offline
+linkml-term-validator validate-data data.yaml -s schema.yaml --offline
+linkml-term-validator validate-text-file document.md --offline
+```
+
+```python
+# Python API: pass offline=True to any plugin or to ValidationConfig
+from linkml_term_validator.plugins import DynamicEnumPlugin
+
+plugin = DynamicEnumPlugin(cache_dir="cache", offline=True)
+```
+
 ## Configuration
 
 ### CLI
