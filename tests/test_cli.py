@@ -91,6 +91,22 @@ def test_offline_flag_in_help(runner):
         assert "--offline" in result.output
 
 
+def test_validate_schema_offline_uncached_is_error(runner, tests_data_dir, tmp_path):
+    """Offline schema validation fails on uncached terms (no silent green pass)."""
+    schema_path = tests_data_dir / "test_schema.yaml"
+    cache_dir = tmp_path / "cache"  # empty → every term is a cache miss
+
+    result = runner.invoke(
+        app,
+        ["validate-schema", str(schema_path), "--offline", "--cache-dir", str(cache_dir)],
+    )
+
+    assert result.exit_code == 1
+    assert "offline cache" in result.output
+    # The misleading "validation skipped" note must not appear in offline mode.
+    assert "validation skipped" not in result.output
+
+
 def test_validate_data_offline_uses_cache(runner, tests_data_dir, tmp_path):
     """Offline data validation passes when the enum cache is pre-populated."""
     schema_path = tests_data_dir / "dynamic_enum_schema.yaml"

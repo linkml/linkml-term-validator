@@ -10,9 +10,13 @@ from pathlib import Path
 
 from linkml_runtime.linkml_model.meta import EnumDefinition, ReachabilityQuery
 
+from linkml_term_validator.models import ValidationConfig
 from linkml_term_validator.plugins import DynamicEnumPlugin
+from linkml_term_validator.validator import EnumValidator
 
 OAK_CONFIG = Path("tests/data/test_oak_config.yaml")
+
+TEST_SCHEMA = Path("tests/data/test_schema.yaml")
 
 
 def _root_descendants_enum() -> EnumDefinition:
@@ -75,3 +79,49 @@ def test_offline_without_cache_cannot_validate_dynamic_enum(tmp_path):
     )
     # No adapter and no cache → the value cannot be confirmed as a member.
     assert offline.is_value_in_enum("TEST:0000002", _root_descendants_enum()) is False
+
+
+# =============================================================================
+# Offline "miss = error": an uncached term must never pass silently (#51)
+# =============================================================================
+
+
+def test_offline_schema_uncached_term_is_error(tmp_path):
+    """Offline schema validation errors on uncached terms even for unconfigured prefixes.
+
+    Without --strict and without an oak_config, an online run would treat these
+    as INFO (skipped). Offline must escalate to ERROR so an incomplete cache can
+    never pass green.
+    """
+    config = ValidationConfig(cache_dir=tmp_path / "cache", offline=True)
+    validator = EnumValidator(config)
+    result = validator.validate_schema(TEST_SCHEMA)
+
+    assert result.has_errors()
+    # Every meaning in the schema is uncached, so all are reported.
+    assert result.error_count() == result.total_meanings_checked
+    assert any("offline cache" in issue.message for issue in result.issues)
+
+
+def test_offline_schema_passes_when_cache_populated(tmp_path):
+    """Offline schema validation passes once the needed labels are cached."""
+    cache_dir = tmp_path / "cache"
+
+    # Populate the cache online (uses the local simpleobo TEST ontology).
+    online = EnumValidator(
+        ValidationConfig(cache_dir=cache_dir, oak_config_path=OAK_CONFIG)
+    )
+    online.get_ontology_label("TEST:0000001")  # warms cache/test/terms.csv
+
+    offline = EnumValidator(ValidationConfig(cache_dir=cache_dir, offline=True))
+    # A cached term resolves; an uncached one is reported as an offline error.
+    assert offline.get_ontology_label("TEST:0000001") == "root term"
+    issues = offline.validate_curie_label_pairs(
+        [
+            ("TEST:0000001", "root term", "line:1"),
+            ("TEST:0000099", "missing", "line:2"),
+        ]
+    )
+    messages = [i.message for i in issues]
+    assert any("TEST:0000099" in m and "offline cache" in m for m in messages)
+    assert all("TEST:0000001" not in m for m in messages)

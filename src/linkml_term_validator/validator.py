@@ -289,13 +289,25 @@ class EnumValidator:
 
             if actual_label is None:
                 prefix = self._get_prefix(meaning)
-                if (prefix and self._is_prefix_configured(prefix)) or self.config.strict_mode:
+                # In offline mode a cache miss is always an error: the term could
+                # not be resolved from the cache and no lookup is permitted, so an
+                # incomplete cache must never pass silently (see issue #51).
+                if (
+                    (prefix and self._is_prefix_configured(prefix))
+                    or self.config.strict_mode
+                    or self.config.offline
+                ):
+                    message = (
+                        f"Term {meaning} not found in offline cache"
+                        if self.config.offline
+                        else f"Could not retrieve label for {meaning}"
+                    )
                     issues.append(
                         ValidationIssue(
                             enum_name=enum_name,
                             value_name=value_name,
                             severity=SeverityLevel.ERROR,
-                            message=f"Could not retrieve label for {meaning}",
+                            message=message,
                             meaning=meaning,
                             expected_label=None,
                             actual_label=None,
@@ -413,13 +425,24 @@ class EnumValidator:
 
             if actual_label is None:
                 prefix = self._get_prefix(curie)
-                if (prefix and self._is_prefix_configured(prefix)) or self.config.strict_mode:
+                # Offline mode: an uncached term is always an error (no lookup is
+                # permitted), so an incomplete cache never passes silently (#51).
+                if (
+                    (prefix and self._is_prefix_configured(prefix))
+                    or self.config.strict_mode
+                    or self.config.offline
+                ):
+                    message = (
+                        f"Term {curie} not found in offline cache"
+                        if self.config.offline
+                        else f"Unresolvable CURIE: {curie}"
+                    )
                     issues.append(
                         ValidationIssue(
                             enum_name=location,
                             value_name=curie,
                             severity=SeverityLevel.ERROR,
-                            message=f"Unresolvable CURIE: {curie}",
+                            message=message,
                             meaning=curie,
                             expected_label=expected_label,
                             actual_label=None,

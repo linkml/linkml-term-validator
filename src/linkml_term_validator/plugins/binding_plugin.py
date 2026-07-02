@@ -344,8 +344,9 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                 path=path,
             )
 
-        # Check term existence for configured prefixes (strict mode)
-        if self.strict and isinstance(field_value, str):
+        # Check term existence for configured prefixes (strict mode). Offline mode
+        # always checks existence so an uncached term can't pass silently (#51).
+        if (self.strict or self.config.offline) and isinstance(field_value, str):
             yield from self._validate_term_exists(
                 field_value=field_value,
                 field_path=field_path,
@@ -571,24 +572,32 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         if not prefix:
             return
 
-        # Only check existence for configured prefixes
-        if not self._is_prefix_configured(prefix):
+        # Only check existence for configured prefixes. In offline mode every term
+        # must be resolvable from the cache regardless of prefix configuration, so
+        # unconfigured prefixes are checked too (see issue #51).
+        if not self._is_prefix_configured(prefix) and not self.config.offline:
             return
 
         # Try to get the label - if None, term doesn't exist
         ontology_label = self.get_ontology_label(field_value)
         if ontology_label is None:
+            if self.config.offline:
+                message = f"Term '{field_value}' not found in offline cache"
+                prefix_context = f"prefix: {prefix} (offline: cache-only)"
+            else:
+                message = f"Term '{field_value}' not found in ontology"
+                prefix_context = f"prefix: {prefix} (configured in oak_config)"
             yield ValidationResult(
                 type="term_not_found",
                 severity=Severity.ERROR,
-                message=f"Term '{field_value}' not found in ontology",
+                message=message,
                 instance=instance,
                 instantiates=target_class,
                 context=[
                     f"path: {path}",
                     f"slot: {slot_name}",
                     f"field: {field_path}",
-                    f"prefix: {prefix} (configured in oak_config)",
+                    prefix_context,
                 ],
             )
 

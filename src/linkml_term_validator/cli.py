@@ -118,8 +118,10 @@ def validate_schema(
     if verbose or result.has_errors() or result.has_warnings():
         result.print_summary(verbose=verbose)
 
+    # In offline mode unresolved terms are reported as errors above (not skipped),
+    # so the "validation skipped / add to oak_config" note would be misleading.
     unknown_prefixes = validator.get_unknown_prefixes()
-    if unknown_prefixes:
+    if unknown_prefixes and not offline:
         typer.echo("\n⚠️  Unknown prefixes encountered (validation skipped):")
         for prefix in sorted(unknown_prefixes):
             typer.echo(f"  - {prefix}")
@@ -861,8 +863,10 @@ def validate_text_file(
                 f"  ❌ {issue.enum_name} {issue.value_name}: {issue.message}"
             )
 
+    # Offline mode reports unresolved terms as errors, so the "skipped" note
+    # (and the oak_config suggestion) would be misleading there.
     unknown_prefixes = validator.get_unknown_prefixes()
-    if unknown_prefixes:
+    if unknown_prefixes and not offline:
         typer.echo("\n⚠️  Unknown prefixes encountered (validation skipped):")
         for prefix in sorted(unknown_prefixes):
             typer.echo(f"  - {prefix}")

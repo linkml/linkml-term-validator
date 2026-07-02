@@ -151,9 +151,20 @@ linkml-term-validator validate-data data.yaml -s schema.yaml \
 
 Offline mode reads the cache even when `--no-cache` /
 `cache_labels=False` is set — since the cache is the only permitted source,
-reading it is always enabled. Terms that are not present in the cache resolve as
-"not found" (rather than triggering a lookup), so an incomplete cache surfaces as
-validation issues instead of silent network calls.
+reading it is always enabled.
+
+### Uncached terms are errors
+
+In offline mode a term that cannot be resolved from the cache is always reported
+as an **ERROR** (non-zero exit code), regardless of `--strict` or whether the
+prefix is configured in `oak_config.yaml`. This is stricter than online
+validation, where an unconfigured prefix is treated as "skipped" (INFO). The
+guarantee is deliberate: an offline run must not pass green while silently
+leaving terms unvalidated. No exception is raised — every miss is collected and
+surfaced in the normal validation report alongside any other issues, and the
+command exits non-zero if any errors were found. To make an offline run pass,
+populate the cache (labels and, for dynamic enums, a materialized `.complete`
+closure) so every referenced term is present.
 
 ### Configuration
 
