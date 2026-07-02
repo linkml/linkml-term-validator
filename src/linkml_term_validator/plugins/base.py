@@ -264,7 +264,17 @@ class BaseOntologyPlugin(ValidationPlugin):
 
     @staticmethod
     def _reachability_key(query: Any) -> str:
-        """Serialize a reachable_from query deterministically for cache keys."""
+        """Serialize a reachable_from query deterministically for cache keys.
+
+        Used only for *nested* reachable_from clauses inside include/minus
+        expressions, which have no pre-0.4.1 cache to preserve. Do NOT use this
+        for the top-level ``reachable_from`` segment in ``_get_enum_cache_key``:
+        it intentionally diverges from the legacy serialization (``sn:`` prefix,
+        and ``is:`` from :meth:`_reachable_from_include_self` rather than the raw
+        value), so routing the top-level path through here would change the hash
+        and re-churn every existing cache — the exact regression that method's
+        legacy-compatible block avoids.
+        """
         parts = [
             f"sn:{','.join(sorted(query.source_nodes or []))}",
             f"rt:{','.join(sorted(query.relationship_types or []))}",
