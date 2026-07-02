@@ -42,6 +42,7 @@ class EnumValidator:
             cache_labels=config.cache_labels,
             cache_dir=config.cache_dir,
             oak_config_path=config.oak_config_path,
+            offline=config.offline,
         )
 
         if config.cache_labels:

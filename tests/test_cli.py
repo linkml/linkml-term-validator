@@ -83,6 +83,44 @@ def test_validate_schema_missing_file(runner):
     assert result.exit_code != 0
 
 
+def test_offline_flag_in_help(runner):
+    """The --offline flag is documented on the validation commands."""
+    for command in ["validate-schema", "validate-data", "validate", "validate-text-file"]:
+        result = runner.invoke(app, [command, "--help"])
+        assert result.exit_code == 0
+        assert "--offline" in result.output
+
+
+def test_validate_data_offline_uses_cache(runner, tests_data_dir, tmp_path):
+    """Offline data validation passes when the enum cache is pre-populated."""
+    schema_path = tests_data_dir / "dynamic_enum_schema.yaml"
+    data_path = tests_data_dir / "dynamic_enum_valid_data.yaml"
+    config_path = tests_data_dir / "test_oak_config.yaml"
+    cache_dir = tmp_path / "cache"
+
+    common = [
+        str(data_path),
+        "--schema",
+        str(schema_path),
+        "--target-class",
+        "Sample",
+        "--config",
+        str(config_path),
+        "--cache-dir",
+        str(cache_dir),
+        "--no-bindings",
+    ]
+
+    # 1. Populate a complete enum cache online.
+    online = runner.invoke(app, ["validate-data", *common, "--saturate-enum-caches"])
+    assert online.exit_code == 0, online.output
+
+    # 2. Re-run offline against the populated cache: should still pass.
+    offline = runner.invoke(app, ["validate-data", *common, "--offline"])
+    assert offline.exit_code == 0, offline.output
+    assert "✅" in offline.output
+
+
 def test_validate_data_missing_schema(runner, examples_dir):
     """Test data validation without --schema flag."""
     data_path = examples_dir / "simple_data.yaml"

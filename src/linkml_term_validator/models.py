@@ -254,6 +254,14 @@ class ValidationConfig(BaseModel):
         default=Path("cache"),
         description="Directory for caching ontology labels and dynamic enum expansions",
     )
+    offline: bool = Field(
+        default=False,
+        description=(
+            "If True, force offline validation: never build OAK adapters and "
+            "resolve everything exclusively from the file cache, guaranteeing "
+            "no external access"
+        ),
+    )
 
     def get_cache_dir(self) -> Path:
         """Get the cache directory, creating it if needed.

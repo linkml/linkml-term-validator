@@ -114,6 +114,63 @@ The validator supports two strategies for caching dynamic enum values:
 - **Disable only enum expansion caching**: Use `--no-cache-enum-expansions`
 - **Close enum caches on demand**: Use `--saturate-enum-caches`
 
+## Offline Mode
+
+Offline mode (`--offline`) forces validation to run **entirely from the cache**,
+with a guarantee that no external ontology access ever happens. In offline mode
+the validator never builds an OAK adapter, so it cannot download an ontology
+database or contact a remote service (OLS, etc.). Every label and enum-membership
+check is resolved exclusively from the CSV cache in `--cache-dir`.
+
+This is useful for:
+
+- **Air-gapped or network-restricted environments** where outbound access is unavailable or forbidden
+- **CI/CD pipelines** that must be reproducible and must not depend on remote ontology services
+- **Guaranteeing determinism** — results depend only on the committed cache, never on live ontology state
+
+### Preparing a cache for offline use
+
+Because offline mode only reads the cache, the cache must already contain
+everything the validation needs:
+
+- **Labels**: run the same validation online at least once (with caching enabled) so the required labels are written to `cache/<prefix>/terms.csv`.
+- **Dynamic enums**: materialize full enum closures with `--saturate-enum-caches` (or `--cache-strategy greedy`) so the `.complete` marker is written. A dynamic enum without a complete cache cannot be validated offline (membership can only be confirmed from a materialized closure).
+
+A typical workflow is to populate the cache online once, commit the `cache/`
+directory to version control, and then validate offline everywhere else:
+
+```bash
+# 1. Populate the cache online (materializing dynamic enum closures)
+linkml-term-validator validate-data data.yaml -s schema.yaml \
+  --cache-dir cache --saturate-enum-caches
+
+# 2. Commit the cache, then validate offline anywhere (no network access)
+linkml-term-validator validate-data data.yaml -s schema.yaml \
+  --cache-dir cache --offline
+```
+
+Offline mode reads the cache even when `--no-cache` /
+`cache_labels=False` is set — since the cache is the only permitted source,
+reading it is always enabled. Terms that are not present in the cache resolve as
+"not found" (rather than triggering a lookup), so an incomplete cache surfaces as
+validation issues instead of silent network calls.
+
+### Configuration
+
+```bash
+# CLI: force offline validation on any command
+linkml-term-validator validate-schema schema.yaml --offline
+linkml-term-validator validate-data data.yaml -s schema.yaml --offline
+linkml-term-validator validate-text-file document.md --offline
+```
+
+```python
+# Python API: pass offline=True to any plugin or to ValidationConfig
+from linkml_term_validator.plugins import DynamicEnumPlugin
+
+plugin = DynamicEnumPlugin(cache_dir="cache", offline=True)
+```
+
 ## Configuration
 
 ### CLI

@@ -33,6 +33,7 @@ class PermissibleValueMeaningPlugin(BaseOntologyPlugin):
         cache_dir: Path | str = Path("cache"),
         oak_config_path: Optional[Path | str] = None,
         strict_mode: bool = False,
+        offline: bool = False,
     ):
         """Initialize permissible value meaning plugin.
 
@@ -42,12 +43,15 @@ class PermissibleValueMeaningPlugin(BaseOntologyPlugin):
             cache_dir: Directory for label cache files
             oak_config_path: Path to oak_config.yaml for per-prefix adapters
             strict_mode: If True, treat warnings as errors
+            offline: If True, force offline validation: never build OAK adapters
+                and resolve everything exclusively from the file cache
         """
         super().__init__(
             oak_adapter_string=oak_adapter_string,
             cache_labels=cache_labels,
             cache_dir=cache_dir,
             oak_config_path=oak_config_path,
+            offline=offline,
         )
         self.strict_mode = strict_mode
         self.schema_view = None

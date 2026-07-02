@@ -49,6 +49,7 @@ class BaseOntologyPlugin(ValidationPlugin):
         cache_dir: Path | str = Path("cache"),
         oak_config_path: Optional[Path | str] = None,
         cache_strategy: Literal["progressive", "greedy"] | CacheStrategy = CacheStrategy.PROGRESSIVE,
+        offline: bool = False,
     ):
         """Initialize base ontology plugin.
 
@@ -60,6 +61,8 @@ class BaseOntologyPlugin(ValidationPlugin):
             cache_dir: Directory for label cache files
             oak_config_path: Path to oak_config.yaml for per-prefix adapters
             cache_strategy: Caching strategy for dynamic enums - "progressive" (default) or "greedy"
+            offline: If True, force offline validation: never build OAK adapters
+                and resolve everything exclusively from the file cache
         """
         # Convert string to enum if needed
         if isinstance(cache_strategy, str):
@@ -75,6 +78,7 @@ class BaseOntologyPlugin(ValidationPlugin):
                 Path(oak_config_path) if isinstance(oak_config_path, str) else oak_config_path
             ),
             cache_strategy=cache_strategy,
+            offline=offline,
         )
 
         # Shared ontology access (adapter management + label caching).
@@ -83,6 +87,7 @@ class BaseOntologyPlugin(ValidationPlugin):
             cache_labels=self.config.cache_labels,
             cache_dir=self.config.cache_dir,
             oak_config_path=self.config.oak_config_path,
+            offline=self.config.offline,
         )
 
         # Enum-expansion caches (plugin-specific, not shared).
@@ -330,7 +335,9 @@ class BaseOntologyPlugin(ValidationPlugin):
         Returns:
             Set of cached values, or None if cache miss
         """
-        if not self.config.cache_enum_expansions:
+        # Offline mode always consults the enum cache, even when enum-expansion
+        # caching (writing) is disabled, since the cache is the only permitted source.
+        if not self.config.cache_enum_expansions and not self.config.offline:
             return None
 
         cache_key = self._get_enum_cache_key(enum_def)

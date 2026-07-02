@@ -55,6 +55,7 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
         cache_dir: Path | str = Path("cache"),
         oak_config_path: Optional[Path | str] = None,
         cache_strategy: Literal["progressive", "greedy"] | CacheStrategy = CacheStrategy.PROGRESSIVE,
+        offline: bool = False,
     ):
         """Initialize dynamic enum plugin.
 
@@ -66,6 +67,8 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
             cache_dir: Directory for label cache files
             oak_config_path: Path to oak_config.yaml for per-prefix adapters
             cache_strategy: Caching strategy for dynamic enums ('progressive' or 'greedy')
+            offline: If True, force offline validation: never build OAK adapters
+                and resolve everything exclusively from the file cache
         """
         super().__init__(
             oak_adapter_string=oak_adapter_string,
@@ -75,6 +78,7 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
             cache_dir=cache_dir,
             oak_config_path=oak_config_path,
             cache_strategy=cache_strategy,
+            offline=offline,
         )
         self.schema_view = None
         self.expanded_enums: dict[str, set[str]] = {}
