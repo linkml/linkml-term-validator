@@ -165,10 +165,10 @@ This will only report the closure error, not the "term not found" error.
 
 ## Step 4: Add Label Validation (Anti-Hallucination)
 
-Enable label validation to catch mismatched labels:
+Label validation is enabled by default and catches mismatched labels:
 
 ```bash
-linkml-term-validator validate-data data.yaml -s schema.yaml -t GeneAnnotation --labels
+linkml-term-validator validate-data data.yaml -s schema.yaml -t GeneAnnotation
 ```
 
 If the data has:
@@ -278,7 +278,7 @@ ontology_adapters:
 |----------------|-----------------|------|
 | Binding + Dynamic Enum | Terms outside ontology branch | (default) |
 | Strict Mode | Fabricated/non-existent term IDs | `--no-lenient` (default) |
-| Label Validation | Mismatched labels | `--labels` |
+| Label Validation | Mismatched labels | `--labels` (default); disable with `--no-labels` |
 
 ## Next Steps
 

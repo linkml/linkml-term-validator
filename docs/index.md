@@ -8,7 +8,7 @@ A collection of [LinkML ValidationPlugin](https://linkml.io/linkml/code/validato
 
 - ✅ **Three composable validation plugins** for the LinkML validator framework
 - ✅ **Schema validation** - Validates `meaning` fields in enum permissible values
-- ✅ **Dynamic enum validation** - Validates data against `reachable_from`, `matches`, `concepts`
+- ✅ **Dynamic enum validation** - Validates data against `reachable_from`, `concepts`, enum expressions, and inherited enums
 - ✅ **Binding validation** - Validates constraints on nested object fields
 - ✅ **Multi-level caching** - In-memory + file-based for fast repeated validation
 - ✅ **Ontology Access Kit (OAK)** integration - Supports multiple ontology sources
@@ -54,6 +54,7 @@ linkml-term-validator validate-data data.yaml --schema schema.yaml
 - [linkml-validate Integration](notebooks/04_linkml_validate_integration.ipynb) - Use plugins with standard linkml-validate
 - [Python API](notebooks/03_python_api.ipynb) - Programmatic usage
 - [Plugin Reference](plugin-reference.md) - Complete API documentation
+- [Gallery](gallery.md) - Public projects using linkml-term-validator
 
 ### Advanced Topics
 - [TSV/CSV Data Validation](notebooks/05_tsv_csv_validation.ipynb) - Validating tabular data

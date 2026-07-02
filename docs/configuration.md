@@ -268,10 +268,10 @@ Shows detailed information about what's being validated and any issues encounter
 **Label validation (data validation only):**
 
 ```bash
-linkml-term-validator validate-data --labels data.yaml --schema schema.yaml
+linkml-term-validator validate-data data.yaml --schema schema.yaml
 ```
 
-Also validates that labels in the data match the canonical labels from the ontology.
+Label validation is enabled by default for binding validation. Use `--no-labels` when you only want ID and enum-range checks.
 
 **Selective plugin usage (data validation only):**
 

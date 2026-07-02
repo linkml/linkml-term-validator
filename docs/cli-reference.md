@@ -1,570 +1,182 @@
 # CLI Reference
 
-Complete command-line interface reference for linkml-term-validator.
+Complete command-line interface reference for `linkml-term-validator`.
 
-## Overview
+## Commands
 
-linkml-term-validator provides a single command `linkml-term-validator` with two subcommands:
+`linkml-term-validator` currently exposes five commands:
 
-- `validate-schema` - Validate schema permissible values
-- `validate-data` - Validate data against dynamic enums and bindings
-
-## Installation
-
-```bash
-pip install linkml-term-validator
-```
-
-Or with `uv`:
-
-```bash
-uv add linkml-term-validator
-```
-
-## Global Options
-
-These options apply to all subcommands:
-
-```bash
-linkml-term-validator [OPTIONS] COMMAND [ARGS]
-```
-
-| Option | Description |
-|--------|-------------|
-| `--help` | Show help message and exit |
+| Command | Purpose |
+|---------|---------|
+| `validate-schema` | Validate `meaning` fields in schema enum permissible values |
+| `validate-data` | Validate data against dynamic enums and binding constraints |
+| `validate` | Auto-detect schema validation vs data validation based on `--schema` |
+| `migrate-cache` | Normalize label cache CSV files after upgrades or relabeling |
+| `validate-text-file` | Validate CURIE/label pairs embedded in text or Markdown |
 
 ## validate-schema
 
-Validates that `meaning` fields in enum permissible values reference valid ontology terms with correct labels.
-
-### Syntax
+Validates that enum permissible value `meaning` fields reference resolvable ontology terms and that schema labels match ontology labels.
 
 ```bash
 linkml-term-validator validate-schema [OPTIONS] SCHEMA_PATH
 ```
 
-### Arguments
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--adapter`, `-a` | `sqlite:obo:` | Default OAK adapter string |
+| `--strict` | `false` | Treat warnings as errors |
+| `--no-cache` | `false` | Disable label cache writes |
+| `--cache-dir` | `cache` | Directory for label and enum caches |
+| `--config`, `-c` | none | Path to `oak_config.yaml` |
+| `--offline` | `false` | Resolve only from the cache; never build OAK adapters |
+| `--verbose`, `-v` | `false` | Print validation summary details |
 
-| Argument | Type | Required | Description |
-|----------|------|----------|-------------|
-| `SCHEMA_PATH` | Path | Yes | Path to LinkML schema file (`.yaml`) |
-
-### Options
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `--config PATH` | Path | None | Path to OAK config file (`oak_config.yaml`) for per-prefix adapter configuration |
-| `--adapter TEXT` | String | `"sqlite:obo:"` | Default OAK adapter string (e.g., `sqlite:obo:`, `ols:`, `bioportal:`) |
-| `--cache-dir PATH` | Path | `cache` | Directory for caching ontology labels |
-| `--no-cache` | Flag | False | Disable file-based caching |
-| `--offline` | Flag | False | Force offline validation: resolve only from the cache, never access ontology services |
-| `--strict` | Flag | False | Treat warnings as errors |
-| `--verbose` | Flag | False | Show detailed validation information |
-| `--help` | Flag | - | Show help message and exit |
-
-### Examples
-
-**Basic validation:**
+Examples:
 
 ```bash
 linkml-term-validator validate-schema schema.yaml
+linkml-term-validator validate-schema schema.yaml --strict
+linkml-term-validator validate-schema schema.yaml --config oak_config.yaml
+linkml-term-validator validate-schema schema.yaml --offline --cache-dir cache
 ```
-
-**With custom config:**
-
-```bash
-linkml-term-validator validate-schema --config oak_config.yaml schema.yaml
-```
-
-**Strict mode (warnings become errors):**
-
-```bash
-linkml-term-validator validate-schema --strict schema.yaml
-```
-
-**Using OLS instead of SQLite:**
-
-```bash
-linkml-term-validator validate-schema --adapter ols: schema.yaml
-```
-
-**Disable caching:**
-
-```bash
-linkml-term-validator validate-schema --no-cache schema.yaml
-```
-
-**Verbose output:**
-
-```bash
-linkml-term-validator validate-schema --verbose schema.yaml
-```
-
-**Custom cache directory:**
-
-```bash
-linkml-term-validator validate-schema --cache-dir /tmp/ontology-cache schema.yaml
-```
-
-### Output
-
-**Success (no issues):**
-
-```
-✅ Validation passed!
-
-Validation Summary:
-  Enums checked: 2
-  Permissible values checked: 4
-  Meanings validated: 4
-  Issues found: 0
-```
-
-**Failure (with issues):**
-
-```
-❌ ERROR: Label mismatch for GO:0008150
-    Enum: BiologicalProcessEnum
-    Permissible value: BIOLOGICAL_PROCESS
-    Expected label: biological process
-    Found label: biological_process
-
-Validation Summary:
-  Enums checked: 2
-  Permissible values checked: 4
-  Meanings validated: 4
-  Issues found: 1
-    Errors: 1
-    Warnings: 0
-```
-
-**With unknown prefixes:**
-
-```
-✅ Validation passed!
-
-Validation Summary:
-  Enums checked: 2
-  Permissible values checked: 5
-  Meanings validated: 4
-  Issues found: 0
-
-⚠️  Unknown prefixes encountered (validation skipped):
-  - MY_CUSTOM
-  - INTERNAL
-
-Consider adding these to oak_config.yaml to enable validation.
-```
-
-### Exit Codes
-
-| Code | Meaning |
-|------|---------|
-| 0 | Success - no validation errors |
-| 1 | Failure - validation errors found |
 
 ## validate-data
 
-Validates data instances against dynamic enums and binding constraints.
-
-Accepts multiple data files - each is validated independently with a summary at the end.
-
-### Syntax
+Validates one or more YAML/JSON data files against dynamic enum ranges and/or binding constraints.
 
 ```bash
 linkml-term-validator validate-data [OPTIONS] DATA_PATHS...
 ```
 
-### Arguments
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--schema`, `-s` | required | LinkML schema path |
+| `--target-class`, `-t` | none | Target class for validation |
+| `--bindings / --no-bindings` | `--bindings` | Enable or disable binding validation |
+| `--dynamic-enums / --no-dynamic-enums` | `--dynamic-enums` | Enable or disable dynamic enum validation |
+| `--labels / --no-labels` | `--labels` | Enable or disable ontology label checks in bindings |
+| `--lenient / --no-lenient` | `--no-lenient` | Do not fail binding existence checks when term IDs are not found |
+| `--adapter`, `-a` | `sqlite:obo:` | Default OAK adapter string |
+| `--no-cache` | `false` | Disable file-based label and enum cache writes |
+| `--cache-dir` | `cache` | Directory for label and enum caches |
+| `--cache-enum-expansions / --no-cache-enum-expansions` | `--cache-enum-expansions` | Enable or disable dynamic enum expansion cache writes |
+| `--saturate-enum-caches / --no-saturate-enum-caches` | `--no-saturate-enum-caches` | Materialize full dynamic enum closures and mark caches complete |
+| `--config`, `-c` | none | Path to `oak_config.yaml` |
+| `--cache-strategy` | `progressive` | `progressive` for lazy checks or `greedy` for upfront expansion |
+| `--offline` | `false` | Resolve only from the cache; never build OAK adapters |
 
-| Argument | Type | Required | Description |
-|----------|------|----------|-------------|
-| `DATA_PATHS` | Path(s) | Yes | One or more paths to data files (`.yaml`, `.json`) |
-
-### Options
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `--schema PATH` | Path | **Required** | Path to LinkML schema file |
-| `--target-class TEXT` | String | None | Target class name to validate against |
-| `--config PATH` | Path | None | Path to OAK config file |
-| `--adapter TEXT` | String | `"sqlite:obo:"` | Default OAK adapter string |
-| `--cache-dir PATH` | Path | `cache` | Directory for caching ontology labels and dynamic enums |
-| `--cache-strategy TEXT` | String | `progressive` | Caching strategy for dynamic enums: `progressive` (positive-hit cache) or `greedy` (expand upfront) |
-| `--cache-enum-expansions/--no-cache-enum-expansions` | Flag | True | Enable or disable file-based caching of expanded dynamic enums |
-| `--saturate-enum-caches/--no-saturate-enum-caches` | Flag | False | In progressive mode, materialize full enum closures and mark caches complete |
-| `--no-cache` | Flag | False | Disable file-based label and enum caching |
-| `--offline` | Flag | False | Force offline validation: resolve only from the cache, never access ontology services |
-| `--labels` | Flag | False | Validate that labels match ontology canonical labels |
-| `--lenient/--no-lenient` | Flag | False | Lenient mode: don't fail when term IDs are not found in ontology |
-| `--no-dynamic-enums` | Flag | False | Skip dynamic enum validation |
-| `--no-bindings` | Flag | False | Skip binding constraint validation |
-| `--verbose` | Flag | False | Show detailed validation information |
-| `--help` | Flag | - | Show help message and exit |
-
-### Examples
-
-**Basic validation:**
+Examples:
 
 ```bash
 linkml-term-validator validate-data data.yaml --schema schema.yaml
+linkml-term-validator validate-data data.yaml -s schema.yaml -t GeneAnnotation
+linkml-term-validator validate-data data/*.yaml -s schema.yaml --config oak_config.yaml
+linkml-term-validator validate-data data.yaml -s schema.yaml --no-bindings
+linkml-term-validator validate-data data.yaml -s schema.yaml --no-dynamic-enums
+linkml-term-validator validate-data data.yaml -s schema.yaml --no-labels
+linkml-term-validator validate-data data.yaml -s schema.yaml --saturate-enum-caches
 ```
 
-**With target class:**
+Offline dynamic enum validation requires a complete enum cache. Populate it online first:
 
 ```bash
-linkml-term-validator validate-data data.yaml --schema schema.yaml --target-class Person
+linkml-term-validator validate-data data.yaml -s schema.yaml \
+  --cache-dir cache --saturate-enum-caches
+
+linkml-term-validator validate-data data.yaml -s schema.yaml \
+  --cache-dir cache --offline
 ```
 
-**With label validation:**
+## validate
+
+Convenience command that calls schema validation unless `--schema` is supplied. With `--schema`, it validates the input as data against that schema.
 
 ```bash
-linkml-term-validator validate-data data.yaml --schema schema.yaml --labels
+linkml-term-validator validate [OPTIONS] INPUT_PATH
 ```
 
-**With custom config:**
+The options mirror the relevant `validate-schema` and `validate-data` options:
 
 ```bash
-linkml-term-validator validate-data data.yaml \
-  --schema schema.yaml \
-  --config oak_config.yaml
+# Schema validation
+linkml-term-validator validate schema.yaml
+
+# Data validation
+linkml-term-validator validate data.yaml --schema schema.yaml
 ```
 
-**Only validate bindings (skip dynamic enums):**
+## migrate-cache
+
+Normalizes existing label cache files.
 
 ```bash
-linkml-term-validator validate-data data.yaml \
-  --schema schema.yaml \
-  --no-dynamic-enums
+linkml-term-validator migrate-cache [OPTIONS]
 ```
 
-**Only validate dynamic enums (skip bindings):**
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--cache-dir` | `cache` | Directory containing cache files |
+| `--adapter`, `-a` | `sqlite:obo:` | OAK adapter string used when refreshing labels |
+| `--config`, `-c` | none | Path to `oak_config.yaml` |
+| `--dry-run` | `false` | Preview changes without writing |
+| `--refresh-labels` | `false` | Re-fetch labels from ontology and update changed labels |
+| `--sort-only` | `false` | Only sort and deduplicate cache files |
+
+Use this after upgrading, after merging cache files, or when you want deterministic cache diffs:
 
 ```bash
-linkml-term-validator validate-data data.yaml \
-  --schema schema.yaml \
-  --no-bindings
+linkml-term-validator migrate-cache --dry-run
+linkml-term-validator migrate-cache --sort-only
+linkml-term-validator migrate-cache --refresh-labels --config oak_config.yaml
 ```
 
-**Validate multiple files:**
+## validate-text-file
+
+Validates CURIE/label pairs extracted from text or Markdown with a regular expression.
 
 ```bash
-linkml-term-validator validate-data data1.yaml data2.yaml data3.yaml \
-  --schema schema.yaml
+linkml-term-validator validate-text-file [OPTIONS] FILE_PATH
 ```
 
-**Validate all YAML files (shell glob):**
+The default regex matches annotations like `@term GO:0008150 "biological process"`.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--regex`, `-r` | `@term (\S+) "([^"]*)"` | Regex with capture groups for CURIE and label |
+| `--curie-group` | `1` | Capture group index for the CURIE |
+| `--label-group` | `2` | Capture group index for the label |
+| `--strict` | `false` | Treat unresolvable CURIEs as errors, even for unconfigured prefixes |
+| `--adapter`, `-a` | `sqlite:obo:` | Default OAK adapter string |
+| `--config`, `-c` | none | Path to `oak_config.yaml` |
+| `--no-cache` | `false` | Disable label cache writes |
+| `--cache-dir` | `cache` | Directory for label caches |
+| `--offline` | `false` | Resolve only from the cache; never build OAK adapters |
+| `--verbose`, `-v` | `false` | Show each validated term |
+
+Examples:
 
 ```bash
-linkml-term-validator validate-data data/*.yaml \
-  --schema schema.yaml
+linkml-term-validator validate-text-file document.md
+
+linkml-term-validator validate-text-file document.md \
+  --regex '([^=]+)=(TEST:\d+)' \
+  --label-group 1 \
+  --curie-group 2 \
+  --config tests/data/test_oak_config.yaml
 ```
 
-**With greedy caching (expand all terms upfront):**
-
-```bash
-linkml-term-validator validate-data data.yaml \
-  --schema schema.yaml \
-  --cache-strategy greedy
-```
-
-**Full validation with all options:**
-
-```bash
-linkml-term-validator validate-data data.yaml \
-  --schema schema.yaml \
-  --target-class GeneAnnotation \
-  --config oak_config.yaml \
-  --cache-dir cache \
-  --cache-strategy progressive \
-  --labels \
-  --verbose
-```
-
-### Output
-
-**Success (single file):**
-
-```
-✅ Validation passed
-```
-
-**Success (multiple files):**
-
-```
-✅ data1.yaml
-✅ data2.yaml
-✅ data3.yaml
-
-✅ All 3 files passed validation
-```
-
-**Partial failure (multiple files):**
-
-```
-✅ data1.yaml
-
-❌ data2.yaml - 2 issue(s):
-  ❌ ERROR: Value 'GO:0005575' not in enum 'BiologicalProcessEnum'
-  ❌ ERROR: Value 'CL:9999999' not in enum 'CellTypeEnum'
-
-✅ data3.yaml
-
-Summary: 1/3 files failed, 2 total issue(s)
-```
-
-**Failure (dynamic enum violation):**
-
-```
-❌ ERROR: Value 'GO:0005575' does not satisfy dynamic enum constraint
-    Class: GeneAnnotation
-    Slot: go_term.id
-    Enum: BiologicalProcessEnum
-    Expected: Descendant of GO:0008150 (biological_process)
-    Found: GO:0005575 (cellular_component)
-
-Validation Summary:
-  Dynamic enums validated: 5
-  Bindings validated: 3
-  Issues found: 1
-    Errors: 1
-```
-
-**Failure (label mismatch with --labels):**
-
-```
-❌ ERROR: Label mismatch for GO:0007049
-    Class: GeneAnnotation
-    Slot: go_term.label
-    Expected label: cell cycle
-    Found label: cell-division cycle
-
-Validation Summary:
-  Dynamic enums validated: 5
-  Bindings validated: 3
-  Label validations: 3
-  Issues found: 1
-    Errors: 1
-```
-
-### Exit Codes
+## Exit Codes
 
 | Code | Meaning |
 |------|---------|
-| 0 | Success - no validation errors |
-| 1 | Failure - validation errors found |
-
-## Common Workflows
-
-### CI/CD Validation
-
-**Schema validation in CI:**
-
-```bash
-#!/bin/bash
-set -e  # Exit on error
-
-echo "Validating LinkML schemas..."
-linkml-term-validator validate-schema \
-  --strict \
-  --config oak_config.yaml \
-  --cache-dir cache \
-  src/schema/main.yaml
-
-echo "✅ Schema validation passed"
-```
-
-**Data validation in CI:**
-
-```bash
-#!/bin/bash
-set -e
-
-echo "Validating curated data..."
-linkml-term-validator validate-data \
-  data/curated/*.yaml \
-  --schema src/schema/main.yaml \
-  --config oak_config.yaml \
-  --labels \
-  --cache-dir cache
-
-echo "✅ Data validation passed"
-```
-
-### Local Development
-
-**Quick schema check:**
-
-```bash
-linkml-term-validator validate-schema schema.yaml
-```
-
-**Validate with fresh cache:**
-
-```bash
-rm -rf cache/
-linkml-term-validator validate-schema schema.yaml
-```
-
-**Test with OLS (no local downloads):**
-
-```bash
-linkml-term-validator validate-schema --adapter ols: --no-cache schema.yaml
-```
-
-### Debugging
-
-**Verbose output:**
-
-```bash
-linkml-term-validator validate-schema --verbose schema.yaml
-```
-
-**Check specific data file:**
-
-```bash
-linkml-term-validator validate-data \
-  data/problematic.yaml \
-  --schema schema.yaml \
-  --verbose
-```
-
-## Configuration Files
-
-### oak_config.yaml
-
-Controls which ontology adapters to use for different prefixes, and optionally the caching behavior:
-
-```yaml
-# Cache strategy (optional): "progressive" (default) or "greedy"
-cache_strategy: progressive
-cache_enum_expansions: true
-saturate_enum_caches: false
-
-ontology_adapters:
-  GO: sqlite:obo:go
-  CHEBI: sqlite:obo:chebi
-  UBERON: sqlite:obo:uberon
-
-  # Skip validation
-  linkml: ""
-  schema: ""
-```
-
-Use with:
-
-```bash
-linkml-term-validator validate-schema --config oak_config.yaml schema.yaml
-```
-
-See [Configuration](configuration.md) for details.
-
-## Shell Completion
-
-### Bash
-
-```bash
-# Add to ~/.bashrc
-eval "$(_LINKML_TERM_VALIDATOR_COMPLETE=bash_source linkml-term-validator)"
-```
-
-### Zsh
-
-```bash
-# Add to ~/.zshrc
-eval "$(_LINKML_TERM_VALIDATOR_COMPLETE=zsh_source linkml-term-validator)"
-```
-
-### Fish
-
-```bash
-# Add to ~/.config/fish/config.fish
-_LINKML_TERM_VALIDATOR_COMPLETE=fish_source linkml-term-validator | source
-```
-
-## Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `BIOPORTAL_API_KEY` | API key for BioPortal adapter | None |
-| `OAK_CACHE_DIR` | Default cache directory for OAK | `~/.data/oaklib` |
-
-## Troubleshooting
-
-### Command not found
-
-**Problem:**
-```bash
-linkml-term-validator: command not found
-```
-
-**Solution:**
-Ensure the package is installed and your PATH is configured:
-
-```bash
-pip install linkml-term-validator
-which linkml-term-validator
-```
-
-### Unknown prefixes
-
-**Problem:**
-```
-⚠️  Unknown prefixes encountered (validation skipped):
-  - MY_ONTOLOGY
-```
-
-**Solution:**
-Add the prefix to your `oak_config.yaml`:
-
-```yaml
-ontology_adapters:
-  MY_ONTOLOGY: sqlite:obo:my_ontology
-```
-
-Or use a local OBO file:
-
-```yaml
-ontology_adapters:
-  MY_ONTOLOGY: simpleobo:path/to/ontology.obo
-```
-
-### Slow validation
-
-**Problem:**
-Validation takes a long time on first run.
-
-**Solution:**
-This is expected when using `sqlite:obo:` adapter for the first time. OAK is downloading and building the ontology database. Subsequent runs will be fast due to caching.
-
-To speed up development:
-- Use `simpleobo:` adapter with local OBO files for testing
-- Cache the `cache/` directory in CI/CD
-- Use `ols:` adapter to avoid local downloads (slower per query but no initial download)
-
-### Stale cache
-
-**Problem:**
-Validation shows old labels even though ontology has been updated.
-
-**Solution:**
-Clear the cache:
-
-```bash
-rm -rf cache/
-linkml-term-validator validate-schema schema.yaml
-```
-
-Or disable caching:
-
-```bash
-linkml-term-validator validate-schema --no-cache schema.yaml
-```
+| `0` | No validation errors |
+| `1` | Validation errors, missing files, invalid options, or cache migration failure |
 
 ## See Also
 
-- [Configuration](configuration.md) - Detailed configuration options
-- [Plugin Reference](plugin-reference.md) - Python API documentation
-- [Tutorials](notebooks/01_getting_started.ipynb) - Interactive tutorials
-- [Validation Types](validation-types.md) - Understanding validation types
-- [Anti-Hallucination Guardrails](anti-hallucination.md) - Preventing AI hallucinations
+- [Configuration](configuration.md)
+- [Caching](caching.md)
+- [Schema Validation](schema-validation.md)
+- [Data Validation](data-validation.md)
+- [Binding Validation](binding-validation.md)

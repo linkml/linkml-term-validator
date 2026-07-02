@@ -39,7 +39,7 @@ GO:0007049,cell cycle,2025-11-15T10:30:01
 
 ## Enum Cache (Dynamic Enums)
 
-Dynamic enums (those using `reachable_from`, `matches`, or `concepts`) can be cached to avoid expensive ontology traversals. Enum caches are stored in:
+Dynamic enums (those using `reachable_from`, `concepts`, enum expressions, or inherited enums) can be cached to avoid expensive ontology traversals. Enum cache keys also account for `matches` expressions, although full `matches` validation is not implemented yet. Enum caches are stored in:
 
 ```
 cache/

@@ -54,7 +54,7 @@ linkml-term-validator validate-schema --strict schema.yaml
 
 **Plugin**: `DynamicEnumPlugin`
 
-Validates data values against dynamic enum constraints defined via `reachable_from`, `matches`, or `concepts`.
+Validates data values against dynamic enum constraints defined via `reachable_from`, explicit `concepts`, enum expressions, and inherited enums.
 
 Dynamic enums define valid values using ontology queries rather than explicit lists, enabling flexible, extensible validation.
 
@@ -62,8 +62,10 @@ Dynamic enums define valid values using ontology queries rather than explicit li
 
 - Data values match the ontology query constraints
 - For `reachable_from`: value is a descendant of specified source nodes
-- For `matches`: value matches the specified pattern
 - For `concepts`: value is one of the specified concepts
+- For `include`, `minus`, and `inherits`: composed enum expressions are expanded
+
+`matches` expressions are recognized in LinkML enum definitions and cache keys, but full pattern-match validation is not implemented yet.
 
 ### Example
 
@@ -124,7 +126,7 @@ Bindings allow you to constrain the values of nested object fields based on dyna
 ### What it checks
 
 - The value in the nested object's field matches the binding's range constraint
-- Optionally: the label in the nested object matches the ontology's canonical label
+- The label in the nested object matches the ontology's canonical label, unless label validation is disabled
 - **Recursively validates all nested structures** - bindings on deeply nested classes are validated with full JSON path tracking
 
 ### Explicit Label Field Declaration
@@ -199,7 +201,7 @@ annotations:
 **What gets validated:**
 
 1. Check that `go_term.id` value (`GO:0007049`) satisfies the `BiologicalProcessEnum` constraint
-2. If `--labels` flag is used, also check that `go_term.label` matches the canonical label from GO
+2. Check that `go_term.label` matches the canonical label from GO unless label validation is disabled
 
 ### When to use
 
@@ -213,8 +215,8 @@ annotations:
 # Validate bindings only
 linkml-term-validator validate-data data.yaml --schema schema.yaml
 
-# Also validate labels match ontology
-linkml-term-validator validate-data data.yaml --schema schema.yaml --labels
+# Disable label validation if needed
+linkml-term-validator validate-data data.yaml --schema schema.yaml --no-labels
 ```
 
 ## Label Matching
