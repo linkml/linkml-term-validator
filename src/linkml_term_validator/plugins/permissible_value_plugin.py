@@ -9,6 +9,7 @@ from linkml.validator.validation_context import ValidationContext  # type: ignor
 from linkml_runtime.linkml_model import PermissibleValue
 
 from linkml_term_validator.plugins.base import BaseOntologyPlugin
+from linkml_term_validator.utils import obsolete_term_message
 
 
 class PermissibleValueMeaningPlugin(BaseOntologyPlugin):
@@ -135,7 +136,7 @@ class PermissibleValueMeaningPlugin(BaseOntologyPlugin):
             yield ValidationResult(
                 type="permissible_value_obsolete",
                 severity=Severity.ERROR,
-                message=f"Ontology term '{meaning}' is obsolete",
+                message=obsolete_term_message(meaning),
                 instance={"enum": enum_name, "value": pv_name, "meaning": meaning},
                 instantiates=enum_name,
                 context=[f"enum: {enum_name}", f"value: {pv_name}"],

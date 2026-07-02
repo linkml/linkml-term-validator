@@ -12,7 +12,12 @@ from linkml_term_validator.models import (
     ValidationIssue,
     ValidationResult,
 )
-from linkml_term_validator.utils import OntologyAccess, get_prefix, normalize_string
+from linkml_term_validator.utils import (
+    OntologyAccess,
+    get_prefix,
+    normalize_string,
+    obsolete_term_message,
+)
 
 
 class EnumValidator:
@@ -346,7 +351,7 @@ class EnumValidator:
                         enum_name=enum_name,
                         value_name=value_name,
                         severity=SeverityLevel.ERROR,
-                        message=f"Ontology term {meaning} is obsolete",
+                        message=obsolete_term_message(meaning),
                         meaning=meaning,
                         expected_label=pv.title or value_name,
                         actual_label=actual_label,
@@ -477,7 +482,7 @@ class EnumValidator:
                         enum_name=location,
                         value_name=curie,
                         severity=SeverityLevel.ERROR,
-                        message=f"Obsolete term: {curie}",
+                        message=obsolete_term_message(curie),
                         meaning=curie,
                         expected_label=expected_label,
                         actual_label=actual_label,

@@ -26,6 +26,7 @@ from linkml.validator.validation_context import (  # type: ignore[import-untyped
     ValidationContext,
 )
 from linkml_runtime import SchemaView
+from linkml_runtime.linkml_model.meta import ReachabilityQuery
 
 from linkml_term_validator.models import ValidationConfig
 from linkml_term_validator.plugins import (
@@ -77,6 +78,65 @@ def test_is_obsolete_none_when_offline_without_adapter():
         oak_adapter_string=TEST_ONTOLOGY, cache_labels=False, offline=True
     )
     assert access.is_obsolete(OBSOLETE_TERM) is None
+
+
+# ---------------------------------------------------------------------------
+# Resilience: a traversal failure for one value must not abort the run
+# ---------------------------------------------------------------------------
+
+
+class _AncestorsBoomAdapter:
+    """Adapter whose term resolves but whose ancestors query raises.
+
+    Mirrors OLS answering an obsolete (detached) term's ancestors endpoint with
+    a payload that omits ``_embedded`` (which OAK dereferences into a KeyError).
+    """
+
+    def label(self, curie):
+        return "obsolete detached term"
+
+    def ancestors(self, *args, **kwargs):
+        raise KeyError("_embedded")
+
+
+def test_progressive_reachability_tolerates_traversal_failure():
+    plugin = DynamicEnumPlugin(cache_labels=False)
+    plugin.ontology._adapter_cache["TEST"] = _AncestorsBoomAdapter()
+
+    query = ReachabilityQuery(
+        source_nodes=["TEST:0000001"],
+        relationship_types=["rdfs:subClassOf"],
+    )
+    # The value resolves to a label but its ancestors query blows up; the check
+    # must degrade to "not reachable" instead of propagating the KeyError.
+    assert plugin._is_value_in_reachable_from("TEST:0000099", query) is False
+
+
+class _CountingOlsAdapter:
+    """Minimal OLS-shaped adapter that counts term fetches."""
+
+    def __init__(self):
+        self.focus_ontology = "test"
+        self.client = self
+        self.get_term_calls = 0
+
+    def curie_to_uri(self, curie):
+        return f"http://example.org/{curie.replace(':', '_')}"
+
+    def get_term(self, ontology, iri):
+        self.get_term_calls += 1
+        return {"is_obsolete": True, "label": "obsolete x"}
+
+
+def test_ols_term_payload_fetched_once_per_curie():
+    access = OntologyAccess(cache_labels=False)
+    adapter = _CountingOlsAdapter()
+    access._adapter_cache["TEST"] = adapter
+
+    # Two obsolescence checks for the same CURIE share a single network fetch.
+    assert access.is_obsolete("TEST:0001") is True
+    assert access.is_obsolete("TEST:0001") is True
+    assert adapter.get_term_calls == 1
 
 
 # ---------------------------------------------------------------------------

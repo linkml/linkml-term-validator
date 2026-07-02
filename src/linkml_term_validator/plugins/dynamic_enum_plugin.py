@@ -20,6 +20,7 @@ from linkml.validator.validation_context import ValidationContext  # type: ignor
 
 from linkml_term_validator.models import CacheStrategy
 from linkml_term_validator.plugins.base import BaseOntologyPlugin
+from linkml_term_validator.utils import obsolete_term_message
 
 
 class DynamicEnumPlugin(BaseOntologyPlugin):
@@ -251,8 +252,8 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
                     # would send the user hunting for a term that should simply be
                     # replaced with its successor.
                     message = (
-                        f"Value '{val_str}' is an obsolete ontology term "
-                        f"and is not valid for dynamic enum '{enum_def.name}'"
+                        f"{obsolete_term_message(val_str)}; "
+                        f"not valid for dynamic enum '{enum_def.name}'"
                     )
                     validation_note = "validation: progressive (obsolete term)"
                 else:
