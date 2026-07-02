@@ -42,6 +42,7 @@ class EnumValidator:
             cache_labels=config.cache_labels,
             cache_dir=config.cache_dir,
             oak_config_path=config.oak_config_path,
+            offline=config.offline,
         )
 
         if config.cache_labels:
@@ -262,6 +263,25 @@ class EnumValidator:
 
         return aliases
 
+    def _unresolved_is_error(self, prefix: Optional[str]) -> bool:
+        """Whether a term that could not be resolved should be an error.
+
+        Offline mode always errors (no lookup is permitted, so an incomplete
+        cache must never pass silently), as does strict mode or a configured
+        prefix; an unconfigured prefix without either is downgraded instead.
+        """
+        return (
+            bool(prefix and self._is_prefix_configured(prefix))
+            or self.config.strict_mode
+            or self.config.offline
+        )
+
+    def _unresolved_error_message(self, term: str, online_message: str) -> str:
+        """Build the error message for an unresolved term (offline-aware)."""
+        if self.config.offline:
+            return f"Term {term} not found in offline cache"
+        return online_message
+
     def validate_enum(
         self, enum_def: EnumDefinition, enum_name: str
     ) -> list[ValidationIssue]:
@@ -288,13 +308,15 @@ class EnumValidator:
 
             if actual_label is None:
                 prefix = self._get_prefix(meaning)
-                if (prefix and self._is_prefix_configured(prefix)) or self.config.strict_mode:
+                if self._unresolved_is_error(prefix):
                     issues.append(
                         ValidationIssue(
                             enum_name=enum_name,
                             value_name=value_name,
                             severity=SeverityLevel.ERROR,
-                            message=f"Could not retrieve label for {meaning}",
+                            message=self._unresolved_error_message(
+                                meaning, f"Could not retrieve label for {meaning}"
+                            ),
                             meaning=meaning,
                             expected_label=None,
                             actual_label=None,
@@ -412,13 +434,15 @@ class EnumValidator:
 
             if actual_label is None:
                 prefix = self._get_prefix(curie)
-                if (prefix and self._is_prefix_configured(prefix)) or self.config.strict_mode:
+                if self._unresolved_is_error(prefix):
                     issues.append(
                         ValidationIssue(
                             enum_name=location,
                             value_name=curie,
                             severity=SeverityLevel.ERROR,
-                            message=f"Unresolvable CURIE: {curie}",
+                            message=self._unresolved_error_message(
+                                curie, f"Unresolvable CURIE: {curie}"
+                            ),
                             meaning=curie,
                             expected_label=expected_label,
                             actual_label=None,

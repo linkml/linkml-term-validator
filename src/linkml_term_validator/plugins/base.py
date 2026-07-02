@@ -49,6 +49,7 @@ class BaseOntologyPlugin(ValidationPlugin):
         cache_dir: Path | str = Path("cache"),
         oak_config_path: Optional[Path | str] = None,
         cache_strategy: Literal["progressive", "greedy"] | CacheStrategy = CacheStrategy.PROGRESSIVE,
+        offline: bool = False,
     ):
         """Initialize base ontology plugin.
 
@@ -60,6 +61,8 @@ class BaseOntologyPlugin(ValidationPlugin):
             cache_dir: Directory for label cache files
             oak_config_path: Path to oak_config.yaml for per-prefix adapters
             cache_strategy: Caching strategy for dynamic enums - "progressive" (default) or "greedy"
+            offline: If True, force offline validation: never build OAK adapters
+                and resolve everything exclusively from the file cache
         """
         # Convert string to enum if needed
         if isinstance(cache_strategy, str):
@@ -75,6 +78,7 @@ class BaseOntologyPlugin(ValidationPlugin):
                 Path(oak_config_path) if isinstance(oak_config_path, str) else oak_config_path
             ),
             cache_strategy=cache_strategy,
+            offline=offline,
         )
 
         # Shared ontology access (adapter management + label caching).
@@ -83,6 +87,7 @@ class BaseOntologyPlugin(ValidationPlugin):
             cache_labels=self.config.cache_labels,
             cache_dir=self.config.cache_dir,
             oak_config_path=self.config.oak_config_path,
+            offline=self.config.offline,
         )
 
         # Enum-expansion caches (plugin-specific, not shared).
@@ -330,7 +335,9 @@ class BaseOntologyPlugin(ValidationPlugin):
         Returns:
             Set of cached values, or None if cache miss
         """
-        if not self.config.cache_enum_expansions:
+        # Offline mode always consults the enum cache, even when enum-expansion
+        # caching (writing) is disabled, since the cache is the only permitted source.
+        if not self.config.cache_enum_expansions and not self.config.offline:
             return None
 
         cache_key = self._get_enum_cache_key(enum_def)
@@ -417,6 +424,40 @@ class BaseOntologyPlugin(ValidationPlugin):
     # Progressive Validation (for cache_strategy="progressive")
     # =========================================================================
 
+    def _offline_dynamic_enum_unmaterialized(self, enum_def: EnumDefinition) -> bool:
+        """Whether offline validation cannot confirm membership of a dynamic enum.
+
+        In offline mode a dynamic enum can only be validated from a materialized
+        (``.complete``) closure. Without one, membership cannot be confirmed and a
+        failed check is a cache-incompleteness problem, not a data error.
+        """
+        return (
+            self.config.offline
+            and self.is_dynamic_enum(enum_def)
+            and not self._is_enum_cache_complete(enum_def)
+        )
+
+    def _offline_skip_pre_expansion(self, enum_def: EnumDefinition) -> bool:
+        """Whether greedy pre-expansion of a dynamic enum must be skipped offline.
+
+        Offline, a dynamic enum can only be pre-expanded from a materialized
+        (``.complete``) closure; otherwise expansion builds no adapter and yields
+        a bogus set. In that case it is skipped so validation falls back to the
+        per-value path, which surfaces the clear diagnostic and writes nothing.
+        Shared by the plugin ``pre_process`` implementations to avoid drift.
+        """
+        return self.config.offline and not self._is_enum_cache_complete(enum_def)
+
+    @staticmethod
+    def _offline_unmaterialized_enum_message(value: str, enum_name: Optional[str]) -> str:
+        """Diagnostic for an unmaterialized dynamic enum under offline validation."""
+        return (
+            f"Cannot validate '{value}' against dynamic enum '{enum_name}' offline: "
+            "enum closure not materialized in cache "
+            "(materialize it online first with --saturate-enum-caches or "
+            "--cache-strategy greedy, then re-run offline)"
+        )
+
     def is_value_in_enum(
         self, value: str, enum_def: EnumDefinition, schema_view: Any = None
     ) -> bool:
@@ -460,9 +501,15 @@ class BaseOntologyPlugin(ValidationPlugin):
         # Progressive mode only treats a cache as authoritative when it carries an
         # explicit completion marker. Otherwise fall back to ontology checks or
         # opt-in saturation so legacy append-only caches remain safe.
+        #
+        # Offline mode never saturates: expansion would build no adapter and yield
+        # an empty/partial set, which _save_enum_cache would then persist WITH a
+        # .complete marker, poisoning the cache for future runs. Skip it so offline
+        # falls through to per-value checks (which surface a clear diagnostic).
         if (
             self.config.cache_enum_expansions
             and self.config.saturate_enum_caches
+            and not self.config.offline
             and self.is_dynamic_enum(enum_def)
             and schema_view is not None
         ):
@@ -691,12 +738,18 @@ class BaseOntologyPlugin(ValidationPlugin):
                 if pv.meaning:
                     values.add(pv.meaning)
 
-        # Cache the result
+        # Cache the result in memory.
         self._enum_cache[enum_name] = values
-        if self.is_dynamic_enum(enum_def):
+
+        # A freshly-expanded dynamic closure is only authoritative when built with
+        # ontology access. Offline, an adapter is never built (a complete cache
+        # would have returned via the fast path above), so this result is
+        # empty/partial - never mark it complete or persist it, or we would poison
+        # the cache with a bogus ".complete" closure (see issue #51).
+        if self.is_dynamic_enum(enum_def) and not self.config.offline:
             self._closed_enum_caches.add(enum_name)
-        if use_cache and self.is_dynamic_enum(enum_def):
-            self._save_enum_cache(enum_def, values)
+            if use_cache:
+                self._save_enum_cache(enum_def, values)
 
         return values
 

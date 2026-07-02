@@ -55,6 +55,7 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
         cache_dir: Path | str = Path("cache"),
         oak_config_path: Optional[Path | str] = None,
         cache_strategy: Literal["progressive", "greedy"] | CacheStrategy = CacheStrategy.PROGRESSIVE,
+        offline: bool = False,
     ):
         """Initialize dynamic enum plugin.
 
@@ -66,6 +67,8 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
             cache_dir: Directory for label cache files
             oak_config_path: Path to oak_config.yaml for per-prefix adapters
             cache_strategy: Caching strategy for dynamic enums ('progressive' or 'greedy')
+            offline: If True, force offline validation: never build OAK adapters
+                and resolve everything exclusively from the file cache
         """
         super().__init__(
             oak_adapter_string=oak_adapter_string,
@@ -75,6 +78,7 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
             cache_dir=cache_dir,
             oak_config_path=oak_config_path,
             cache_strategy=cache_strategy,
+            offline=offline,
         )
         self.schema_view = None
         self.expanded_enums: dict[str, set[str]] = {}
@@ -93,8 +97,14 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
 
         if self.cache_strategy == CacheStrategy.GREEDY:
             for enum_name, enum_def in self.schema_view.all_enums().items():
-                if self.is_dynamic_enum(enum_def):
-                    self.expanded_enums[enum_name] = self.expand_enum(enum_def, self.schema_view)
+                if not self.is_dynamic_enum(enum_def):
+                    continue
+                # Offline, skip pre-expanding an un-materialized enum: process()
+                # then falls back to the per-value path, which surfaces the clear
+                # "not materialized" diagnostic and writes nothing.
+                if self._offline_skip_pre_expansion(enum_def):
+                    continue
+                self.expanded_enums[enum_name] = self.expand_enum(enum_def, self.schema_view)
 
     def process(self, instance: dict, context: ValidationContext) -> Iterator[ValidationResult]:
         """Validate instance slot values against dynamic enums.
@@ -230,15 +240,26 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
 
             # Use progressive validation (checks cache, then ontology, adds to cache if valid)
             if not self.is_value_in_enum(val_str, enum_def, self.schema_view):
+                # Offline with an unmaterialized dynamic enum is a cache problem,
+                # not a data error - report it as such rather than "not in enum".
+                if self._offline_dynamic_enum_unmaterialized(enum_def):
+                    message = self._offline_unmaterialized_enum_message(val_str, enum_def.name)
+                    validation_note = "validation: offline (enum cache not materialized)"
+                else:
+                    message = (
+                        f"Value '{val_str}' not in dynamic enum "
+                        f"'{enum_def.name}' (expanded from ontology)"
+                    )
+                    validation_note = "validation: progressive (lazy)"
                 yield ValidationResult(
                     type="dynamic_enum_validation",
                     severity=Severity.ERROR,
-                    message=f"Value '{val_str}' not in dynamic enum '{enum_def.name}' (expanded from ontology)",
+                    message=message,
                     instance=instance,
                     instantiates=target_class,
                     context=[
                         f"slot: {slot_name}",
                         f"enum: {enum_def.name}",
-                        "validation: progressive (lazy)",
+                        validation_note,
                     ],
                 )

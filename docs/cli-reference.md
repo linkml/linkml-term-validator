@@ -57,6 +57,7 @@ linkml-term-validator validate-schema [OPTIONS] SCHEMA_PATH
 | `--adapter TEXT` | String | `"sqlite:obo:"` | Default OAK adapter string (e.g., `sqlite:obo:`, `ols:`, `bioportal:`) |
 | `--cache-dir PATH` | Path | `cache` | Directory for caching ontology labels |
 | `--no-cache` | Flag | False | Disable file-based caching |
+| `--offline` | Flag | False | Force offline validation: resolve only from the cache, never access ontology services |
 | `--strict` | Flag | False | Treat warnings as errors |
 | `--verbose` | Flag | False | Show detailed validation information |
 | `--help` | Flag | - | Show help message and exit |
@@ -193,6 +194,7 @@ linkml-term-validator validate-data [OPTIONS] DATA_PATHS...
 | `--cache-enum-expansions/--no-cache-enum-expansions` | Flag | True | Enable or disable file-based caching of expanded dynamic enums |
 | `--saturate-enum-caches/--no-saturate-enum-caches` | Flag | False | In progressive mode, materialize full enum closures and mark caches complete |
 | `--no-cache` | Flag | False | Disable file-based label and enum caching |
+| `--offline` | Flag | False | Force offline validation: resolve only from the cache, never access ontology services |
 | `--labels` | Flag | False | Validate that labels match ontology canonical labels |
 | `--lenient/--no-lenient` | Flag | False | Lenient mode: don't fail when term IDs are not found in ontology |
 | `--no-dynamic-enums` | Flag | False | Skip dynamic enum validation |

@@ -96,6 +96,7 @@ class OntologyAccess:
         cache_labels: bool = True,
         cache_dir: Path | str = Path("cache"),
         oak_config_path: Optional[Path | str] = None,
+        offline: bool = False,
     ):
         """Initialize ontology access.
 
@@ -104,9 +105,12 @@ class OntologyAccess:
             cache_labels: Whether to cache ontology labels to disk
             cache_dir: Directory for label cache files
             oak_config_path: Path to oak_config.yaml for per-prefix adapters
+            offline: If True, never build OAK adapters (guaranteeing no external
+                access); resolve everything exclusively from the file cache.
         """
         self.oak_adapter_string = oak_adapter_string
         self.cache_labels = cache_labels
+        self.offline = offline
         self.cache_dir = Path(cache_dir) if isinstance(cache_dir, str) else cache_dir
         self.oak_config_path = (
             Path(oak_config_path) if isinstance(oak_config_path, str) else oak_config_path
@@ -238,6 +242,9 @@ class OntologyAccess:
     def get_adapter(self, prefix: str) -> object | None:
         """Get an OAK adapter for a prefix.
 
+        In offline mode no adapter is ever built, guaranteeing no external
+        access: resolution falls back entirely to the file cache.
+
         Resolution order:
         - If oak_config is loaded, use its mapping (None for an empty/missing
           entry; never fall back to the default adapter).
@@ -250,6 +257,12 @@ class OntologyAccess:
         Returns:
             OAK adapter or None if unavailable
         """
+        # Offline mode: never construct an adapter. Building one can download an
+        # ontology database or hit a remote service, so returning None here is
+        # the single chokepoint that guarantees no external access.
+        if self.offline:
+            return None
+
         if prefix in self._adapter_cache:
             return self._adapter_cache[prefix]
 
@@ -294,7 +307,9 @@ class OntologyAccess:
         if not prefix:
             return None
 
-        if self.cache_labels:
+        # Offline mode always consults the file cache, even when label caching
+        # (writing) is disabled, since the cache is the only permitted source.
+        if self.cache_labels or self.offline:
             cached = self.load_cache(prefix)
             if curie in cached:
                 label = cached[curie]
