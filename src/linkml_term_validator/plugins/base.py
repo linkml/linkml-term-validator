@@ -197,8 +197,20 @@ class BaseOntologyPlugin(ValidationPlugin):
         """Generate a cache key from enum definition.
 
         The key incorporates every dynamic construct that affects the expanded
-        value set (reachable_from, concepts, include, minus, inherits) so the
-        cache is invalidated when any of them changes.
+        value set (reachable_from, concepts, matches, permissible_values,
+        include, minus, inherits) so the cache is invalidated when any of them
+        changes.
+
+        Backward compatibility: an enum that uses only the fields covered by
+        the pre-0.4.1 key (``reachable_from`` and ``concepts``) produces the
+        exact same key string — and therefore the same cache filename — as it
+        did in 0.4.0. This keeps existing caches valid across upgrades instead
+        of orphaning every enum expansion. The constructs added in 0.4.1 (#36)
+        only *extend* the key when they are actually present, so they can never
+        perturb the legacy hash for enums that don't use them. Note this
+        deliberately keeps the cache *key* stable while the expansion-behavior
+        fixes (#34, #37) still ship; users who want the corrected expansions
+        for an already-cached enum can rebuild by clearing the cache directory.
 
         Args:
             enum_def: Enum definition
@@ -208,12 +220,20 @@ class BaseOntologyPlugin(ValidationPlugin):
         """
         key_parts = [enum_def.name or ""]
 
+        # Legacy-compatible segment: emit the same four key_parts (and the same
+        # include_self/traverse_up defaults) as pre-0.4.1 so the hash is stable.
         if enum_def.reachable_from:
-            key_parts.append(f"rf:{self._reachability_key(enum_def.reachable_from)}")
+            query = enum_def.reachable_from
+            key_parts.append(f"rf:{','.join(sorted(query.source_nodes or []))}")
+            key_parts.append(f"rt:{','.join(sorted(query.relationship_types or []))}")
+            key_parts.append(f"is:{query.include_self if hasattr(query, 'include_self') else True}")
+            key_parts.append(f"tu:{query.traverse_up if hasattr(query, 'traverse_up') else False}")
 
         if enum_def.concepts:
             key_parts.append(f"c:{','.join(sorted(enum_def.concepts))}")
 
+        # Constructs added in 0.4.1 (#36): only extend the key when present so
+        # enums that don't use them keep their legacy hash.
         if enum_def.matches:
             key_parts.append(f"m:{self._matches_key(enum_def.matches)}")
 

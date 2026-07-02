@@ -286,3 +286,84 @@ def test_cache_key_changes_with_include_permissible_value_meaning(tmp_path):
     key1 = plugin._get_enum_cache_key(_with_include_permissible_value("TEST:0000002"))
     key2 = plugin._get_enum_cache_key(_with_include_permissible_value("TEST:0000003"))
     assert key1 != key2
+
+
+def _legacy_key(enum_def) -> str:
+    """Byte-for-byte reproduction of the pre-0.4.1 (v0.4.0) cache-key algorithm.
+
+    Kept independent of the production code so a future refactor that silently
+    changes the legacy hash fails this test instead of quietly re-churning every
+    user's cache.
+    """
+    import hashlib
+
+    key_parts = [enum_def.name or ""]
+    if enum_def.reachable_from:
+        q = enum_def.reachable_from
+        key_parts.append(f"rf:{','.join(sorted(q.source_nodes or []))}")
+        key_parts.append(f"rt:{','.join(sorted(q.relationship_types or []))}")
+        key_parts.append(f"is:{q.include_self if hasattr(q, 'include_self') else True}")
+        key_parts.append(f"tu:{q.traverse_up if hasattr(q, 'traverse_up') else False}")
+    if enum_def.concepts:
+        key_parts.append(f"c:{','.join(sorted(enum_def.concepts))}")
+    return hashlib.md5("|".join(key_parts).encode()).hexdigest()[:12]
+
+
+def test_cache_key_backward_compatible_for_legacy_fields(tmp_path):
+    """Enums using only pre-0.4.1 fields must keep their v0.4.0 hash (no churn).
+
+    Regression guard: changing the enum cache key renames every
+    ``enums/<name>_<hash>.csv`` file, orphaning previously expanded caches and
+    forcing a full re-fetch from ontology services on upgrade. reachable_from /
+    concepts enums must therefore hash exactly as they did in 0.4.0.
+    """
+    plugin = DynamicEnumPlugin(
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+
+    # Pinned hash of the v0.4.0 key string
+    # "E|rf:TEST:0000001|rt:rdfs:subClassOf|is:None|tu:None".
+    assert plugin._get_enum_cache_key(_base_enum()) == "35c34a815840"
+
+    # And it must agree with the independent legacy reproduction across the
+    # legacy-covered fields (reachable_from params, explicit flags, concepts).
+    cases = [
+        _base_enum(),
+        EnumDefinition(name="E", concepts=["X:2", "X:1"]),
+        EnumDefinition(
+            name="E",
+            concepts=["X:2", "X:1"],
+            reachable_from=ReachabilityQuery(
+                source_nodes=["A:2", "A:1"],
+                relationship_types=["r2", "r1"],
+                include_self=True,
+                traverse_up=True,
+            ),
+        ),
+    ]
+    for enum_def in cases:
+        assert plugin._get_enum_cache_key(enum_def) == _legacy_key(enum_def)
+
+
+def test_new_constructs_do_not_perturb_legacy_hash(tmp_path):
+    """Adding a 0.4.1 construct must not change the hash of a legacy-only sibling.
+
+    The new key segments (matches/permissible_values/include/minus/inherits)
+    only participate when present, so an enum that omits them keeps the exact
+    hash it would have had before those segments existed.
+    """
+    plugin = DynamicEnumPlugin(
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+
+    # A legacy-only enum matches its independent legacy hash...
+    assert plugin._get_enum_cache_key(_base_enum()) == _legacy_key(_base_enum())
+    # ...while an otherwise-identical enum that *adds* a matches clause diverges
+    # (the new construct genuinely changes the expanded value set).
+    with_matches = _base_enum()
+    with_matches.matches = MatchQuery(identifier_pattern="TEST:.*")
+    assert plugin._get_enum_cache_key(with_matches) != _legacy_key(_base_enum())
