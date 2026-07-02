@@ -336,6 +336,24 @@ class EnumValidator:
                     )
                 continue
 
+            # An obsolete term still resolves to a label, so it passes the
+            # "not found" check above. Flag it explicitly instead of only
+            # surfacing the incidental label mismatch its "obsolete ..." label
+            # would otherwise produce.
+            if self.ontology.is_obsolete(meaning):
+                issues.append(
+                    ValidationIssue(
+                        enum_name=enum_name,
+                        value_name=value_name,
+                        severity=SeverityLevel.ERROR,
+                        message=f"Ontology term {meaning} is obsolete",
+                        meaning=meaning,
+                        expected_label=pv.title or value_name,
+                        actual_label=actual_label,
+                    )
+                )
+                continue
+
             expected_aliases = self.extract_aliases(pv, value_name)
             normalized_actual = self.normalize_string(actual_label)
 
@@ -449,6 +467,22 @@ class EnumValidator:
                         )
                     )
                 # else: unconfigured prefix without strict mode — silently skip
+                continue
+
+            # An obsolete term resolves to a label, so flag it explicitly rather
+            # than letting it pass (or masquerade as a label mismatch).
+            if self.ontology.is_obsolete(curie):
+                issues.append(
+                    ValidationIssue(
+                        enum_name=location,
+                        value_name=curie,
+                        severity=SeverityLevel.ERROR,
+                        message=f"Obsolete term: {curie}",
+                        meaning=curie,
+                        expected_label=expected_label,
+                        actual_label=actual_label,
+                    )
+                )
                 continue
 
             normalized_actual = self.normalize_string(actual_label)

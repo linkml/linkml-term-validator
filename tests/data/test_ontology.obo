@@ -35,3 +35,10 @@ id: TEST:0000006
 name: cell_cycle
 def: "A test cell cycle" []
 is_a: TEST:0000005 ! biological_process
+
+[Term]
+id: TEST:0000007
+name: obsolete test process
+def: "An obsolete test term" []
+is_obsolete: true
+replaced_by: TEST:0000006

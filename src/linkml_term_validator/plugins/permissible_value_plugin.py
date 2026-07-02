@@ -127,6 +127,21 @@ class PermissibleValueMeaningPlugin(BaseOntologyPlugin):
             )
             return
 
+        # An obsolete term resolves to a label, so it slips past the "not found"
+        # check above. Flag it explicitly and stop before the label-match check
+        # (obsolete labels are typically prefixed with "obsolete " and would only
+        # add a noisier, less actionable mismatch warning on top).
+        if self.is_obsolete(meaning):
+            yield ValidationResult(
+                type="permissible_value_obsolete",
+                severity=Severity.ERROR,
+                message=f"Ontology term '{meaning}' is obsolete",
+                instance={"enum": enum_name, "value": pv_name, "meaning": meaning},
+                instantiates=enum_name,
+                context=[f"enum: {enum_name}", f"value: {pv_name}"],
+            )
+            return
+
         # Check if label matches
         if pv.title or pv.description:
             # Extract aliases from PV (title, description)

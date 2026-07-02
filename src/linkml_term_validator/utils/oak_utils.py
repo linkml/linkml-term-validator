@@ -16,6 +16,7 @@ Example:
 """
 
 import csv
+import logging
 import re
 from datetime import datetime
 from pathlib import Path
@@ -25,6 +26,8 @@ from oaklib import get_adapter
 from ruamel.yaml import YAML
 
 from linkml_term_validator.cache_utils import atomic_write_csv, locked_cache_file
+
+logger = logging.getLogger(__name__)
 
 
 def get_prefix(curie: str) -> Optional[str]:
@@ -120,6 +123,9 @@ class OntologyAccess:
         self._label_cache: dict[str, Optional[str]] = {}
         self._adapter_cache: dict[str, object | None] = {}
         self._unknown_prefixes: set[str] = set()
+        # Per-prefix obsolete-entity sets (for adapters where a whole-ontology
+        # ``obsoletes()`` scan is cheap); None means "could not determine".
+        self._obsolete_cache: dict[str, Optional[set[str]]] = {}
 
         # ontology_adapters mapping plus the full parsed config (so callers can
         # read additional keys without re-reading the file).
@@ -356,7 +362,15 @@ class OntologyAccess:
             self._label_cache[curie] = None
             return None
 
-        label = self._get_adapter_label(adapter, curie)
+        # Remote adapters (e.g. OLS) raise for a non-existent term instead of
+        # returning None: OLS answers a missing IRI with HTTP 404. Treat any
+        # lookup failure as "no label" so a single fake/unknown CURIE surfaces as
+        # a clean validation result rather than crashing the whole run.
+        try:
+            label = self._get_adapter_label(adapter, curie)
+        except Exception as e:  # noqa: BLE001 - adapters raise varied errors
+            logger.debug("Label lookup failed for %s: %s", curie, e)
+            label = None
         self._label_cache[curie] = label
 
         if label and self.cache_labels:
@@ -375,6 +389,96 @@ class OntologyAccess:
     @staticmethod
     def _get_ols4_embedded_label(adapter: object, curie: str) -> Optional[str]:
         """Extract labels from OLS4 payloads returned by older OAK adapters."""
+        term = OntologyAccess._ols_term_dict(adapter, curie)
+        if term is None:
+            return None
+        label = term.get("label")
+        return label if isinstance(label, str) else None
+
+    def get_unknown_prefixes(self) -> set[str]:
+        """Get the set of prefixes encountered but not configured."""
+        return self._unknown_prefixes
+
+    # =========================================================================
+    # Obsolescence
+    # =========================================================================
+
+    def is_obsolete(self, curie: str) -> Optional[bool]:
+        """Return whether an ontology term is obsolete.
+
+        Obsolete (deprecated) terms still exist in an ontology and still resolve
+        to a label, so they are not caught by a plain "does this term exist"
+        check. This surfaces them explicitly.
+
+        Args:
+            curie: A CURIE like "GO:0000005"
+
+        Returns:
+            ``True``/``False`` when obsolescence can be determined, or ``None``
+            when it cannot (no adapter, offline, unknown term, or an adapter that
+            does not expose obsolescence information).
+        """
+        prefix = get_prefix(curie)
+        if not prefix:
+            return None
+
+        adapter = self.get_adapter(prefix)
+        if adapter is None:
+            return None
+
+        # OLS: read the per-term ``is_obsolete`` flag. A whole-ontology
+        # ``obsoletes()`` scan would page through every deprecated term in the
+        # ontology, so it is not usable per-value against a remote service.
+        if self._is_ols_adapter(adapter):
+            return self._ols_is_obsolete(adapter, curie)
+
+        # Local/SQLite adapters: a one-time ``obsoletes()`` scan is cheap and is
+        # cached per prefix.
+        obsoletes = self._get_obsoletes_set(prefix, adapter)
+        if obsoletes is None:
+            return None
+        return curie in obsoletes
+
+    def _get_obsoletes_set(self, prefix: str, adapter: object) -> Optional[set[str]]:
+        """Return (and cache) the set of obsolete CURIEs for a prefix's adapter."""
+        if prefix in self._obsolete_cache:
+            return self._obsolete_cache[prefix]
+
+        result: Optional[set[str]] = None
+        obsoletes = getattr(adapter, "obsoletes", None)
+        if callable(obsoletes):
+            try:
+                result = set(obsoletes())
+            except Exception as e:  # noqa: BLE001 - adapters raise varied errors
+                logger.debug("obsoletes() failed for prefix %s: %s", prefix, e)
+                result = None
+        self._obsolete_cache[prefix] = result
+        return result
+
+    @staticmethod
+    def _is_ols_adapter(adapter: object) -> bool:
+        """Detect OLS adapters, whose per-term metadata carries obsolescence."""
+        resource = getattr(adapter, "resource", None)
+        if getattr(resource, "scheme", None) == "ols":
+            return True
+        # Fall back to the OLS4 client shape only when the scheme is unavailable.
+        return bool(
+            getattr(adapter, "client", None)
+            and getattr(adapter, "focus_ontology", None)
+            and getattr(adapter, "curie_to_uri", None)
+        )
+
+    def _ols_is_obsolete(self, adapter: object, curie: str) -> Optional[bool]:
+        """Read the OLS ``is_obsolete`` flag for a term (None if undeterminable)."""
+        term = self._ols_term_dict(adapter, curie)
+        if term is None:
+            return None
+        value = term.get("is_obsolete")
+        return value if isinstance(value, bool) else None
+
+    @staticmethod
+    def _ols_term_dict(adapter: object, curie: str) -> Optional[dict]:
+        """Fetch an OLS term payload, unwrapping the ``_embedded.terms`` envelope."""
         client = getattr(adapter, "client", None)
         focus_ontology = getattr(adapter, "focus_ontology", None)
         curie_to_uri = getattr(adapter, "curie_to_uri", None)
@@ -385,24 +489,17 @@ class OntologyAccess:
         if not iri:
             return None
 
-        term = client.get_term(ontology=focus_ontology, iri=iri)
+        try:
+            term = client.get_term(ontology=focus_ontology, iri=iri)
+        except Exception:  # noqa: BLE001 - a missing term answers with HTTP 404
+            return None
         if not isinstance(term, dict):
             return None
 
-        if isinstance(term.get("label"), str):
-            return term["label"]
-
-        embedded = term.get("_embedded")
-        if not isinstance(embedded, dict):
+        if "_embedded" in term:
+            embedded = term.get("_embedded")
+            terms = embedded.get("terms") if isinstance(embedded, dict) else None
+            if isinstance(terms, list) and terms and isinstance(terms[0], dict):
+                return terms[0]
             return None
-        terms = embedded.get("terms")
-        if not isinstance(terms, list) or not terms:
-            return None
-        first = terms[0]
-        if isinstance(first, dict) and isinstance(first.get("label"), str):
-            return first["label"]
-        return None
-
-    def get_unknown_prefixes(self) -> set[str]:
-        """Get the set of prefixes encountered but not configured."""
-        return self._unknown_prefixes
+        return term
