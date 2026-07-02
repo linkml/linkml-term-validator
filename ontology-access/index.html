@@ -1061,6 +1061,28 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#ubergraph" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ubergraph:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#owl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        owl:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#bioportal" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1292,6 +1314,28 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#ubergraph" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ubergraph:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#owl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        owl:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#bioportal" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1359,6 +1403,7 @@
 <li><strong><code>ols:</code></strong> - Ontology Lookup Service (online, no local download required)</li>
 <li><strong><code>bioportal:</code></strong> - NCBO BioPortal (requires API key)</li>
 <li><strong><code>ubergraph:</code></strong> - Ubergraph SPARQL endpoint</li>
+<li><strong><code>owl:</code></strong> - Local Functional OWL files (requires <code>oaklib&gt;=0.7.0rc7</code> for graph traversal)</li>
 </ul>
 <h2 id="default-behavior">Default Behavior</h2>
 <p>Without configuration, the validator uses <code>sqlite:obo:</code> as the default adapter, which automatically creates per-prefix adapters:</p>
@@ -1372,7 +1417,7 @@
 <p>You can override the adapter for specific prefixes using an <code>oak_config.yaml</code> file:</p>
 <pre><code class="language-yaml">ontology_adapters:
   GO: sqlite:obo:go           # Use local GO database
-  CHEBI: ols:                 # Use OLS for CHEBI
+  CHEBI: &quot;ols:&quot;               # Use OLS for CHEBI (expanded to ols:chebi)
   MY_CUSTOM: simpleobo:my_ontology.obo  # Use local OBO file
   SKIP_THIS: &quot;&quot;               # Skip validation for this prefix
 </code></pre>
@@ -1421,8 +1466,8 @@ plugin = PermissibleValueMeaningPlugin(oak_config_path=&quot;oak_config.yaml&quo
 <p>Uses the Ontology Lookup Service (EBI). Online service, no local downloads.</p>
 <p><strong>Usage:</strong></p>
 <pre><code class="language-yaml">ontology_adapters:
-  GO: ols:
-  CHEBI: ols:
+  GO: &quot;ols:&quot;     # shorthand for ols:go
+  CHEBI: &quot;ols:&quot;  # shorthand for ols:chebi
 </code></pre>
 <p><strong>Pros:</strong>
 - No local downloads
@@ -1432,7 +1477,30 @@ plugin = PermissibleValueMeaningPlugin(oak_config_path=&quot;oak_config.yaml&quo
 - Requires internet connection
 - Slower than local adapters
 - Subject to rate limiting
+- Service availability dependence
+- Best used with progressive validation; greedy expansion requires descendant support and may be slow for large ontologies</p>
+<h3 id="ubergraph">ubergraph:</h3>
+<p>Uses the Ubergraph SPARQL endpoint. Online service, no local downloads.</p>
+<p><strong>Usage:</strong></p>
+<pre><code class="language-yaml">ontology_adapters:
+  GO: &quot;ubergraph:&quot;
+  CL: &quot;ubergraph:&quot;
+</code></pre>
+<p><strong>Pros:</strong>
+- No local downloads
+- Supports graph traversal over OBO ontologies
+- Useful for integration checks against a shared endpoint</p>
+<p><strong>Cons:</strong>
+- Requires internet connection
+- Slower than local adapters
 - Service availability dependence</p>
+<h3 id="owl">owl:</h3>
+<p>Uses local Functional OWL files.</p>
+<p><strong>Usage:</strong></p>
+<pre><code class="language-yaml">ontology_adapters:
+  MY_CUSTOM: owl:path/to/my_ontology.ofn
+</code></pre>
+<p><strong>Version note:</strong> graph traversal with <code>owl:</code> requires <code>oaklib&gt;=0.7.0rc7</code>. With <code>oaklib 0.6.23</code>, the Functional OWL implementation does not expose the traversal methods needed by dynamic enum validation.</p>
 <h3 id="bioportal">bioportal:</h3>
 <p>Uses NCBO BioPortal. Requires API key.</p>
 <p><strong>Setup:</strong></p>
@@ -1442,8 +1510,8 @@ linkml-term-validator validate-schema --config oak_config.yaml schema.yaml
 </code></pre>
 <p><strong>Usage:</strong></p>
 <pre><code class="language-yaml">ontology_adapters:
-  GO: bioportal:
-  CHEBI: bioportal:
+  GO: &quot;bioportal:&quot;
+  CHEBI: &quot;bioportal:&quot;
 </code></pre>
 <h2 id="unknown-prefixes">Unknown Prefixes</h2>
 <p>When the validator encounters a prefix it doesn't recognize (not in <code>oak_config.yaml</code> or not a known OBO ontology), it:</p>
@@ -1469,6 +1537,7 @@ Consider adding these to oak_config.yaml to enable validation.
 <li><a href="../configuration/">Configuration</a> - Complete configuration guide</li>
 <li><a href="../caching/">Caching</a> - How ontology data is cached</li>
 <li><a href="../validation-types/">Validation Types</a> - Understanding the validation plugins</li>
+<li>Runnable provider examples in <code>examples/oak_providers/</code></li>
 </ul>
 
 

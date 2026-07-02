@@ -1926,9 +1926,9 @@ plugin = PermissibleValueMeaningPlugin(oak_config_path=&quot;oak_config.yaml&quo
 <p>Uses the Ontology Lookup Service (EBI). Online service, no local downloads.</p>
 <p><strong>Usage:</strong></p>
 <pre><code class="language-yaml">ontology_adapters:
-  GO: ols:
-  CHEBI: ols:
-  UBERON: ols:
+  GO: &quot;ols:&quot;
+  CHEBI: &quot;ols:&quot;
+  UBERON: &quot;ols:&quot;
 </code></pre>
 <p><strong>Pros:</strong>
 - No local downloads
@@ -1943,8 +1943,8 @@ plugin = PermissibleValueMeaningPlugin(oak_config_path=&quot;oak_config.yaml&quo
 <p>Uses NCBO BioPortal. Requires API key.</p>
 <p><strong>Usage:</strong></p>
 <pre><code class="language-yaml">ontology_adapters:
-  GO: bioportal:
-  CHEBI: bioportal:
+  GO: &quot;bioportal:&quot;
+  CHEBI: &quot;bioportal:&quot;
 </code></pre>
 <p><strong>Setup:</strong></p>
 <p>Set <code>BIOPORTAL_API_KEY</code> environment variable:</p>
@@ -1983,6 +1983,13 @@ linkml-term-validator validate-schema --config oak_config.yaml schema.yaml
 <li><code>CL:0000540</code> → uses <code>sqlite:obo:cl</code></li>
 </ul>
 <p>This works for any OBO ontology that OAK knows about.</p>
+<p>When you set a different default adapter with <code>--adapter</code> or the Python API
+(for example <code>--adapter "ols:"</code> or <code>oak_adapter_string="ubergraph:"</code>), that
+adapter is used for every encountered prefix. This enables non-SQLite
+validation without an <code>oak_config.yaml</code>, but it can also trigger adapter
+initialization or network calls for prefixes that older versions skipped as
+unknown. Use an <code>oak_config.yaml</code> with explicit empty-string entries for
+prefixes you want to skip.</p>
 <p><strong>When this works well:</strong></p>
 <ul>
 <li>You're using standard OBO ontologies (GO, CHEBI, UBERON, CL, etc.)</li>
@@ -2053,8 +2060,8 @@ ontology_adapters:
   CHEBI: sqlite:obo:chebi
 
   # Use OLS for rarely-used ontologies (avoid downloads)
-  FYPO: ols:
-  WBPhenotype: ols:
+  FYPO: &quot;ols:&quot;
+  WBPhenotype: &quot;ols:&quot;
 
   # Skip validation for metadata prefixes
   linkml: &quot;&quot;
