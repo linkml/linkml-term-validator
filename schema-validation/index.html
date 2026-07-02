@@ -889,6 +889,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#term-is-obsolete-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        "Term is obsolete" Error
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#label-mismatch-warning" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1571,6 +1582,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#term-is-obsolete-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        "Term is obsolete" Error
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#label-mismatch-warning" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1901,6 +1923,20 @@ else:
 1. Verify the CURIE exists in the ontology (use <a href="https://www.ebi.ac.uk/ols/">OLS</a>)
 2. Check for typos
 3. Configure the correct OAK adapter</p>
+<h3 id="term-is-obsolete-error">"Term is obsolete" Error</h3>
+<pre><code>ERROR: Ontology term GO:0000005 is obsolete
+</code></pre>
+<p><strong>Cause:</strong> the term still exists in the ontology but has been deprecated. Unlike
+a fake/non-existent CURIE, an obsolete term still resolves to a label, so it is
+reported separately rather than as "not found".</p>
+<p><strong>Solution:</strong> replace it with the current term. Many obsolete terms record a
+successor (<code>term replaced by</code> / <code>consider</code>) in the ontology.</p>
+<blockquote>
+<p><strong>Note on remote services (OLS):</strong> a non-existent CURIE makes OLS answer with
+HTTP 404, and an obsolete term's ancestors query returns an empty payload.
+LTV handles both so a single bad value is reported as an ordinary validation
+result instead of aborting the whole run.</p>
+</blockquote>
 <h3 id="label-mismatch-warning">"Label mismatch" Warning</h3>
 <pre><code>WARN: Label mismatch for GO:0007049
   Expected: &quot;Cell Cycle&quot;
