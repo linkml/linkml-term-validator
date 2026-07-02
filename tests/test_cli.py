@@ -107,9 +107,14 @@ def test_validate_schema_offline_uncached_is_error(runner, tests_data_dir, tmp_p
     assert "validation skipped" not in result.output
 
 
-def test_validate_data_offline_empty_cache_is_error(runner, tests_data_dir, tmp_path):
+@pytest.mark.parametrize("strategy", ["progressive", "greedy"])
+def test_validate_data_offline_empty_cache_is_error(runner, tests_data_dir, tmp_path, strategy):
     """Offline data validation fails (non-zero) with an empty cache, and the
-    dynamic-enum diagnostic points at the unmaterialized closure, not the data."""
+    dynamic-enum diagnostic points at the unmaterialized closure, not the data.
+
+    Covers both cache strategies: the greedy path must not silently pass or
+    poison the cache when the closure was never materialized.
+    """
     schema_path = tests_data_dir / "dynamic_enum_schema.yaml"
     data_path = tests_data_dir / "dynamic_enum_valid_data.yaml"
     config_path = tests_data_dir / "test_oak_config.yaml"
@@ -128,6 +133,8 @@ def test_validate_data_offline_empty_cache_is_error(runner, tests_data_dir, tmp_
             str(config_path),
             "--offline",
             "--no-bindings",
+            "--cache-strategy",
+            strategy,
             "--cache-dir",
             str(cache_dir),
         ],
@@ -135,6 +142,9 @@ def test_validate_data_offline_empty_cache_is_error(runner, tests_data_dir, tmp_
 
     assert result.exit_code == 1
     assert "not materialized" in result.output
+    # The failed offline run must not have poisoned the cache with a bogus
+    # ".complete" marker.
+    assert not list(cache_dir.glob("enums/*.complete"))
 
 
 def test_validate_data_offline_uses_cache(runner, tests_data_dir, tmp_path):

@@ -184,8 +184,15 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         if self.cache_strategy == CacheStrategy.GREEDY:
             for enum_name in self._referenced_enums:
                 enum_def = self.schema_view.get_enum(enum_name)
-                if enum_def and self.is_dynamic_enum(enum_def):
-                    self.expanded_enums[enum_name] = self.expand_enum(enum_def, self.schema_view)
+                if not (enum_def and self.is_dynamic_enum(enum_def)):
+                    continue
+                # Offline can only pre-expand a dynamic enum from a materialized
+                # (.complete) closure. Otherwise skip it so _validate_against_enum
+                # falls back to per-value validation and surfaces the clear
+                # "not materialized" diagnostic (and nothing bogus gets cached).
+                if self.config.offline and not self._is_enum_cache_complete(enum_def):
+                    continue
+                self.expanded_enums[enum_name] = self.expand_enum(enum_def, self.schema_view)
 
     def process(self, instance: dict, context: ValidationContext) -> Iterator[ValidationResult]:
         """Validate binding constraints on nested fields.
@@ -475,8 +482,30 @@ class BindingValidationPlugin(BaseOntologyPlugin):
 
         is_dynamic = self.is_dynamic_enum(enum_def)
 
-        # For dynamic enums with progressive caching, use lazy validation
-        if is_dynamic and self.cache_strategy == CacheStrategy.PROGRESSIVE:
+        if is_dynamic:
+            # Use the greedy pre-expanded set when the enum was materialized;
+            # otherwise validate per value. The per-value branch covers progressive
+            # mode AND greedy dynamic enums that were not pre-expanded (e.g. an
+            # un-materialized enum offline), where it surfaces the clear offline
+            # diagnostic instead of silently passing via the static path below.
+            if enum_name in self.expanded_enums:
+                valid_values = self.expanded_enums[enum_name]
+                if field_value not in valid_values:
+                    yield ValidationResult(
+                        type="binding_validation",
+                        severity=Severity.ERROR,
+                        message=f"Value '{field_value}' not in dynamic enum '{enum_name}' (expanded from ontology)",
+                        instance=instance,
+                        instantiates=target_class,
+                        context=[
+                            f"path: {path}",
+                            f"slot: {slot_name}",
+                            f"field: {field_path}",
+                            f"allowed_values: {len(valid_values)} terms",
+                        ],
+                    )
+                return
+
             is_valid = self.is_value_in_enum(field_value, enum_def, self.schema_view)
             if not is_valid:
                 # Offline with an unmaterialized dynamic enum is a cache problem,
@@ -501,25 +530,6 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                         f"slot: {slot_name}",
                         f"field: {field_path}",
                         validation_note,
-                    ],
-                )
-            return
-
-        # For greedy mode with pre-expanded values
-        if is_dynamic and enum_name in self.expanded_enums:
-            valid_values = self.expanded_enums[enum_name]
-            if field_value not in valid_values:
-                yield ValidationResult(
-                    type="binding_validation",
-                    severity=Severity.ERROR,
-                    message=f"Value '{field_value}' not in dynamic enum '{enum_name}' (expanded from ontology)",
-                    instance=instance,
-                    instantiates=target_class,
-                    context=[
-                        f"path: {path}",
-                        f"slot: {slot_name}",
-                        f"field: {field_path}",
-                        f"allowed_values: {len(valid_values)} terms",
                     ],
                 )
             return

@@ -97,8 +97,16 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
 
         if self.cache_strategy == CacheStrategy.GREEDY:
             for enum_name, enum_def in self.schema_view.all_enums().items():
-                if self.is_dynamic_enum(enum_def):
-                    self.expanded_enums[enum_name] = self.expand_enum(enum_def, self.schema_view)
+                if not self.is_dynamic_enum(enum_def):
+                    continue
+                # Offline can only pre-expand a dynamic enum from a materialized
+                # (.complete) closure. Otherwise skip it: the expansion would build
+                # no adapter and yield a bogus set, so leave it out of
+                # expanded_enums and let process() fall back to the per-value path,
+                # which surfaces the clear "not materialized" diagnostic.
+                if self.config.offline and not self._is_enum_cache_complete(enum_def):
+                    continue
+                self.expanded_enums[enum_name] = self.expand_enum(enum_def, self.schema_view)
 
     def process(self, instance: dict, context: ValidationContext) -> Iterator[ValidationResult]:
         """Validate instance slot values against dynamic enums.

@@ -108,6 +108,62 @@ def test_offline_saturate_does_not_poison_cache(tmp_path):
     assert plugin._get_enum_cache_marker_file(enum_def).exists() is False
 
 
+def test_offline_expand_enum_does_not_persist_complete(tmp_path):
+    """Offline expand_enum (the greedy code path) must not persist a bogus closure.
+
+    Greedy pre_process calls expand_enum; offline that yields an empty set with no
+    adapter. It must never be written to disk with a `.complete` marker.
+    """
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_dir=tmp_path / "cache",
+        offline=True,
+    )
+    enum_def = _root_descendants_enum()
+
+    plugin.expand_enum(enum_def, None)
+
+    assert plugin._is_enum_cache_complete(enum_def) is False
+    assert plugin._get_enum_cache_marker_file(enum_def).exists() is False
+
+
+def test_binding_greedy_offline_unmaterialized_reports_diagnostic(tmp_path):
+    """Greedy binding validation offline surfaces the diagnostic, never silently passes.
+
+    With greedy strategy, an un-materialized dynamic enum is not pre-expanded
+    offline, so `_validate_against_enum` must fall back to the per-value path and
+    emit the "not materialized" diagnostic rather than the static no-op (which
+    would let the value pass unchecked).
+    """
+    from linkml_runtime.utils.schemaview import SchemaView
+
+    from linkml_term_validator.plugins import BindingValidationPlugin
+
+    plugin = BindingValidationPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_dir=tmp_path / "cache",
+        offline=True,
+        cache_strategy="greedy",
+    )
+    plugin.schema_view = SchemaView(str(Path("tests/data/dynamic_enum_schema.yaml")))
+    # Greedy pre_process skips offline-unmaterialized enums, so expanded_enums is
+    # empty here - exactly the state _validate_against_enum must handle.
+
+    results = list(
+        plugin._validate_against_enum(
+            field_value="TEST:0000002",
+            enum_name="RootDescendantsEnum",
+            field_path="id",
+            slot_name="term",
+            instance={},
+            target_class="Sample",
+        )
+    )
+
+    assert len(results) == 1
+    assert "not materialized" in results[0].message
+
+
 # =============================================================================
 # Offline "miss = error": an uncached term must never pass silently (#51)
 # =============================================================================

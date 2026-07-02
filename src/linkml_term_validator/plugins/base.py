@@ -443,7 +443,8 @@ class BaseOntologyPlugin(ValidationPlugin):
         return (
             f"Cannot validate '{value}' against dynamic enum '{enum_name}' offline: "
             "enum closure not materialized in cache "
-            "(run online with --saturate-enum-caches or --cache-strategy greedy)"
+            "(materialize it online first with --saturate-enum-caches or "
+            "--cache-strategy greedy, then re-run offline)"
         )
 
     def is_value_in_enum(
@@ -726,12 +727,18 @@ class BaseOntologyPlugin(ValidationPlugin):
                 if pv.meaning:
                     values.add(pv.meaning)
 
-        # Cache the result
+        # Cache the result in memory.
         self._enum_cache[enum_name] = values
-        if self.is_dynamic_enum(enum_def):
+
+        # A freshly-expanded dynamic closure is only authoritative when built with
+        # ontology access. Offline, an adapter is never built (a complete cache
+        # would have returned via the fast path above), so this result is
+        # empty/partial - never mark it complete or persist it, or we would poison
+        # the cache with a bogus ".complete" closure (see issue #51).
+        if self.is_dynamic_enum(enum_def) and not self.config.offline:
             self._closed_enum_caches.add(enum_name)
-        if use_cache and self.is_dynamic_enum(enum_def):
-            self._save_enum_cache(enum_def, values)
+            if use_cache:
+                self._save_enum_cache(enum_def, values)
 
         return values
 
