@@ -1,10 +1,12 @@
 """Unit tests for the shared OntologyAccess service and helpers."""
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from linkml_term_validator.utils import OntologyAccess, get_prefix, normalize_string
+from linkml_term_validator.utils import oak_utils
 
 TEST_OAK_CONFIG = Path("tests/data/test_oak_config.yaml")
 
@@ -112,3 +114,114 @@ def test_get_label_resolves_local_ontology():
     """Offline label resolution via the local simpleobo test ontology."""
     access = OntologyAccess(cache_labels=False, oak_config_path=TEST_OAK_CONFIG)
     assert access.get_label("TEST:0000001") == "root term"
+
+
+def test_non_sqlite_default_adapter_string_is_used(monkeypatch):
+    """Default adapter strings other than sqlite:obo: should not be ignored."""
+    calls = []
+
+    class DummyAdapter:
+        pass
+
+    def fake_get_adapter(adapter_string):
+        calls.append(adapter_string)
+        return DummyAdapter()
+
+    monkeypatch.setattr(oak_utils, "get_adapter", fake_get_adapter)
+
+    access = OntologyAccess(oak_adapter_string="ubergraph:", cache_labels=False)
+
+    assert isinstance(access.get_adapter("GO"), DummyAdapter)
+    assert calls == ["ubergraph:"]
+
+
+def test_ols_default_adapter_string_is_parameterized_by_prefix(monkeypatch):
+    """The ols: shorthand should become ols:<prefix> for each prefix."""
+    calls = []
+
+    class DummyOlsAdapter:
+        focus_ontology = None
+        resource = SimpleNamespace(scheme="ols", slug="go")
+
+    def fake_get_adapter(adapter_string):
+        calls.append(adapter_string)
+        return DummyOlsAdapter()
+
+    monkeypatch.setattr(oak_utils, "get_adapter", fake_get_adapter)
+
+    access = OntologyAccess(oak_adapter_string="ols:", cache_labels=False)
+    adapter = access.get_adapter("GO")
+
+    assert calls == ["ols:go"]
+    assert adapter.focus_ontology == "go"
+
+
+def test_ols_configured_adapter_string_is_parameterized_by_prefix(monkeypatch, tmp_path):
+    """Per-prefix config can use ols: shorthand without losing focus ontology."""
+    config = tmp_path / "oak_config.yaml"
+    config.write_text('ontology_adapters:\n  GO: "ols:"\n')
+    calls = []
+
+    class DummyOlsAdapter:
+        focus_ontology = None
+        resource = SimpleNamespace(scheme="ols", slug="go")
+
+    def fake_get_adapter(adapter_string):
+        calls.append(adapter_string)
+        return DummyOlsAdapter()
+
+    monkeypatch.setattr(oak_utils, "get_adapter", fake_get_adapter)
+
+    access = OntologyAccess(cache_labels=False, oak_config_path=config)
+    adapter = access.get_adapter("GO")
+
+    assert calls == ["ols:go"]
+    assert adapter.focus_ontology == "go"
+
+
+def test_get_label_extracts_ols4_embedded_label():
+    """Older OAK OLS adapters return OLS4 term search payloads from get_term."""
+
+    class DummyClient:
+        def get_term(self, ontology, iri):
+            assert ontology == "go"
+            assert iri == "http://purl.obolibrary.org/obo/GO_0008150"
+            return {"_embedded": {"terms": [{"label": "biological_process"}]}}
+
+    class DummyOlsAdapter:
+        focus_ontology = "go"
+        client = DummyClient()
+
+        def label(self, curie):
+            return None
+
+        def curie_to_uri(self, curie):
+            return "http://purl.obolibrary.org/obo/GO_0008150"
+
+    access = OntologyAccess(cache_labels=False)
+
+    assert access._get_adapter_label(DummyOlsAdapter(), "GO:0008150") == "biological_process"
+
+
+def test_get_label_extracts_ols4_direct_label():
+    """The OLS label fallback also accepts already-flat term payloads."""
+
+    class DummyClient:
+        def get_term(self, ontology, iri):
+            assert ontology == "go"
+            assert iri == "http://purl.obolibrary.org/obo/GO_0008150"
+            return {"label": "biological_process"}
+
+    class DummyOlsAdapter:
+        focus_ontology = "go"
+        client = DummyClient()
+
+        def label(self, curie):
+            return None
+
+        def curie_to_uri(self, curie):
+            return "http://purl.obolibrary.org/obo/GO_0008150"
+
+    access = OntologyAccess(cache_labels=False)
+
+    assert access._get_adapter_label(DummyOlsAdapter(), "GO:0008150") == "biological_process"

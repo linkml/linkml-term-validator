@@ -1,0 +1,26 @@
+id: https://example.org/ols-provider-example
+name: ols-provider-example
+
+prefixes:
+  GO: http://purl.obolibrary.org/obo/GO_
+  linkml: https://w3id.org/linkml/
+
+default_prefix: ols-provider-example
+default_range: string
+
+classes:
+  Sample:
+    attributes:
+      id:
+        identifier: true
+      term:
+        range: BiologicalProcessDescendantsEnum
+
+enums:
+  BiologicalProcessDescendantsEnum:
+    reachable_from:
+      source_ontology: ols:go
+      source_nodes:
+        - GO:0008150
+      relationship_types:
+        - rdfs:subClassOf

@@ -1,0 +1,2 @@
+ontology_adapters:
+  TEST: owl:tests/data/test_ontology.ofn

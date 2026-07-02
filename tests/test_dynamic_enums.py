@@ -59,6 +59,26 @@ def test_dynamic_enum_plugin_with_simpleobo(dynamic_enum_schema, valid_data, oak
     assert len(report.results) == 0, f"Expected valid data to pass, got: {report.results}"
 
 
+def test_dynamic_enum_plugin_with_simpleobo_default_adapter_string(
+    dynamic_enum_schema, valid_data, test_data_dir
+):
+    """Test simpleobo as the default adapter string without oak_config."""
+    plugin = DynamicEnumPlugin(
+        oak_adapter_string=f"simpleobo:{test_data_dir / 'test_ontology.obo'}",
+        cache_labels=False,
+    )
+
+    validator = Validator(
+        schema=str(dynamic_enum_schema),
+        validation_plugins=[plugin],
+    )
+
+    loader = YamlLoader(valid_data)
+    report = validator.validate_source(loader, target_class="Sample")
+
+    assert len(report.results) == 0, f"Expected valid data to pass, got: {report.results}"
+
+
 def test_dynamic_enum_plugin_detects_invalid_terms(dynamic_enum_schema, invalid_data, oak_config):
     """Test DynamicEnumPlugin detects invalid terms in dynamic enums."""
     plugin = DynamicEnumPlugin(oak_config_path=oak_config)

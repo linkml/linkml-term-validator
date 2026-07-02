@@ -1,0 +1,26 @@
+id: https://example.org/ubergraph-provider-example
+name: ubergraph-provider-example
+
+prefixes:
+  GO: http://purl.obolibrary.org/obo/GO_
+  linkml: https://w3id.org/linkml/
+
+default_prefix: ubergraph-provider-example
+default_range: string
+
+classes:
+  Sample:
+    attributes:
+      id:
+        identifier: true
+      term:
+        range: BiologicalProcessDescendantsEnum
+
+enums:
+  BiologicalProcessDescendantsEnum:
+    reachable_from:
+      source_ontology: "ubergraph:"
+      source_nodes:
+        - GO:0008150
+      relationship_types:
+        - rdfs:subClassOf

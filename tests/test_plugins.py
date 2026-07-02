@@ -1,6 +1,9 @@
 """Tests for validation plugins."""
 
 
+import logging
+from types import SimpleNamespace
+
 import pytest
 from linkml.validator import Validator  # type: ignore[import-untyped]
 
@@ -104,6 +107,137 @@ def test_plugin_base_functionality(plugin_cache_dir):
     # Test string normalization
     assert plugin.normalize_string("Hello, World!") == "hello world"
     assert plugin.normalize_string("T-Cell Receptor") == "t cell receptor"
+
+
+def test_graph_traversal_wraps_start_curie_and_normalizes_reflexive(plugin_cache_dir):
+    """Traversal calls should be portable across OAK adapter signatures."""
+
+    class NoReflexiveAdapter:
+        seen_start_curies = None
+
+        def ancestors(self, start_curies, predicates=None):
+            self.seen_start_curies = start_curies
+            return ["GO:0008150", "GO:0009987"]
+
+    adapter = NoReflexiveAdapter()
+
+    values = DynamicEnumPlugin._call_graph_traversal(
+        adapter=adapter,
+        method_name="ancestors",
+        start_curie="GO:0009987",
+        predicates=["rdfs:subClassOf"],
+        reflexive=False,
+    )
+
+    assert adapter.seen_start_curies == ["GO:0009987"]
+    assert values == {"GO:0008150"}
+
+
+def test_graph_traversal_handles_uninspectable_signature(plugin_cache_dir):
+    """Traversal should still work when a callable signature cannot be inspected."""
+
+    class UninspectableAncestors:
+        seen_kwargs = None
+
+        @property
+        def __signature__(self):
+            raise ValueError("signature unavailable")
+
+        def __call__(self, start_curies, **kwargs):
+            self.seen_kwargs = kwargs
+            return ["GO:0008150", "GO:0009987"]
+
+    class Adapter:
+        ancestors = UninspectableAncestors()
+
+    values = DynamicEnumPlugin._call_graph_traversal(
+        adapter=Adapter(),
+        method_name="ancestors",
+        start_curie="GO:0009987",
+        predicates=["rdfs:subClassOf"],
+        reflexive=False,
+    )
+
+    assert values == {"GO:0008150"}
+    assert Adapter.ancestors.seen_kwargs == {"predicates": ["rdfs:subClassOf"]}
+
+
+def test_ols_descendants_extracts_obo_ids_from_double_encoded_path(plugin_cache_dir):
+    """The OLS descendants fallback should preserve OLS4 path encoding behavior."""
+
+    class DummyClient:
+        requested_paths = []
+
+        def get_paged(self, path, key):
+            self.requested_paths.append((path, key))
+            return [
+                {"obo_id": "GO:0008150"},
+                {"obo_id": "GO:0009987"},
+                {"not_obo_id": "ignored"},
+            ]
+
+    class DummyOlsAdapter:
+        focus_ontology = "go"
+        client = DummyClient()
+
+        def curie_to_uri(self, curie):
+            assert curie == "GO:0008150"
+            return "http://purl.obolibrary.org/obo/GO_0008150"
+
+    adapter = DummyOlsAdapter()
+
+    values = DynamicEnumPlugin._ols_descendants(
+        adapter=adapter,
+        source_node="GO:0008150",
+        predicates=["rdfs:subClassOf"],
+        reflexive=False,
+    )
+
+    assert values == {"GO:0009987"}
+    assert adapter.client.requested_paths == [
+        (
+            "ontologies/go/terms/"
+            "http%253A%252F%252Fpurl.obolibrary.org%252Fobo%252FGO_0008150"
+            "/descendants",
+            "terms",
+        )
+    ]
+
+
+def test_ols_descendants_logs_when_predicates_unsupported(plugin_cache_dir, caplog):
+    """Unsupported OLS fallback predicates should be diagnosable."""
+    caplog.set_level(logging.DEBUG, logger="linkml_term_validator.plugins.base")
+
+    values = DynamicEnumPlugin._ols_descendants(
+        adapter=object(),
+        source_node="GO:0008150",
+        predicates=["rdfs:subClassOf", "BFO:0000050"],
+        reflexive=False,
+    )
+
+    assert values == set()
+    assert "Skipping OLS descendant fallback for GO:0008150" in caplog.text
+
+
+def test_reachable_from_source_node_excluded_even_if_adapter_returns_self(plugin_cache_dir):
+    """Source nodes are excluded unless include_self is explicitly true."""
+
+    class ReflexiveAncestorAdapter:
+        def ancestors(self, start_curies, predicates=None, reflexive=False):
+            return ["GO:0008150"]
+
+    plugin = DynamicEnumPlugin(cache_dir=plugin_cache_dir, cache_labels=False)
+    plugin._get_adapter = lambda prefix: ReflexiveAncestorAdapter()  # type: ignore[method-assign]
+    plugin.get_ontology_label = lambda curie: "biological_process"  # type: ignore[method-assign]
+
+    query = SimpleNamespace(
+        source_nodes=["GO:0008150"],
+        relationship_types=["rdfs:subClassOf"],
+        traverse_up=False,
+        include_self=False,
+    )
+
+    assert plugin._is_value_in_reachable_from("GO:0008150", query) is False
 
 
 def test_plugin_unknown_prefix_tracking(plugin_cache_dir, tmp_path):

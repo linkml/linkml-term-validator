@@ -114,9 +114,9 @@ Uses the Ontology Lookup Service (EBI). Online service, no local downloads.
 
 ```yaml
 ontology_adapters:
-  GO: ols:
-  CHEBI: ols:
-  UBERON: ols:
+  GO: "ols:"
+  CHEBI: "ols:"
+  UBERON: "ols:"
 ```
 
 **Pros:**
@@ -138,8 +138,8 @@ Uses NCBO BioPortal. Requires API key.
 
 ```yaml
 ontology_adapters:
-  GO: bioportal:
-  CHEBI: bioportal:
+  GO: "bioportal:"
+  CHEBI: "bioportal:"
 ```
 
 **Setup:**
@@ -193,6 +193,14 @@ The validator automatically creates per-prefix adapters based on the prefix in t
 - `CL:0000540` → uses `sqlite:obo:cl`
 
 This works for any OBO ontology that OAK knows about.
+
+When you set a different default adapter with `--adapter` or the Python API
+(for example `--adapter "ols:"` or `oak_adapter_string="ubergraph:"`), that
+adapter is used for every encountered prefix. This enables non-SQLite
+validation without an `oak_config.yaml`, but it can also trigger adapter
+initialization or network calls for prefixes that older versions skipped as
+unknown. Use an `oak_config.yaml` with explicit empty-string entries for
+prefixes you want to skip.
 
 **When this works well:**
 
@@ -300,8 +308,8 @@ ontology_adapters:
   CHEBI: sqlite:obo:chebi
 
   # Use OLS for rarely-used ontologies (avoid downloads)
-  FYPO: ols:
-  WBPhenotype: ols:
+  FYPO: "ols:"
+  WBPhenotype: "ols:"
 
   # Skip validation for metadata prefixes
   linkml: ""

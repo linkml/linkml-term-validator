@@ -1,0 +1,26 @@
+id: https://example.org/owl-provider-example
+name: owl-provider-example
+
+prefixes:
+  TEST: http://example.org/TEST_
+  linkml: https://w3id.org/linkml/
+
+default_prefix: owl-provider-example
+default_range: string
+
+classes:
+  Sample:
+    attributes:
+      id:
+        identifier: true
+      term:
+        range: TestRootDescendantsEnum
+
+enums:
+  TestRootDescendantsEnum:
+    reachable_from:
+      source_ontology: owl:tests/data/test_ontology.ofn
+      source_nodes:
+        - TEST:0000001
+      relationship_types:
+        - rdfs:subClassOf

@@ -243,6 +243,7 @@ class OntologyAccess:
           entry; never fall back to the default adapter).
         - Otherwise, for the default ``sqlite:obo:`` adapter string, build a
           per-prefix ``sqlite:obo:<prefix>`` adapter.
+        - Otherwise, use the configured default adapter string directly.
 
         Args:
             prefix: Ontology prefix
@@ -260,21 +261,53 @@ class OntologyAccess:
             if not configured:
                 self._adapter_cache[prefix] = None
                 return None
-            adapter_string = configured
+            adapter_string = self._adapter_string_for_prefix(prefix, configured)
         elif self.oak_config:
             # oak_config is loaded but prefix not in it - don't fall back
             self._adapter_cache[prefix] = None
             return None
-        elif self.oak_adapter_string == "sqlite:obo:":
-            adapter_string = f"sqlite:obo:{prefix.lower()}"
+        else:
+            adapter_string = self._adapter_string_for_prefix(prefix, self.oak_adapter_string)
 
         if adapter_string:
             adapter = get_adapter(adapter_string)
+            self._configure_adapter_for_prefix(adapter, prefix)
             self._adapter_cache[prefix] = adapter
             return adapter
 
         self._adapter_cache[prefix] = None
         return None
+
+    @staticmethod
+    def _adapter_string_for_prefix(prefix: str, adapter_string: str) -> str | None:
+        """Resolve adapter shorthands that need a per-prefix ontology slug."""
+        adapter_string = adapter_string.strip()
+        if not adapter_string:
+            return None
+
+        if adapter_string == "sqlite:obo:":
+            return f"sqlite:obo:{prefix.lower()}"
+
+        # OAK's OLS adapter needs a focus ontology. Accept ``ols:`` as a
+        # convenient per-prefix shorthand in config files and CLI defaults.
+        if adapter_string in {"ols", "ols:"}:
+            return f"ols:{prefix.lower()}"
+
+        return adapter_string
+
+    @staticmethod
+    def _configure_adapter_for_prefix(adapter: object, prefix: str) -> None:
+        """Patch adapter focus metadata when OAK leaves it unset."""
+        if not hasattr(adapter, "focus_ontology"):
+            return
+        if getattr(adapter, "focus_ontology", None):
+            return
+
+        resource = getattr(adapter, "resource", None)
+        scheme = getattr(resource, "scheme", None)
+        slug = getattr(resource, "slug", None)
+        if scheme == "ols":
+            setattr(adapter, "focus_ontology", slug or prefix.lower())
 
     def get_label(self, curie: str) -> Optional[str]:
         """Get the label for an ontology term.
@@ -297,9 +330,9 @@ class OntologyAccess:
         if self.cache_labels:
             cached = self.load_cache(prefix)
             if curie in cached:
-                label = cached[curie]
-                self._label_cache[curie] = label
-                return label
+                cached_label = cached[curie]
+                self._label_cache[curie] = cached_label
+                return cached_label
 
         adapter = self.get_adapter(prefix)
         if adapter is None:
@@ -308,13 +341,52 @@ class OntologyAccess:
             self._label_cache[curie] = None
             return None
 
-        label = adapter.label(curie)  # type: ignore[attr-defined]
+        label = self._get_adapter_label(adapter, curie)
         self._label_cache[curie] = label
 
         if label and self.cache_labels:
             self.save_to_cache(prefix, curie, label)
 
         return label
+
+    def _get_adapter_label(self, adapter: object, curie: str) -> Optional[str]:
+        """Get a label from an adapter, including OLS4 response compatibility."""
+        label = adapter.label(curie)  # type: ignore[attr-defined]
+        if label is not None:
+            return label
+
+        return self._get_ols4_embedded_label(adapter, curie)
+
+    @staticmethod
+    def _get_ols4_embedded_label(adapter: object, curie: str) -> Optional[str]:
+        """Extract labels from OLS4 payloads returned by older OAK adapters."""
+        client = getattr(adapter, "client", None)
+        focus_ontology = getattr(adapter, "focus_ontology", None)
+        curie_to_uri = getattr(adapter, "curie_to_uri", None)
+        if not client or not focus_ontology or not curie_to_uri:
+            return None
+
+        iri = curie_to_uri(curie)
+        if not iri:
+            return None
+
+        term = client.get_term(ontology=focus_ontology, iri=iri)
+        if not isinstance(term, dict):
+            return None
+
+        if isinstance(term.get("label"), str):
+            return term["label"]
+
+        embedded = term.get("_embedded")
+        if not isinstance(embedded, dict):
+            return None
+        terms = embedded.get("terms")
+        if not isinstance(terms, list) or not terms:
+            return None
+        first = terms[0]
+        if isinstance(first, dict) and isinstance(first.get("label"), str):
+            return first["label"]
+        return None
 
     def get_unknown_prefixes(self) -> set[str]:
         """Get the set of prefixes encountered but not configured."""

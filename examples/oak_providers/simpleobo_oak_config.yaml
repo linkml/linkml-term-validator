@@ -1,0 +1,2 @@
+ontology_adapters:
+  TEST: simpleobo:tests/data/test_ontology.obo
