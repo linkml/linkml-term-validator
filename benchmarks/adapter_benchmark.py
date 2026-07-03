@@ -9,7 +9,7 @@ runs comparable rather than reproducible-to-the-millisecond:
   ``ru_maxrss`` is that adapter's true peak RAM rather than a process-wide
   cumulative peak, and one adapter's caches can't leak into another's;
 * every backend cache is redirected to a throwaway temp dir
-  (``--isolate-caches``, on by default);
+  (cache isolation is on by default; disable with ``--no-isolate-caches``);
 * both *cold* (first call) and *warm* (second call) closures are reported --
   the cold/warm gap is itself the interesting signal.
 
@@ -52,13 +52,15 @@ try:
 except ImportError:  # pragma: no cover - Windows
     resource = None  # type: ignore[assignment]
 
+# Source the predicate CURIEs from OAK's vocabulary so they can't drift from the
+# constants the adapters (and tests/test_adapter_parity.py) use.
+from oaklib.datamodels.vocabulary import IS_A, PART_OF  # noqa: E402
+
 # GO cellular_component: a deep, real branch (~4k is-a descendants).
 DEFAULT_ROOT = "GO:0005575"
 GO_OBO_URL = "https://purl.obolibrary.org/obo/go.obo"
 GO_OWL_URL = "https://purl.obolibrary.org/obo/go.owl"
 
-IS_A = "rdfs:subClassOf"
-PART_OF = "BFO:0000050"
 PREDICATE_SETS: dict[str, list[str]] = {
     # NB: "is_a" is intentionally first; the ancestor-throughput sample is drawn
     # from the is_a descendant set (see _benchmark_adapter).
