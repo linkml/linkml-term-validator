@@ -34,8 +34,8 @@ from linkml_term_validator.utils import (
     OntologyAccess,
     OntologyServiceUnavailableError,
     get_prefix,
-    is_connectivity_error,
     normalize_string,
+    raise_if_service_unavailable,
 )
 
 logger = logging.getLogger(__name__)
@@ -673,11 +673,10 @@ class BaseOntologyPlugin(ValidationPlugin):
             except OntologyServiceUnavailableError:
                 raise
             except Exception as e:  # noqa: BLE001 - adapters raise varied errors
-                # A network outage is not "unreachable via this source node" -
+                # A service outage is not "unreachable via this source node" -
                 # membership is undeterminable - so fail fast instead of silently
                 # dropping the term as out-of-enum.
-                if is_connectivity_error(e):
-                    raise OntologyServiceUnavailableError(value, e) from e
+                raise_if_service_unavailable(value, e)
                 logger.debug(
                     "Reachability check failed for %s from %s: %s",
                     value,
@@ -726,8 +725,7 @@ class BaseOntologyPlugin(ValidationPlugin):
         except OntologyServiceUnavailableError:
             raise
         except Exception as e:  # noqa: BLE001 - adapters raise varied errors
-            if is_connectivity_error(e):
-                raise OntologyServiceUnavailableError(start_curie, e) from e
+            raise_if_service_unavailable(start_curie, e)
             raise
         values = set(results or [])
         if reflexive:

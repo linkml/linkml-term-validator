@@ -50,44 +50,72 @@ class OntologyServiceUnavailableError(Exception):
         super().__init__(f"could not reach ontology service to resolve {curie}{detail}")
 
 
-# Exception type names (walking the __cause__/__context__ chain) that indicate a
-# transient connectivity failure rather than a definitive "term not found". Names
-# are matched instead of importing requests/urllib3 so the check works regardless
-# of which HTTP stack the active OAK adapter pulls in.
-_CONNECTIVITY_ERROR_NAMES = frozenset(
-    {
-        "ConnectionError",  # requests.exceptions.ConnectionError
-        "ConnectTimeout",
-        "ReadTimeout",
-        "Timeout",
-        "ConnectTimeoutError",
-        "ReadTimeoutError",
-        "MaxRetryError",
-        "NameResolutionError",
-        "NewConnectionError",
-        "ProxyError",
-        "SSLError",
-    }
-)
+# Well-defined exception TYPES that mean "the ontology service could not be
+# reached", matched by isinstance (never by class name). OAK's OLS adapter goes
+# label() -> client.get_term() -> requests.get()/raise_for_status(), so a network
+# outage surfaces as a requests connection/timeout exception; a missing term
+# instead raises requests.HTTPError carrying a .response (handled separately as a
+# normal "not found"). The builtin/socket types cover adapters that talk to the
+# OS network layer directly. requests/urllib3 are optional imports so this module
+# stays usable even if a future adapter drops them.
+_CONNECTIVITY_EXC_TYPES: list[type[BaseException]] = [
+    ConnectionError,
+    TimeoutError,
+    socket.gaierror,
+]
+try:  # pragma: no cover - requests is present via oaklib's OLS client
+    import requests.exceptions as _requests_exc
+
+    _CONNECTIVITY_EXC_TYPES += [_requests_exc.ConnectionError, _requests_exc.Timeout]
+except Exception:  # pragma: no cover
+    pass
+try:  # pragma: no cover - urllib3 is present via requests
+    import urllib3.exceptions as _urllib3_exc
+
+    _CONNECTIVITY_EXC_TYPES += [
+        _urllib3_exc.NewConnectionError,
+        _urllib3_exc.MaxRetryError,
+        _urllib3_exc.TimeoutError,
+    ]
+except Exception:  # pragma: no cover
+    pass
+_CONNECTIVITY_EXC_TUPLE = tuple(_CONNECTIVITY_EXC_TYPES)
 
 
 def is_connectivity_error(exc: BaseException) -> bool:
     """Return True if an exception (or its cause chain) is a network outage.
 
-    Walks the ``__cause__``/``__context__`` chain so a high-level
-    ``requests.exceptions.ConnectionError`` wrapping a urllib3
-    ``NameResolutionError`` (the shape OLS/EBI outages produce) is recognized.
+    Classifies by ``isinstance`` against well-defined connection/timeout types
+    (``requests.exceptions.ConnectionError``/``Timeout``, urllib3 equivalents,
+    and the builtin/socket types) rather than by class name. The chain is walked
+    so a ``requests.exceptions.ConnectionError`` wrapping a urllib3
+    ``NameResolutionError`` (the shape an OLS/EBI outage produces) is recognized
+    even if only the inner cause is a recognized type.
     """
     seen: set[int] = set()
     current: Optional[BaseException] = exc
     while current is not None and id(current) not in seen:
         seen.add(id(current))
-        if isinstance(current, (ConnectionError, TimeoutError, socket.gaierror, socket.timeout)):
-            return True
-        if type(current).__name__ in _CONNECTIVITY_ERROR_NAMES:
+        if isinstance(current, _CONNECTIVITY_EXC_TUPLE):
             return True
         current = current.__cause__ or current.__context__
     return False
+
+
+def raise_if_service_unavailable(curie: str, exc: BaseException) -> None:
+    """Re-raise a lookup failure as OntologyServiceUnavailableError if it is a
+    service problem rather than a definitive answer about the term.
+
+    A connection-level failure (DNS/connect/timeout) or an HTTP 5xx means the
+    ontology service is unreachable or erroring, so the term's status is unknown
+    and validation should fail fast. A 4xx (notably 404) is a definitive HTTP
+    answer and is left for the caller to treat as "term not found".
+    """
+    if is_connectivity_error(exc):
+        raise OntologyServiceUnavailableError(curie, exc) from exc
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    if isinstance(status, int) and status >= 500:
+        raise OntologyServiceUnavailableError(curie, exc) from exc
 
 
 def obsolete_term_message(curie: str) -> str:
@@ -441,8 +469,8 @@ class OntologyAccess:
         # Remote adapters (e.g. OLS) raise for a non-existent term instead of
         # returning None: OLS answers a missing IRI with HTTP 404. A 404 is a
         # definitive "missing term" and is treated as "no label" so a single
-        # fake/unknown CURIE surfaces as a clean validation result. A network
-        # outage (DNS failure, connection refused, timeout) is NOT a missing
+        # fake/unknown CURIE surfaces as a clean validation result. A service
+        # problem (connection/timeout failure, or an HTTP 5xx) is NOT a missing
         # term - we could not determine anything - so it is re-raised as
         # OntologyServiceUnavailableError to fail fast rather than mislabeling
         # every term as invalid data. Anything else is logged loudly and treated
@@ -452,8 +480,7 @@ class OntologyAccess:
         except OntologyServiceUnavailableError:
             raise
         except Exception as e:  # noqa: BLE001 - adapters raise varied errors
-            if is_connectivity_error(e):
-                raise OntologyServiceUnavailableError(curie, e) from e
+            raise_if_service_unavailable(curie, e)
             self._log_lookup_failure(curie, e)
             label = None
         self._label_cache[curie] = label
@@ -551,8 +578,7 @@ class OntologyAccess:
             try:
                 result = set(obsoletes())
             except Exception as e:  # noqa: BLE001 - adapters raise varied errors
-                if is_connectivity_error(e):
-                    raise OntologyServiceUnavailableError(f"{prefix}:*", e) from e
+                raise_if_service_unavailable(f"{prefix}:*", e)
                 logger.debug("obsoletes() failed for prefix %s: %s", prefix, e)
                 result = None
         self._obsolete_cache[prefix] = result
@@ -612,8 +638,7 @@ class OntologyAccess:
                 return None
             term = client.get_term(ontology=focus_ontology, iri=iri)
         except Exception as e:  # noqa: BLE001 - adapters raise varied errors
-            if is_connectivity_error(e):
-                raise OntologyServiceUnavailableError(curie, e) from e
+            raise_if_service_unavailable(curie, e)
             return None
         if not isinstance(term, dict):
             return None

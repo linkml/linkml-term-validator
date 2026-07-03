@@ -7,6 +7,7 @@ from linkml_term_validator.utils.oak_utils import (
     is_connectivity_error,
     normalize_string,
     obsolete_term_message,
+    raise_if_service_unavailable,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "is_connectivity_error",
     "normalize_string",
     "obsolete_term_message",
+    "raise_if_service_unavailable",
 ]

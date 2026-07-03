@@ -88,12 +88,15 @@ def test_validate_schema_service_outage_reports_distinctly(
 ):
     """A service outage exits with a distinct code and an "unable to validate"
     status rather than reporting every term as "not found"/invalid data."""
+    import requests
+
     from linkml_term_validator.utils import oak_utils
 
     class DownAdapter:
         def label(self, curie):
-            raise type("ConnectionError", (Exception,), {})(
-                "Max retries exceeded (Failed to resolve 'www.ebi.ac.uk')"
+            raise requests.exceptions.ConnectionError(
+                "HTTPSConnectionPool(host='www.ebi.ac.uk', port=443): "
+                "Max retries exceeded"
             )
 
     monkeypatch.setattr(oak_utils, "get_adapter", lambda s: DownAdapter())
