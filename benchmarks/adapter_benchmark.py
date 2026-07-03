@@ -37,7 +37,6 @@ import dataclasses
 import gc
 import json
 import os
-import resource
 import shutil
 import subprocess
 import sys
@@ -48,10 +47,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+try:
+    import resource  # POSIX only; absent on Windows
+except ImportError:  # pragma: no cover - Windows
+    resource = None  # type: ignore[assignment]
+
 # GO cellular_component: a deep, real branch (~4k is-a descendants).
 DEFAULT_ROOT = "GO:0005575"
-GO_OBO_URL = "http://purl.obolibrary.org/obo/go.obo"
-GO_OWL_URL = "http://purl.obolibrary.org/obo/go.owl"
+GO_OBO_URL = "https://purl.obolibrary.org/obo/go.obo"
+GO_OWL_URL = "https://purl.obolibrary.org/obo/go.owl"
 
 IS_A = "rdfs:subClassOf"
 PART_OF = "BFO:0000050"
@@ -63,8 +67,13 @@ PREDICATE_SETS: dict[str, list[str]] = {
 }
 
 
-def _max_rss_mb() -> float:
-    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+def _max_rss_mb() -> float | None:
+    if resource is None:  # pragma: no cover - Windows
+        return None
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    # ru_maxrss is KiB on Linux but bytes on macOS.
+    divisor = 1024 * 1024 if sys.platform == "darwin" else 1024
+    return peak / divisor
 
 
 def _time(fn: Callable[[], Any]) -> tuple[Any, float]:
@@ -110,7 +119,7 @@ class BenchContext:
         # A User-Agent is required: the default urllib UA is 403'd by the OBO
         # hosts / proxy. urlopen honors HTTPS_PROXY/HTTP_PROXY from the env.
         req = urllib.request.Request(url, headers={"User-Agent": "linkml-term-validator-benchmark"})
-        with urllib.request.urlopen(req) as resp, open(dest, "wb") as fh:  # noqa: S310 - trusted OBO PURL
+        with urllib.request.urlopen(req, timeout=60) as resp, open(dest, "wb") as fh:  # noqa: S310 - trusted OBO PURL
             shutil.copyfileobj(resp, fh)
         return dest
 

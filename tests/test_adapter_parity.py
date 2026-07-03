@@ -34,7 +34,9 @@ from oaklib.datamodels.vocabulary import IS_A, PART_OF
 # than ``is_a``-only closures for at least one source node.
 # --------------------------------------------------------------------------- #
 
-PART_OF_CURIE = "BFO:0000050"
+# Single-source the part_of CURIE from OAK's vocabulary so the synthetic
+# ontology and the query predicates can't drift apart.
+PART_OF_CURIE = PART_OF
 _N = 40
 
 
