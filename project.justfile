@@ -1,5 +1,14 @@
 ## Add your own just recipes here. This is imported by the main justfile.
 
+# ============== Benchmark recipes ==============
+
+# Benchmark OAK adapters for reachable_from closures; regenerates the results table.
+# Timing is informational (cache/network dependent); correctness is guarded by
+# tests/test_adapter_parity.py. See benchmarks/README.md.
+[group('benchmarks')]
+benchmark *ARGS:
+  uv run python benchmarks/adapter_benchmark.py --out benchmarks/results/go_adapter_comparison.md {{ARGS}}
+
 # ============== Notebook recipes ==============
 
 # Execute notebooks with papermill and copy to docs for mkdocs-jupyter to render
