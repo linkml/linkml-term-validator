@@ -246,6 +246,33 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../gallery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Gallery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     
     
     
@@ -255,10 +282,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
         
           
-          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
             
   
   
@@ -276,8 +303,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_2">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -449,10 +476,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
             
   
   
@@ -470,8 +497,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -561,10 +588,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
         
           
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
             
   
   
@@ -582,8 +609,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_4">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1091,10 +1118,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
         
           
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
             
   
   
@@ -1112,8 +1139,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1678,10 +1705,10 @@ linkml-term-validator validate-schema schema.yaml
 linkml-term-validator validate-schema --strict schema.yaml
 
 # With custom OAK configuration
-linkml-term-validator validate-schema --oak-config oak_config.yaml schema.yaml
+linkml-term-validator validate-schema --config oak_config.yaml schema.yaml
 
 # With OLS adapter (online lookup)
-linkml-term-validator validate-schema --oak-adapter &quot;ols:&quot; schema.yaml
+linkml-term-validator validate-schema --adapter &quot;ols:&quot; schema.yaml
 </code></pre>
 <h3 id="cli-options">CLI Options</h3>
 <table>
@@ -1697,16 +1724,20 @@ linkml-term-validator validate-schema --oak-adapter &quot;ols:&quot; schema.yaml
 <td>Treat warnings as errors</td>
 </tr>
 <tr>
-<td><code>--oak-adapter</code></td>
+<td><code>--adapter</code>, <code>-a</code></td>
 <td>OAK adapter string (default: <code>sqlite:obo:</code>)</td>
 </tr>
 <tr>
-<td><code>--oak-config</code></td>
+<td><code>--config</code>, <code>-c</code></td>
 <td>Path to OAK configuration file</td>
 </tr>
 <tr>
 <td><code>--cache-dir</code></td>
 <td>Directory for cache files (default: <code>cache</code>)</td>
+</tr>
+<tr>
+<td><code>--offline</code></td>
+<td>Resolve only from the cache; never access ontology services</td>
 </tr>
 <tr>
 <td><code>--verbose</code> / <code>-v</code></td>
@@ -1841,32 +1872,24 @@ enums:
 </code></pre>
 <p>This will validate successfully because "apoptotic process" is in the aliases.</p>
 <h2 id="python-api">Python API</h2>
-<pre><code class="language-python">from linkml.validator import Validator
-from linkml_term_validator.plugins import PermissibleValueMeaningPlugin
+<pre><code class="language-python">from linkml_term_validator.models import ValidationConfig
+from linkml_term_validator.validator import EnumValidator
 
-# Create plugin
-plugin = PermissibleValueMeaningPlugin(
+config = ValidationConfig(
     oak_adapter_string=&quot;sqlite:obo:&quot;,
     strict_mode=False,
     cache_labels=True,
     cache_dir=&quot;cache&quot;,
 )
 
-# Create validator
-validator = Validator(
-    schema=&quot;schema.yaml&quot;,
-    validation_plugins=[plugin]
-)
+validator = EnumValidator(config)
+result = validator.validate_schema(&quot;schema.yaml&quot;)
 
-# Validate the schema file itself
-report = validator.validate_file(&quot;schema.yaml&quot;)
-
-# Check results
-if len(report.results) == 0:
+if not result.has_errors():
     print(&quot;All permissible values validated successfully&quot;)
 else:
-    for result in report.results:
-        print(f&quot;{result.severity.name}: {result.message}&quot;)
+    for issue in result.issues:
+        print(f&quot;{issue.severity}: {issue.message}&quot;)
 </code></pre>
 <h3 id="plugin-parameters">Plugin Parameters</h3>
 <table>
@@ -1902,6 +1925,12 @@ else:
 <td><code>bool</code></td>
 <td><code>True</code></td>
 <td>Enable file-based caching</td>
+</tr>
+<tr>
+<td><code>offline</code></td>
+<td><code>bool</code></td>
+<td><code>False</code></td>
+<td>Resolve only from existing cache files</td>
 </tr>
 <tr>
 <td><code>cache_dir</code></td>

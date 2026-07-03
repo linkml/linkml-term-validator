@@ -246,6 +246,33 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../gallery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Gallery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     
     
     
@@ -255,10 +282,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
         
           
-          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
             
   
   
@@ -276,8 +303,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_2">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -449,10 +476,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
             
   
   
@@ -470,8 +497,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -559,10 +586,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
         
           
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
             
   
   
@@ -580,8 +607,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -755,10 +782,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
         
           
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
             
   
   
@@ -776,8 +803,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_5">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1635,15 +1662,16 @@ linkml-term-validator validate-schema --strict schema.yaml
 </code></pre>
 <h2 id="dynamic-enum-validation">Dynamic Enum Validation</h2>
 <p><strong>Plugin</strong>: <code>DynamicEnumPlugin</code></p>
-<p>Validates data values against dynamic enum constraints defined via <code>reachable_from</code>, <code>matches</code>, or <code>concepts</code>.</p>
+<p>Validates data values against dynamic enum constraints defined via <code>reachable_from</code>, explicit <code>concepts</code>, enum expressions, and inherited enums.</p>
 <p>Dynamic enums define valid values using ontology queries rather than explicit lists, enabling flexible, extensible validation.</p>
 <h3 id="what-it-checks_1">What it checks</h3>
 <ul>
 <li>Data values match the ontology query constraints</li>
 <li>For <code>reachable_from</code>: value is a descendant of specified source nodes</li>
-<li>For <code>matches</code>: value matches the specified pattern</li>
 <li>For <code>concepts</code>: value is one of the specified concepts</li>
+<li>For <code>include</code>, <code>minus</code>, and <code>inherits</code>: composed enum expressions are expanded</li>
 </ul>
+<p><code>matches</code> expressions are recognized in LinkML enum definitions and cache keys, but full pattern-match validation is not implemented yet.</p>
 <h3 id="example_1">Example</h3>
 <p><strong>Schema:</strong></p>
 <pre><code class="language-yaml">enums:
@@ -1689,7 +1717,7 @@ linkml-term-validator validate-data data.yaml -s schema.yaml -t Person
 <h3 id="what-it-checks_2">What it checks</h3>
 <ul>
 <li>The value in the nested object's field matches the binding's range constraint</li>
-<li>Optionally: the label in the nested object matches the ontology's canonical label</li>
+<li>The label in the nested object matches the ontology's canonical label, unless label validation is disabled</li>
 <li><strong>Recursively validates all nested structures</strong> - bindings on deeply nested classes are validated with full JSON path tracking</li>
 </ul>
 <h3 id="explicit-label-field-declaration">Explicit Label Field Declaration</h3>
@@ -1752,7 +1780,7 @@ enums:
 <p><strong>What gets validated:</strong></p>
 <ol>
 <li>Check that <code>go_term.id</code> value (<code>GO:0007049</code>) satisfies the <code>BiologicalProcessEnum</code> constraint</li>
-<li>If <code>--labels</code> flag is used, also check that <code>go_term.label</code> matches the canonical label from GO</li>
+<li>Check that <code>go_term.label</code> matches the canonical label from GO unless label validation is disabled</li>
 </ol>
 <h3 id="when-to-use_2">When to use</h3>
 <ul>
@@ -1764,8 +1792,8 @@ enums:
 <pre><code class="language-bash"># Validate bindings only
 linkml-term-validator validate-data data.yaml --schema schema.yaml
 
-# Also validate labels match ontology
-linkml-term-validator validate-data data.yaml --schema schema.yaml --labels
+# Disable label validation if needed
+linkml-term-validator validate-data data.yaml --schema schema.yaml --no-labels
 </code></pre>
 <h2 id="label-matching">Label Matching</h2>
 <p>When validating <code>meaning</code> fields, the validator compares the ontology's canonical label against multiple expected sources:</p>
