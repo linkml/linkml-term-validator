@@ -18,6 +18,7 @@ Example:
 import csv
 import logging
 import re
+import socket
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -28,6 +29,65 @@ from ruamel.yaml import YAML
 from linkml_term_validator.cache_utils import atomic_write_csv, locked_cache_file
 
 logger = logging.getLogger(__name__)
+
+
+class OntologyServiceUnavailableError(Exception):
+    """Raised when an ontology service could not be reached to resolve a term.
+
+    This is deliberately distinct from a term simply not existing. A remote
+    service (e.g. OLS/EBI) that answers with HTTP 404 is a definitive "this term
+    does not exist" and is reported as a normal validation error. A DNS failure,
+    connection refused, or timeout, by contrast, means we *could not determine*
+    anything about the term. Treating that as "not found" mislabels every term as
+    invalid data during an outage; instead this exception is raised so validation
+    fails fast with an "unable to validate at this time" status.
+    """
+
+    def __init__(self, curie: str, original: Optional[BaseException] = None):
+        self.curie = curie
+        self.original = original
+        detail = f": {original}" if original is not None else ""
+        super().__init__(f"could not reach ontology service to resolve {curie}{detail}")
+
+
+# Exception type names (walking the __cause__/__context__ chain) that indicate a
+# transient connectivity failure rather than a definitive "term not found". Names
+# are matched instead of importing requests/urllib3 so the check works regardless
+# of which HTTP stack the active OAK adapter pulls in.
+_CONNECTIVITY_ERROR_NAMES = frozenset(
+    {
+        "ConnectionError",  # requests.exceptions.ConnectionError
+        "ConnectTimeout",
+        "ReadTimeout",
+        "Timeout",
+        "ConnectTimeoutError",
+        "ReadTimeoutError",
+        "MaxRetryError",
+        "NameResolutionError",
+        "NewConnectionError",
+        "ProxyError",
+        "SSLError",
+    }
+)
+
+
+def is_connectivity_error(exc: BaseException) -> bool:
+    """Return True if an exception (or its cause chain) is a network outage.
+
+    Walks the ``__cause__``/``__context__`` chain so a high-level
+    ``requests.exceptions.ConnectionError`` wrapping a urllib3
+    ``NameResolutionError`` (the shape OLS/EBI outages produce) is recognized.
+    """
+    seen: set[int] = set()
+    current: Optional[BaseException] = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, (ConnectionError, TimeoutError, socket.gaierror, socket.timeout)):
+            return True
+        if type(current).__name__ in _CONNECTIVITY_ERROR_NAMES:
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 def obsolete_term_message(curie: str) -> str:
@@ -379,14 +439,21 @@ class OntologyAccess:
             return None
 
         # Remote adapters (e.g. OLS) raise for a non-existent term instead of
-        # returning None: OLS answers a missing IRI with HTTP 404. Treat any
-        # lookup failure as "no label" so a single fake/unknown CURIE surfaces as
-        # a clean validation result rather than crashing the whole run. A 404 is
-        # a definitive "missing term" (logged at debug); anything else may be a
-        # transient outage misreported as "not found", so it is logged loudly.
+        # returning None: OLS answers a missing IRI with HTTP 404. A 404 is a
+        # definitive "missing term" and is treated as "no label" so a single
+        # fake/unknown CURIE surfaces as a clean validation result. A network
+        # outage (DNS failure, connection refused, timeout) is NOT a missing
+        # term - we could not determine anything - so it is re-raised as
+        # OntologyServiceUnavailableError to fail fast rather than mislabeling
+        # every term as invalid data. Anything else is logged loudly and treated
+        # as not found (preserving prior behavior for unexpected adapter errors).
         try:
             label = self._get_adapter_label(adapter, curie)
+        except OntologyServiceUnavailableError:
+            raise
         except Exception as e:  # noqa: BLE001 - adapters raise varied errors
+            if is_connectivity_error(e):
+                raise OntologyServiceUnavailableError(curie, e) from e
             self._log_lookup_failure(curie, e)
             label = None
         self._label_cache[curie] = label
@@ -484,6 +551,8 @@ class OntologyAccess:
             try:
                 result = set(obsoletes())
             except Exception as e:  # noqa: BLE001 - adapters raise varied errors
+                if is_connectivity_error(e):
+                    raise OntologyServiceUnavailableError(f"{prefix}:*", e) from e
                 logger.debug("obsoletes() failed for prefix %s: %s", prefix, e)
                 result = None
         self._obsolete_cache[prefix] = result
@@ -534,13 +603,17 @@ class OntologyAccess:
 
         # curie_to_uri and get_term are both inside the guard: a malformed CURIE
         # can make curie_to_uri raise, and a missing term answers with HTTP 404.
-        # Either way the term is simply "not resolvable", not a fatal error.
+        # Either way the term is simply "not resolvable", not a fatal error. A
+        # network outage, however, means the term's status is unknown, so it is
+        # re-raised to fail fast rather than masquerading as "not resolvable".
         try:
             iri = curie_to_uri(curie)
             if not iri:
                 return None
             term = client.get_term(ontology=focus_ontology, iri=iri)
-        except Exception:  # noqa: BLE001 - adapters raise varied errors
+        except Exception as e:  # noqa: BLE001 - adapters raise varied errors
+            if is_connectivity_error(e):
+                raise OntologyServiceUnavailableError(curie, e) from e
             return None
         if not isinstance(term, dict):
             return None

@@ -22,6 +22,7 @@ from linkml_term_validator.plugins import (
     BindingValidationPlugin,
     DynamicEnumPlugin,
 )
+from linkml_term_validator.utils import OntologyServiceUnavailableError
 from linkml_term_validator.validator import EnumValidator
 
 app = typer.Typer(
@@ -29,6 +30,29 @@ app = typer.Typer(
     pretty_exceptions_enable=False,
     rich_markup_mode=None,
 )
+
+# Exit code for "could not validate" (service outage), kept distinct from the
+# code 1 used for genuine validation failures so callers/scripts can tell an
+# ontology-service outage apart from invalid data.
+EXIT_SERVICE_UNAVAILABLE = 2
+
+
+def _fail_service_unavailable(exc: OntologyServiceUnavailableError) -> typer.Exit:
+    """Report an ontology-service outage and return an Exit with a distinct code.
+
+    A network outage means terms could not be checked at all, which is different
+    from data being invalid. Surfacing it as "unable to validate at this time"
+    (rather than "term not found") avoids mislabeling every term as bad data.
+    """
+    typer.echo(
+        "\n🌐 Unable to validate at this time: ontology service unavailable.\n"
+        f"   {exc}\n"
+        "   Terms could not be checked; this is not a data error. "
+        "Retry when the ontology service is reachable, or use --offline to "
+        "validate against the local cache only.",
+        err=True,
+    )
+    return typer.Exit(code=EXIT_SERVICE_UNAVAILABLE)
 
 
 @app.command()
@@ -113,7 +137,10 @@ def validate_schema(
     )
 
     validator = EnumValidator(validation_config)
-    result = validator.validate_schema(schema_path)
+    try:
+        result = validator.validate_schema(schema_path)
+    except OntologyServiceUnavailableError as exc:
+        raise _fail_service_unavailable(exc) from exc
 
     if verbose or result.has_errors() or result.has_warnings():
         result.print_summary(verbose=verbose)
@@ -324,7 +351,10 @@ def validate_data(
 
     for data_path in data_paths:
         loader = default_loader_for_file(data_path)
-        report = validator.validate_source(loader, target_class=target_class)
+        try:
+            report = validator.validate_source(loader, target_class=target_class)
+        except OntologyServiceUnavailableError as exc:
+            raise _fail_service_unavailable(exc) from exc
 
         if len(report.results) == 0:
             if len(data_paths) > 1:
@@ -634,7 +664,10 @@ def migrate_cache(
         if refresh_labels and plugin and not sort_only:
             for curie in list(entries.keys()):
                 old_label = entries[curie]["label"]
-                new_label = plugin.get_ontology_label(curie)
+                try:
+                    new_label = plugin.get_ontology_label(curie)
+                except OntologyServiceUnavailableError as exc:
+                    raise _fail_service_unavailable(exc) from exc
                 if new_label and new_label != old_label:
                     relabeled += 1
                     if dry_run:
@@ -846,7 +879,10 @@ def validate_text_file(
     )
     validator = EnumValidator(validation_config)
 
-    issues = validator.validate_curie_label_pairs(pairs)
+    try:
+        issues = validator.validate_curie_label_pairs(pairs)
+    except OntologyServiceUnavailableError as exc:
+        raise _fail_service_unavailable(exc) from exc
 
     # Print results
     if verbose:

@@ -30,7 +30,13 @@ from linkml_runtime.linkml_model import EnumDefinition
 
 from linkml_term_validator.cache_utils import atomic_write_csv, locked_cache_file
 from linkml_term_validator.models import CacheStrategy, ValidationConfig
-from linkml_term_validator.utils import OntologyAccess, get_prefix, normalize_string
+from linkml_term_validator.utils import (
+    OntologyAccess,
+    OntologyServiceUnavailableError,
+    get_prefix,
+    is_connectivity_error,
+    normalize_string,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -664,7 +670,14 @@ class BaseOntologyPlugin(ValidationPlugin):
                     )
                     if ancestors and source_node in ancestors:
                         return True
+            except OntologyServiceUnavailableError:
+                raise
             except Exception as e:  # noqa: BLE001 - adapters raise varied errors
+                # A network outage is not "unreachable via this source node" -
+                # membership is undeterminable - so fail fast instead of silently
+                # dropping the term as out-of-enum.
+                if is_connectivity_error(e):
+                    raise OntologyServiceUnavailableError(value, e) from e
                 logger.debug(
                     "Reachability check failed for %s from %s: %s",
                     value,
@@ -705,8 +718,17 @@ class BaseOntologyPlugin(ValidationPlugin):
         # so swallowing the error would let a partial/empty result be persisted
         # as ``.complete`` (see #35). Per-value progressive checks that need to
         # tolerate a single unreachable term catch the failure at their own call
-        # site instead.
-        results = method([start_curie], **kwargs)
+        # site instead. A network outage is normalized to
+        # OntologyServiceUnavailableError so it surfaces as "unable to validate"
+        # rather than a raw adapter traceback.
+        try:
+            results = method([start_curie], **kwargs)
+        except OntologyServiceUnavailableError:
+            raise
+        except Exception as e:  # noqa: BLE001 - adapters raise varied errors
+            if is_connectivity_error(e):
+                raise OntologyServiceUnavailableError(start_curie, e) from e
+            raise
         values = set(results or [])
         if reflexive:
             values.add(start_curie)

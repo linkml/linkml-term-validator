@@ -172,6 +172,7 @@ linkml-term-validator validate-text-file document.md \
 |------|---------|
 | `0` | No validation errors |
 | `1` | Validation errors, missing files, invalid options, or cache migration failure |
+| `2` | Unable to validate: the ontology service was unreachable (network outage), so terms could not be checked. This is distinct from invalid data — retry when the service is reachable, or use `--offline` to validate against the local cache only. |
 
 ## See Also
 

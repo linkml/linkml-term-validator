@@ -83,6 +83,40 @@ def test_validate_schema_missing_file(runner):
     assert result.exit_code != 0
 
 
+def test_validate_schema_service_outage_reports_distinctly(
+    runner, examples_dir, tmp_path, monkeypatch
+):
+    """A service outage exits with a distinct code and an "unable to validate"
+    status rather than reporting every term as "not found"/invalid data."""
+    from linkml_term_validator.utils import oak_utils
+
+    class DownAdapter:
+        def label(self, curie):
+            raise type("ConnectionError", (Exception,), {})(
+                "Max retries exceeded (Failed to resolve 'www.ebi.ac.uk')"
+            )
+
+    monkeypatch.setattr(oak_utils, "get_adapter", lambda s: DownAdapter())
+
+    schema_path = examples_dir / "simple_schema.yaml"
+    result = runner.invoke(
+        app,
+        [
+            "validate-schema",
+            str(schema_path),
+            "--no-cache",
+            "--cache-dir",
+            str(tmp_path / "cache"),
+        ],
+    )
+
+    # Distinct exit code (2), separate from validation-failure code 1.
+    assert result.exit_code == 2, result.output
+    assert "Unable to validate at this time" in result.output
+    # Must NOT masquerade as a data error.
+    assert "not found" not in result.output
+
+
 def test_offline_flag_in_help(runner):
     """The --offline flag is documented on the validation commands."""
     for command in ["validate-schema", "validate-data", "validate", "validate-text-file"]:

@@ -1,12 +1,28 @@
 """Unit tests for the shared OntologyAccess service and helpers."""
 
+import socket
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from linkml_term_validator.utils import OntologyAccess, get_prefix, normalize_string
+from linkml_term_validator.utils import (
+    OntologyAccess,
+    OntologyServiceUnavailableError,
+    get_prefix,
+    is_connectivity_error,
+    normalize_string,
+)
 from linkml_term_validator.utils import oak_utils
+
+
+def _requests_style_connection_error(message: str) -> Exception:
+    """Build an exception named like requests.exceptions.ConnectionError.
+
+    The connectivity classifier matches by type name (to avoid importing the
+    HTTP stack), so this mimics the real outage shape without a dependency.
+    """
+    return type("ConnectionError", (Exception,), {})(message)
 
 TEST_OAK_CONFIG = Path("tests/data/test_oak_config.yaml")
 
@@ -283,3 +299,76 @@ def test_offline_resolves_local_ontology_from_cache_not_adapter(tmp_path):
     )
     # Nothing cached yet, and offline refuses the adapter, so it is unresolved.
     assert access.get_label("TEST:0000001") is None
+
+
+# =============================================================================
+# Service outages: distinguish "unable to validate" from "term not found"
+# =============================================================================
+
+
+def test_is_connectivity_error_detects_wrapped_dns_failure():
+    """A ConnectionError wrapping a DNS gaierror is recognized via the chain."""
+    inner = socket.gaierror("Failed to resolve 'www.ebi.ac.uk'")
+    outer = _requests_style_connection_error("Max retries exceeded")
+    outer.__cause__ = inner
+    assert is_connectivity_error(outer) is True
+
+
+def test_is_connectivity_error_detects_by_type_name():
+    """requests-style ConnectionError is matched by name without importing it."""
+    assert is_connectivity_error(_requests_style_connection_error("boom")) is True
+
+
+def test_is_connectivity_error_detects_builtin_timeout():
+    assert is_connectivity_error(TimeoutError("slow")) is True
+
+
+def test_is_connectivity_error_ignores_ordinary_errors():
+    """A plain error (e.g. a 404-style message) is not a connectivity outage."""
+    assert is_connectivity_error(RuntimeError("404 Not Found")) is False
+    assert is_connectivity_error(KeyError("_embedded")) is False
+
+
+def test_get_label_raises_service_unavailable_on_outage(monkeypatch):
+    """A network outage during lookup fails fast, not "term not found"."""
+
+    class DownAdapter:
+        def label(self, curie):
+            raise _requests_style_connection_error("Max retries exceeded")
+
+    monkeypatch.setattr(oak_utils, "get_adapter", lambda s: DownAdapter())
+    access = OntologyAccess(cache_labels=False)
+
+    with pytest.raises(OntologyServiceUnavailableError) as exc_info:
+        access.get_label("GO:0008150")
+    assert exc_info.value.curie == "GO:0008150"
+    # The failed lookup must not poison the in-memory cache with a bogus None.
+    assert "GO:0008150" not in access._label_cache
+
+
+def test_get_label_treats_non_connectivity_error_as_not_found(monkeypatch):
+    """An unexpected (non-network) adapter error is still treated as not found."""
+
+    class BadAdapter:
+        def label(self, curie):
+            raise ValueError("malformed response")
+
+    monkeypatch.setattr(oak_utils, "get_adapter", lambda s: BadAdapter())
+    access = OntologyAccess(cache_labels=False)
+
+    assert access.get_label("GO:0008150") is None
+
+
+def test_get_label_treats_404_as_not_found(monkeypatch):
+    """A definitive HTTP 404 remains a normal "term not found" (returns None)."""
+    exc = RuntimeError("404 Client Error: Not Found")
+    exc.response = SimpleNamespace(status_code=404)  # type: ignore[attr-defined]
+
+    class NotFoundAdapter:
+        def label(self, curie):
+            raise exc
+
+    monkeypatch.setattr(oak_utils, "get_adapter", lambda s: NotFoundAdapter())
+    access = OntologyAccess(cache_labels=False)
+
+    assert access.get_label("GO:9999999") is None
