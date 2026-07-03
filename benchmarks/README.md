@@ -12,8 +12,17 @@ them.
   merged multi-ontology graph that must be prefix-filtered.
 - **Performance is measured on demand** (never asserted — it depends on caches
   and network) by [`adapter_benchmark.py`](./adapter_benchmark.py), run via
-  `just benchmark`. Latest captured run:
+  `just benchmark`. Each adapter is benchmarked in its own subprocess, so the
+  `Peak RAM` column is that adapter's true peak (values are per-process and need
+  not be monotonic). Latest captured run:
   [`results/go_adapter_comparison.md`](./results/go_adapter_comparison.md).
+
+> Reading the table: closures are measured sequentially per adapter, so the
+> `Cold (+part_of)` call runs *after* the `is_a` calls. For adapters that build
+> an in-process adjacency index on first traversal (`simpleobo`, `pronto`) that
+> column reflects incremental predicate cost, not a cold start — which is why it
+> can be far cheaper than `Cold (is_a)`. Adapters with no closure cache (`owl`)
+> pay the full cost on every call, so all their columns are similar and large.
 
 ## Adapter selection guide
 
