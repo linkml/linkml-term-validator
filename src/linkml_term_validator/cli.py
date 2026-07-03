@@ -10,7 +10,7 @@ For integration with LinkML's validator framework, see documentation.
 
 import re
 from pathlib import Path
-from typing import Optional
+from typing import NoReturn, Optional
 
 import typer
 from linkml.validator import Validator  # type: ignore[import-untyped]
@@ -37,8 +37,8 @@ app = typer.Typer(
 EXIT_SERVICE_UNAVAILABLE = 2
 
 
-def _fail_service_unavailable(exc: OntologyServiceUnavailableError) -> typer.Exit:
-    """Report an ontology-service outage and return an Exit with a distinct code.
+def _fail_service_unavailable(exc: OntologyServiceUnavailableError) -> NoReturn:
+    """Report an ontology-service outage and exit with a distinct code.
 
     A network outage means terms could not be checked at all, which is different
     from data being invalid. Surfacing it as "unable to validate at this time"
@@ -52,7 +52,7 @@ def _fail_service_unavailable(exc: OntologyServiceUnavailableError) -> typer.Exi
         "validate against the local cache only.",
         err=True,
     )
-    return typer.Exit(code=EXIT_SERVICE_UNAVAILABLE)
+    raise typer.Exit(code=EXIT_SERVICE_UNAVAILABLE) from exc
 
 
 @app.command()
@@ -140,7 +140,7 @@ def validate_schema(
     try:
         result = validator.validate_schema(schema_path)
     except OntologyServiceUnavailableError as exc:
-        raise _fail_service_unavailable(exc) from exc
+        _fail_service_unavailable(exc)
 
     if verbose or result.has_errors() or result.has_warnings():
         result.print_summary(verbose=verbose)
@@ -354,7 +354,7 @@ def validate_data(
         try:
             report = validator.validate_source(loader, target_class=target_class)
         except OntologyServiceUnavailableError as exc:
-            raise _fail_service_unavailable(exc) from exc
+            _fail_service_unavailable(exc)
 
         if len(report.results) == 0:
             if len(data_paths) > 1:
@@ -667,7 +667,7 @@ def migrate_cache(
                 try:
                     new_label = plugin.get_ontology_label(curie)
                 except OntologyServiceUnavailableError as exc:
-                    raise _fail_service_unavailable(exc) from exc
+                    _fail_service_unavailable(exc)
                 if new_label and new_label != old_label:
                     relabeled += 1
                     if dry_run:
@@ -882,7 +882,7 @@ def validate_text_file(
     try:
         issues = validator.validate_curie_label_pairs(pairs)
     except OntologyServiceUnavailableError as exc:
-        raise _fail_service_unavailable(exc) from exc
+        _fail_service_unavailable(exc)
 
     # Print results
     if verbose:
