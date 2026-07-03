@@ -113,15 +113,18 @@ def raise_if_service_unavailable(curie: str, exc: BaseException) -> None:
     """Re-raise a lookup failure as OntologyServiceUnavailableError if it is a
     service problem rather than a definitive answer about the term.
 
-    A connection-level failure (DNS/connect/timeout) or an HTTP 5xx means the
-    ontology service is unreachable or erroring, so the term's status is unknown
-    and validation should fail fast. A 4xx (notably 404) is a definitive HTTP
-    answer and is left for the caller to treat as "term not found".
+    A connection-level failure (DNS/connect/timeout) or a transient HTTP status
+    means the ontology service is unreachable or erroring, so the term's status
+    is unknown and validation should fail fast. Transient statuses are the 5xx
+    range plus 408 (Request Timeout) and 429 (Too Many Requests) - a rate-limited
+    or timed-out lookup is "try again", not a statement that the term is absent.
+    A definitive 4xx (notably 404) is left for the caller to treat as "term not
+    found".
     """
     if is_connectivity_error(exc):
         raise OntologyServiceUnavailableError(curie, exc) from exc
     status = getattr(getattr(exc, "response", None), "status_code", None)
-    if isinstance(status, int) and status >= 500:
+    if isinstance(status, int) and (status >= 500 or status in (408, 429)):
         raise OntologyServiceUnavailableError(curie, exc) from exc
 
 

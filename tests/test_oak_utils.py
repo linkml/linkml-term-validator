@@ -378,18 +378,34 @@ def test_get_label_raises_service_unavailable_on_outage(monkeypatch):
     assert "GO:0008150" not in access._label_cache
 
 
-def test_get_label_raises_service_unavailable_on_http_5xx(monkeypatch):
-    """An HTTP 5xx means the service is reached but erroring: unable to validate."""
+@pytest.mark.parametrize("status", [500, 502, 503, 408, 429])
+def test_get_label_raises_service_unavailable_on_transient_http(monkeypatch, status):
+    """5xx, plus 408 (timeout) and 429 (rate limited), are transient service
+    problems: unable to validate, not "term not found"."""
 
     class ErroringAdapter:
         def label(self, curie):
-            raise _http_error(503)
+            raise _http_error(status)
 
     monkeypatch.setattr(oak_utils, "get_adapter", lambda s: ErroringAdapter())
     access = OntologyAccess(cache_labels=False)
 
     with pytest.raises(OntologyServiceUnavailableError):
         access.get_label("GO:0008150")
+
+
+@pytest.mark.parametrize("status", [400, 403, 404, 410])
+def test_get_label_treats_definitive_4xx_as_not_found(monkeypatch, status):
+    """A definitive 4xx (not 408/429) is a normal "term not found" (returns None)."""
+
+    class NotFoundAdapter:
+        def label(self, curie):
+            raise _http_error(status)
+
+    monkeypatch.setattr(oak_utils, "get_adapter", lambda s: NotFoundAdapter())
+    access = OntologyAccess(cache_labels=False)
+
+    assert access.get_label("GO:9999999") is None
 
 
 def test_get_label_treats_non_connectivity_error_as_not_found(monkeypatch):
@@ -403,16 +419,3 @@ def test_get_label_treats_non_connectivity_error_as_not_found(monkeypatch):
     access = OntologyAccess(cache_labels=False)
 
     assert access.get_label("GO:0008150") is None
-
-
-def test_get_label_treats_404_as_not_found(monkeypatch):
-    """A definitive HTTP 404 remains a normal "term not found" (returns None)."""
-
-    class NotFoundAdapter:
-        def label(self, curie):
-            raise _http_error(404)
-
-    monkeypatch.setattr(oak_utils, "get_adapter", lambda s: NotFoundAdapter())
-    access = OntologyAccess(cache_labels=False)
-
-    assert access.get_label("GO:9999999") is None
