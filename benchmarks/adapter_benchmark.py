@@ -3,10 +3,15 @@
 
 This is an **informational** tool, not a test: timing depends on download
 caches, ``requests-cache`` state, network conditions, and the machine. To make
-runs comparable rather than reproducible-to-the-millisecond, every backend cache
-is redirected to a throwaway temp dir (``--isolate-caches``, on by default) and
-both *cold* (first call) and *warm* (second call) closures are reported -- the
-cold/warm gap is itself the interesting signal.
+runs comparable rather than reproducible-to-the-millisecond:
+
+* each adapter is benchmarked in its **own subprocess** (``--worker``), so
+  ``ru_maxrss`` is that adapter's true peak RAM rather than a process-wide
+  cumulative peak, and one adapter's caches can't leak into another's;
+* every backend cache is redirected to a throwaway temp dir
+  (``--isolate-caches``, on by default);
+* both *cold* (first call) and *warm* (second call) closures are reported --
+  the cold/warm gap is itself the interesting signal.
 
 It regenerates the adapter comparison table published in
 ``linkml/linkml-term-validator#58``.
@@ -28,9 +33,13 @@ cost.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import gc
+import json
 import os
 import resource
+import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -47,6 +56,8 @@ GO_OWL_URL = "http://purl.obolibrary.org/obo/go.owl"
 IS_A = "rdfs:subClassOf"
 PART_OF = "BFO:0000050"
 PREDICATE_SETS: dict[str, list[str]] = {
+    # NB: "is_a" is intentionally first; the ancestor-throughput sample is drawn
+    # from the is_a descendant set (see _benchmark_adapter).
     "is_a": [IS_A],
     "is_a+part_of": [IS_A, PART_OF],
 }
@@ -84,7 +95,7 @@ class AdapterSpec:
 
 
 class BenchContext:
-    """Holds resolved ontology file paths / download cache for the run."""
+    """Resolves ontology file paths (downloading / converting once)."""
 
     def __init__(self, args: argparse.Namespace, workdir: Path) -> None:
         self.args = args
@@ -96,7 +107,11 @@ class BenchContext:
         if dest.exists():
             return dest
         print(f"  downloading {url} -> {dest.name} ...", flush=True)
-        urllib.request.urlretrieve(url, dest)  # noqa: S310 - trusted OBO PURL
+        # A User-Agent is required: the default urllib UA is 403'd by the OBO
+        # hosts / proxy. urlopen honors HTTPS_PROXY/HTTP_PROXY from the env.
+        req = urllib.request.Request(url, headers={"User-Agent": "linkml-term-validator-benchmark"})
+        with urllib.request.urlopen(req) as resp, open(dest, "wb") as fh:  # noqa: S310 - trusted OBO PURL
+            shutil.copyfileobj(resp, fh)
         return dest
 
     def obo_path(self) -> str:
@@ -105,9 +120,20 @@ class BenchContext:
         return str(self._obo)
 
     def owl_path(self) -> str:
-        if self._owl is None:
-            self._owl = self._download(GO_OWL_URL, self.workdir / "go.owl")
-        return str(self._owl)
+        # The owl adapter (py-horned-owl) reads functional syntax reliably; GO is
+        # only published as RDF/XML, so download it once and convert to .ofn.
+        if self._owl is not None:
+            return str(self._owl)
+        owl = self._download(GO_OWL_URL, self.workdir / "go.owl")
+        ofn = self.workdir / "go.ofn"
+        if not ofn.exists():
+            import pyhornedowl
+
+            print("  converting go.owl -> go.ofn (py-horned-owl) ...", flush=True)
+            onto = pyhornedowl.open_ontology(owl.read_text(), "rdf")
+            ofn.write_text(onto.save_to_string("ofn"))
+        self._owl = ofn
+        return str(ofn)
 
 
 ADAPTER_SPECS: dict[str, AdapterSpec] = {
@@ -129,7 +155,7 @@ def _benchmark_adapter(spec: AdapterSpec, ctx: BenchContext, root: str, anc_samp
         res.error = f"load: {type(e).__name__}: {e}"
         return res
 
-    descendants: set[str] = set()
+    isa_descendants: set[str] = set()
     for label, predicates in PREDICATE_SETS.items():
         try:
             cold, res.cold_s[label] = _time(
@@ -140,14 +166,15 @@ def _benchmark_adapter(spec: AdapterSpec, ctx: BenchContext, root: str, anc_samp
             )
             res.count[label] = len(cold)
             if label == "is_a":
-                descendants = cold
+                isa_descendants = cold
         except Exception as e:  # pragma: no cover
             res.error = f"descendants[{label}]: {type(e).__name__}: {e}"
             return res
 
-    # ancestor-closure throughput over a bounded sample (network adapters are
-    # kept to a small sample so we don't hammer the public endpoint)
-    sample = sorted(descendants)[: (min(anc_sample, 25) if "remote" in spec.scope else anc_sample)]
+    # ancestor-closure throughput over a bounded sample of the is_a descendants
+    # (network adapters are capped so we don't hammer the public endpoint).
+    cap = min(anc_sample, 25) if "remote" in spec.scope else anc_sample
+    sample = sorted(isa_descendants)[:cap]
     if sample:
         try:
             _, dt = _time(
@@ -156,6 +183,8 @@ def _benchmark_adapter(spec: AdapterSpec, ctx: BenchContext, root: str, anc_samp
             res.anc_per_s = len(sample) / dt if dt else None
         except Exception as e:  # pragma: no cover
             res.error = f"ancestors: {type(e).__name__}: {e}"
+    # Own-process peak RSS: meaningful only because each adapter runs in its own
+    # worker subprocess (see main()).
     res.rss_mb = _max_rss_mb()
     return res
 
@@ -165,17 +194,18 @@ def _fmt(value: float | None, suffix: str = "s") -> str:
 
 
 def _render_markdown(results: list[AdapterResult], root: str, meta: dict[str, str]) -> str:
+    caption = "; ".join(f"{k}: {v}" for k, v in meta.items())
     lines = [
         f"# OAK adapter comparison for reachable_from closures (`descendants({root})`)",
         "",
         "> Regenerated by `just benchmark` / `benchmarks/adapter_benchmark.py`. "
-        "Timing is informational (cache/network dependent); correctness is guarded by "
-        "`tests/test_adapter_parity.py`.",
+        "Timing is informational (cache/network dependent) and each adapter is measured "
+        "in its own subprocess; correctness is guarded by `tests/test_adapter_parity.py`.",
         "",
-        "| " + " | ".join(f"{k}: {v}" for k, v in meta.items()) + " |",
+        f"> Run: {caption}",
         "",
         "| Adapter | Scope | Load | Cold (is_a) | Warm (is_a) | Cold (+part_of) | "
-        "Ancestor closures/s | is_a count | RAM |",
+        "Ancestor closures/s | is_a count | Peak RAM |",
         "|---|---|---|---|---|---|---|---|---|",
     ]
     for r in results:
@@ -201,43 +231,88 @@ def _render_markdown(results: list[AdapterResult], root: str, meta: dict[str, st
 
 
 def _isolate_caches(workdir: Path) -> None:
-    """Point every backend cache at a throwaway dir so runs are comparable."""
+    """Point every backend cache at a throwaway dir so runs are comparable.
+
+    All three are set unconditionally (no ``setdefault``): an inherited value
+    from the environment would silently defeat the isolation this promises.
+    """
     cache = workdir / "caches"
     cache.mkdir(parents=True, exist_ok=True)
     os.environ["PYSTOW_HOME"] = str(cache / "pystow")  # semsql / sqlite:obo downloads
     os.environ["XDG_CACHE_HOME"] = str(cache / "xdg")
-    os.environ.setdefault("OAKLIB_CACHE", str(cache / "oaklib"))
+    os.environ["OAKLIB_CACHE"] = str(cache / "oaklib")
+
+
+def _run_worker(key: str, args: argparse.Namespace) -> AdapterResult:
+    """Benchmark a single adapter in a subprocess and return its result."""
+    cmd = [
+        sys.executable, __file__, "--worker", key,
+        "--root", args.root,
+        "--anc-sample", str(args.anc_sample),
+        "--obo", args.obo,
+        "--owl", args.owl,
+    ]
+    if args.no_isolate_caches:
+        cmd.append("--no-isolate-caches")
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    for line in proc.stdout.splitlines():
+        if line.startswith("__RESULT__"):
+            return AdapterResult(**json.loads(line[len("__RESULT__"):]))
+    return AdapterResult(
+        key=key,
+        scope=ADAPTER_SPECS[key].scope,
+        error=f"worker failed (rc={proc.returncode}): {proc.stderr.strip()[-300:] or proc.stdout.strip()[-300:]}",
+    )
+
+
+def _resolve_inputs(args: argparse.Namespace, workdir: Path) -> None:
+    """Download/convert ontology files once so workers reuse them."""
+    ctx = BenchContext(args, workdir)
+    needs_local = any(k in {"simpleobo", "pronto", "owl"} for k in args.keys)
+    if needs_local and not args.obo:
+        args.obo = ctx.obo_path()
+    if "owl" in args.keys and not args.owl:
+        args.owl = ctx.owl_path()
+    args.obo = args.obo or ""
+    args.owl = args.owl or ""
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument(
-        "--adapters",
-        default="simpleobo,pronto,owl,ubergraph",
-        help="comma-separated adapter keys (default: all)",
-    )
+    parser.add_argument("--adapters", default="simpleobo,pronto,owl,ubergraph",
+                        help="comma-separated adapter keys (default: all)")
     parser.add_argument("--root", default=DEFAULT_ROOT, help="source node CURIE")
-    parser.add_argument("--obo", help="local OBO file (default: download GO)")
-    parser.add_argument("--owl", help="local OWL/OFN file (default: download GO)")
+    parser.add_argument("--obo", default="", help="local OBO file (default: download GO)")
+    parser.add_argument("--owl", default="", help="local OWL/OFN file (default: download+convert GO)")
     parser.add_argument("--anc-sample", type=int, default=500, help="ancestor-closure sample size")
     parser.add_argument("--out", help="write markdown table to this path")
-    parser.add_argument(
-        "--no-isolate-caches",
-        action="store_true",
-        help="do NOT redirect backend caches to a temp dir (use real caches)",
-    )
+    parser.add_argument("--no-isolate-caches", action="store_true",
+                        help="do NOT redirect backend caches to a temp dir (use real caches)")
+    parser.add_argument("--worker", help=argparse.SUPPRESS)  # internal: benchmark one adapter, emit JSON
     args = parser.parse_args(argv)
 
+    # -- worker mode: benchmark exactly one adapter, print JSON, exit ---------
+    if args.worker:
+        with tempfile.TemporaryDirectory(prefix="oak-bench-w-") as tmp:
+            if not args.no_isolate_caches:
+                _isolate_caches(Path(tmp))
+            workdir = Path(args.obo).parent if args.obo else Path(tmp)
+            ctx = BenchContext(args, workdir)
+            result = _benchmark_adapter(ADAPTER_SPECS[args.worker], ctx, args.root, args.anc_sample)
+        print("__RESULT__" + json.dumps(dataclasses.asdict(result)), flush=True)
+        return 0
+
+    # -- parent mode: resolve inputs once, fan out one subprocess per adapter -
     keys = [k.strip() for k in args.adapters.split(",") if k.strip()]
     unknown = [k for k in keys if k not in ADAPTER_SPECS]
     if unknown:
         parser.error(f"unknown adapters: {unknown}; choose from {sorted(ADAPTER_SPECS)}")
+    args.keys = keys
 
     with tempfile.TemporaryDirectory(prefix="oak-bench-") as tmp:
-        workdir = Path(args.obo).parent if args.obo else Path(tmp)
-        if not args.no_isolate_caches:
-            _isolate_caches(Path(tmp))
-        ctx = BenchContext(args, workdir)
+        if not args.obo:
+            args.obo_workdir = tmp
+        _resolve_inputs(args, Path(args.obo).parent if args.obo else Path(tmp))
 
         try:
             from importlib.metadata import version
@@ -246,7 +321,7 @@ def main(argv: list[str] | None = None) -> int:
                 "root": args.root,
                 "oaklib": version("oaklib"),
                 "py-horned-owl": version("py-horned-owl"),
-                "caches": "isolated" if not args.no_isolate_caches else "system",
+                "caches": "system" if args.no_isolate_caches else "isolated, per-adapter subprocess",
             }
         except Exception:
             meta = {"root": args.root}
@@ -254,10 +329,10 @@ def main(argv: list[str] | None = None) -> int:
         results: list[AdapterResult] = []
         for key in keys:
             print(f"=== {key} ===", flush=True)
-            r = _benchmark_adapter(ADAPTER_SPECS[key], ctx, args.root, args.anc_sample)
+            r = _run_worker(key, args)
             results.append(r)
             print(f"    load={_fmt(r.load_s)} cold_isa={_fmt(r.cold_s.get('is_a'))} "
-                  f"count={r.count.get('is_a', '-')} err={r.error}", flush=True)
+                  f"count={r.count.get('is_a', '-')} rss={_fmt(r.rss_mb, ' MB')} err={r.error}", flush=True)
 
     table = _render_markdown(results, args.root, meta)
     print("\n" + table)

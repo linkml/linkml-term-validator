@@ -101,7 +101,9 @@ def synthetic_paths(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Pat
     return obo, ofn
 
 
-def _local_adapters(synthetic_paths: tuple[Path, Path]) -> dict[str, Any]:
+@pytest.fixture(scope="session")
+def local_adapters(synthetic_paths: tuple[Path, Path]) -> dict[str, Any]:
+    """Parse the synthetic ontology once and expose the local file adapters."""
     obo, ofn = synthetic_paths
     adapters: dict[str, Any] = {
         "simpleobo": get_adapter(f"simpleobo:{obo}"),
@@ -134,13 +136,15 @@ _PREDICATE_SETS = {
 @pytest.mark.parametrize("pred_label", list(_PREDICATE_SETS))
 @pytest.mark.parametrize("direction", ["descendants", "ancestors"])
 def test_local_adapters_agree(
-    synthetic_paths: tuple[Path, Path],
+    local_adapters: dict[str, Any],
     source_node: str,
     pred_label: str,
     direction: str,
 ) -> None:
     """simpleobo / pronto / owl must return identical closures for the same query."""
-    adapters = _local_adapters(synthetic_paths)
+    adapters = local_adapters
+    if len(adapters) < 2:
+        pytest.skip("need >=2 local adapters to check parity")
     predicates = _PREDICATE_SETS[pred_label]
     up = direction == "ancestors"
     results = {name: _closure(ad, source_node, predicates, up=up) for name, ad in adapters.items()}
@@ -155,14 +159,14 @@ def test_local_adapters_agree(
         )
 
 
-def test_part_of_broadens_closure(synthetic_paths: tuple[Path, Path]) -> None:
+def test_part_of_broadens_closure(local_adapters: dict[str, Any]) -> None:
     """Sanity check that part_of is actually exercised (not a no-op predicate).
 
     Node 2 has a part_of child (node 39) that is not one of its is_a descendants,
     so ``is_a + part_of`` must be a strict superset of ``is_a`` here -- and every
     adapter must agree on the broadened set.
     """
-    adapters = _local_adapters(synthetic_paths)
+    adapters = local_adapters
     node = _cid(2)
     for name, ad in adapters.items():
         isa = _closure(ad, node, [IS_A])
