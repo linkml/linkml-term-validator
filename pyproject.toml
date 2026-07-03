@@ -21,6 +21,7 @@ dependencies = [
   "linkml>=1.9.3",
   "oaklib>=0.7.1",
   "pydantic>=2.0.0",
+  "requests>=2.0.0",
   "ruamel-yaml>=0.18.15",
 ]
 
