@@ -319,8 +319,6 @@ def main(argv: list[str] | None = None) -> int:
     args.keys = keys
 
     with tempfile.TemporaryDirectory(prefix="oak-bench-") as tmp:
-        if not args.obo:
-            args.obo_workdir = tmp
         _resolve_inputs(args, Path(args.obo).parent if args.obo else Path(tmp))
 
         try:
