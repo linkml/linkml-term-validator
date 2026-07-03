@@ -1,6 +1,6 @@
 # Data Validation Reference (Dynamic Enums)
 
-This reference covers validation of **data values against dynamic enums**—ensuring that data values satisfy ontology-based constraints defined via `reachable_from`, `matches`, or `concepts`.
+This reference covers validation of **data values against dynamic enums**—ensuring that data values satisfy ontology-based constraints defined via `reachable_from`, explicit `concepts`, enum `include` / `minus` expressions, and inherited enums.
 
 ## Overview
 
@@ -16,7 +16,7 @@ linkml-term-validator validate-data data.yaml --schema schema.yaml
 linkml-term-validator validate-data data.yaml -s schema.yaml -t Person
 
 # With custom OAK configuration
-linkml-term-validator validate-data data.yaml -s schema.yaml --oak-config oak_config.yaml
+linkml-term-validator validate-data data.yaml -s schema.yaml --config oak_config.yaml
 
 # Multiple data files
 linkml-term-validator validate-data data1.yaml data2.yaml -s schema.yaml
@@ -28,10 +28,12 @@ linkml-term-validator validate-data data1.yaml data2.yaml -s schema.yaml
 |--------|-------------|
 | `--schema`, `-s` | Path to LinkML schema (required) |
 | `--target-class`, `-t` | Target class for validation |
-| `--oak-adapter` | OAK adapter string (default: `sqlite:obo:`) |
-| `--oak-config` | Path to OAK configuration file |
+| `--adapter`, `-a` | OAK adapter string (default: `sqlite:obo:`) |
+| `--config`, `-c` | Path to OAK configuration file |
 | `--cache-dir` | Directory for cache files (default: `cache`) |
-| `--verbose` / `-v` | Enable verbose output |
+| `--cache-strategy` | Dynamic enum cache strategy: `progressive` or `greedy` |
+| `--saturate-enum-caches` | Materialize and close dynamic enum caches |
+| `--offline` | Resolve only from the cache; never access ontology services |
 
 ## Dynamic Enum Syntax
 
@@ -94,14 +96,14 @@ enums:
 
 ### `matches` - Pattern Matching
 
-Allows values matching a regex pattern:
+`matches` is part of LinkML's enum expression model, and the validator includes it in enum cache keys so future support will not collide with other enum definitions. Full validation for `matches` is not implemented yet; enums that rely only on `matches` should be materialized or rewritten as `concepts` / `reachable_from` before using `linkml-term-validator`.
 
 ```yaml
 enums:
   GOTermPattern:
     matches:
       source_ontology: sqlite:obo:go
-      pattern: "GO:[0-9]{7}"   # GO term format
+      identifier_pattern: "GO:[0-9]{7}"   # Recognized, but not validated yet
 ```
 
 ### `concepts` - Explicit List
@@ -117,6 +119,15 @@ enums:
       - CL:0000182   # hepatocyte
 ```
 
+### Enum Expressions
+
+Dynamic enum expansion also honors LinkML enum expression composition:
+
+- `include`: add terms from additional enum expressions
+- `minus`: remove terms from enum expressions
+- `inherits`: include values from parent enums
+- `permissible_values`: include both permissible value names and their `meaning` CURIEs
+
 ## Validation Process
 
 For each slot in the data with a dynamic enum range:
@@ -124,8 +135,8 @@ For each slot in the data with a dynamic enum range:
 1. **Extract the enum definition** from the schema
 2. **Evaluate the constraint**:
    - For `reachable_from`: Query the ontology for descendants
-   - For `matches`: Apply regex to the value
    - For `concepts`: Check membership
+   - For `include`, `minus`, and `inherits`: Combine expanded enum expressions
 3. **Report violations** as ERROR severity
 
 ## Examples
@@ -245,31 +256,23 @@ enums:
 
 ```python
 from linkml.validator import Validator
-from linkml_runtime.loaders import yaml_loader
+from linkml.validator.loaders import YamlLoader
 from linkml_term_validator.plugins import DynamicEnumPlugin
 
-# Create plugin
 plugin = DynamicEnumPlugin(
     oak_adapter_string="sqlite:obo:",
     cache_labels=True,
     cache_dir="cache",
 )
 
-# Create validator
 validator = Validator(
     schema="schema.yaml",
     validation_plugins=[plugin]
 )
 
-# Validate with YamlLoader
-loader = yaml_loader.YamlLoader()
-report = validator.validate_source(
-    loader,
-    "data.yaml",
-    target_class="CellAnnotation"
-)
+loader = YamlLoader("data.yaml")
+report = validator.validate_source(loader, target_class="CellAnnotation")
 
-# Check results
 if len(report.results) == 0:
     print("All dynamic enum constraints satisfied")
 else:
@@ -284,6 +287,10 @@ else:
 | `oak_adapter_string` | `str` | `"sqlite:obo:"` | Default OAK adapter |
 | `oak_config_path` | `str \| None` | `None` | Path to OAK config file |
 | `cache_labels` | `bool` | `True` | Enable file-based caching |
+| `cache_enum_expansions` | `bool` | `True` | Enable file-based dynamic enum cache writes |
+| `saturate_enum_caches` | `bool` | `False` | Materialize full dynamic enum closures during progressive validation |
+| `cache_strategy` | `str \| CacheStrategy` | `progressive` | Dynamic enum cache strategy |
+| `offline` | `bool` | `False` | Resolve only from existing cache files |
 | `cache_dir` | `str` | `"cache"` | Cache directory |
 
 ## Error Messages

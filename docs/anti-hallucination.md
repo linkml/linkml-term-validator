@@ -157,10 +157,9 @@ ERROR: GO:9999999 not found in Gene Ontology
 ## CLI Usage
 
 ```bash
-# Validate with label checking enabled
+# Validate with label checking enabled by default
 linkml-term-validator validate-data data.yaml \
-  --schema schema.yaml \
-  --labels  # Enable label validation
+  --schema schema.yaml
 ```
 
 ## Best Practices

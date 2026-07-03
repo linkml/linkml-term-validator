@@ -1,13 +1,13 @@
 # Binding Validation Reference
 
-This reference covers validation of **binding constraints on nested objects**—ensuring that fields within complex objects satisfy enum range constraints, with optional label validation.
+This reference covers validation of **binding constraints on nested objects**—ensuring that fields within complex objects satisfy enum range constraints, with label validation enabled by default.
 
 ## Overview
 
 Binding validation uses the **BindingValidationPlugin** to validate that:
 
 1. Fields within nested objects satisfy their binding range constraints
-2. (Optionally) Labels match the ontology's canonical labels
+2. Labels match the ontology's canonical labels, unless disabled with `--no-labels`
 
 Bindings are essential when your data uses complex objects (like `OntologyTerm` with `id` and `label`) rather than simple CURIE strings.
 
@@ -17,14 +17,14 @@ Bindings are essential when your data uses complex objects (like `OntologyTerm` 
 # Basic binding validation
 linkml-term-validator validate-data data.yaml --schema schema.yaml
 
-# With label validation (anti-hallucination)
-linkml-term-validator validate-data data.yaml -s schema.yaml --labels
+# Disable label validation when you only want ID/range checks
+linkml-term-validator validate-data data.yaml -s schema.yaml --no-labels
 
 # With target class
-linkml-term-validator validate-data data.yaml -s schema.yaml -t GeneAnnotation --labels
+linkml-term-validator validate-data data.yaml -s schema.yaml -t GeneAnnotation
 
 # With custom OAK configuration
-linkml-term-validator validate-data data.yaml -s schema.yaml --oak-config oak_config.yaml --labels
+linkml-term-validator validate-data data.yaml -s schema.yaml --config oak_config.yaml
 ```
 
 ### CLI Options
@@ -33,12 +33,12 @@ linkml-term-validator validate-data data.yaml -s schema.yaml --oak-config oak_co
 |--------|-------------|
 | `--schema`, `-s` | Path to LinkML schema (required) |
 | `--target-class`, `-t` | Target class for validation |
-| `--labels` | Also validate labels against ontology |
-| `--lenient` | Don't fail when term IDs are not found in ontology |
-| `--oak-adapter` | OAK adapter string (default: `sqlite:obo:`) |
-| `--oak-config` | Path to OAK configuration file |
+| `--labels / --no-labels` | Enable or disable label validation (default: enabled) |
+| `--lenient / --no-lenient` | Don't fail when term IDs are not found in ontology |
+| `--adapter`, `-a` | OAK adapter string (default: `sqlite:obo:`) |
+| `--config`, `-c` | Path to OAK configuration file |
 | `--cache-dir` | Directory for cache files (default: `cache`) |
-| `--verbose` / `-v` | Enable verbose output |
+| `--offline` | Resolve only from the cache; never access ontology services |
 
 ### Strict Mode (Default)
 
@@ -312,41 +312,32 @@ location:
 linkml-term-validator validate-data annotations.yaml -s schema.yaml -t GeneAnnotation
 # Output: 2 binding errors (wrong enum values)
 
-# With label validation
-linkml-term-validator validate-data annotations.yaml -s schema.yaml -t GeneAnnotation --labels
-# Also validates that labels match ontology
+# Disable label validation if needed
+linkml-term-validator validate-data annotations.yaml -s schema.yaml -t GeneAnnotation --no-labels
 ```
 
 ## Python API
 
 ```python
 from linkml.validator import Validator
-from linkml_runtime.loaders import yaml_loader
+from linkml.validator.loaders import YamlLoader
 from linkml_term_validator.plugins import BindingValidationPlugin
 
-# Create plugin with label validation
 plugin = BindingValidationPlugin(
     oak_adapter_string="sqlite:obo:",
-    validate_labels=True,          # Enable label checking
+    validate_labels=True,
     cache_labels=True,
     cache_dir="cache",
 )
 
-# Create validator
 validator = Validator(
     schema="schema.yaml",
     validation_plugins=[plugin]
 )
 
-# Validate
-loader = yaml_loader.YamlLoader()
-report = validator.validate_source(
-    loader,
-    "data.yaml",
-    target_class="GeneAnnotation"
-)
+loader = YamlLoader("data.yaml")
+report = validator.validate_source(loader, target_class="GeneAnnotation")
 
-# Check results
 for result in report.results:
     print(f"{result.severity.name}: {result.message}")
 ```
@@ -360,6 +351,10 @@ for result in report.results:
 | `validate_labels` | `bool` | `True` | Also validate labels |
 | `strict` | `bool` | `True` | Fail when term IDs not found in configured ontologies |
 | `cache_labels` | `bool` | `True` | Enable file-based caching |
+| `cache_enum_expansions` | `bool` | `True` | Enable dynamic enum cache writes |
+| `saturate_enum_caches` | `bool` | `False` | Materialize full dynamic enum closures during progressive validation |
+| `cache_strategy` | `str \| CacheStrategy` | `progressive` | Dynamic enum cache strategy |
+| `offline` | `bool` | `False` | Resolve only from existing cache files |
 | `cache_dir` | `str` | `"cache"` | Cache directory |
 
 ## Error Messages
@@ -397,7 +392,7 @@ ERROR: Term 'GO:9999999' not found in ontology
   prefix: GO (configured in oak_config)
 ```
 
-### Label Mismatch (with `--labels`)
+### Label Mismatch
 
 ```
 ERROR: Label mismatch for GO:0007049

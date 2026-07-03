@@ -211,7 +211,7 @@ classes:
           - rdfs:label  # Declares this field holds the rdfs:label
 ```
 
-With `--labels` flag, the validator checks that provided labels match the ontology's canonical labels.
+By default, the validator checks that provided labels match the ontology's canonical labels. Use `--no-labels` when you only want ID/range checks.
 
 ## Anti-Hallucination Benefits
 
@@ -230,8 +230,8 @@ Bindings are particularly valuable for validating AI-generated content. By requi
 # Validate bindings (and dynamic enums)
 linkml-term-validator validate-data data.yaml -s schema.yaml -t ClassName
 
-# Also validate labels match ontology
-linkml-term-validator validate-data data.yaml -s schema.yaml -t ClassName --labels
+# Disable label validation if needed
+linkml-term-validator validate-data data.yaml -s schema.yaml -t ClassName --no-labels
 ```
 
 ### Python API

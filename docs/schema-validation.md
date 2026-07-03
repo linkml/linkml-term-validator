@@ -21,10 +21,10 @@ linkml-term-validator validate-schema schema.yaml
 linkml-term-validator validate-schema --strict schema.yaml
 
 # With custom OAK configuration
-linkml-term-validator validate-schema --oak-config oak_config.yaml schema.yaml
+linkml-term-validator validate-schema --config oak_config.yaml schema.yaml
 
 # With OLS adapter (online lookup)
-linkml-term-validator validate-schema --oak-adapter "ols:" schema.yaml
+linkml-term-validator validate-schema --adapter "ols:" schema.yaml
 ```
 
 ### CLI Options
@@ -32,9 +32,10 @@ linkml-term-validator validate-schema --oak-adapter "ols:" schema.yaml
 | Option | Description |
 |--------|-------------|
 | `--strict` | Treat warnings as errors |
-| `--oak-adapter` | OAK adapter string (default: `sqlite:obo:`) |
-| `--oak-config` | Path to OAK configuration file |
+| `--adapter`, `-a` | OAK adapter string (default: `sqlite:obo:`) |
+| `--config`, `-c` | Path to OAK configuration file |
 | `--cache-dir` | Directory for cache files (default: `cache`) |
+| `--offline` | Resolve only from the cache; never access ontology services |
 | `--verbose` / `-v` | Enable verbose output |
 
 ## What Gets Validated
@@ -182,32 +183,24 @@ This will validate successfully because "apoptotic process" is in the aliases.
 ## Python API
 
 ```python
-from linkml.validator import Validator
-from linkml_term_validator.plugins import PermissibleValueMeaningPlugin
+from linkml_term_validator.models import ValidationConfig
+from linkml_term_validator.validator import EnumValidator
 
-# Create plugin
-plugin = PermissibleValueMeaningPlugin(
+config = ValidationConfig(
     oak_adapter_string="sqlite:obo:",
     strict_mode=False,
     cache_labels=True,
     cache_dir="cache",
 )
 
-# Create validator
-validator = Validator(
-    schema="schema.yaml",
-    validation_plugins=[plugin]
-)
+validator = EnumValidator(config)
+result = validator.validate_schema("schema.yaml")
 
-# Validate the schema file itself
-report = validator.validate_file("schema.yaml")
-
-# Check results
-if len(report.results) == 0:
+if not result.has_errors():
     print("All permissible values validated successfully")
 else:
-    for result in report.results:
-        print(f"{result.severity.name}: {result.message}")
+    for issue in result.issues:
+        print(f"{issue.severity}: {issue.message}")
 ```
 
 ### Plugin Parameters
@@ -218,6 +211,7 @@ else:
 | `oak_config_path` | `str \| None` | `None` | Path to OAK config file |
 | `strict_mode` | `bool` | `False` | Treat warnings as errors |
 | `cache_labels` | `bool` | `True` | Enable file-based caching |
+| `offline` | `bool` | `False` | Resolve only from existing cache files |
 | `cache_dir` | `str` | `"cache"` | Cache directory |
 
 ## Common Issues

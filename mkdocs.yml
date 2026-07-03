@@ -26,6 +26,7 @@ plugins:
 
 nav:
   - Home: index.md
+  - Gallery: gallery.md
   - Tutorials:
       - Getting Started (CLI): notebooks/01_getting_started.ipynb
       - Advanced Usage (CLI): notebooks/02_advanced_usage.ipynb
