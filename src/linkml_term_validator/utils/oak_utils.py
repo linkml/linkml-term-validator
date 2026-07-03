@@ -90,7 +90,9 @@ def is_connectivity_error(exc: BaseException) -> bool:
     and the builtin/socket types) rather than by class name. The chain is walked
     so a ``requests.exceptions.ConnectionError`` wrapping a urllib3
     ``NameResolutionError`` (the shape an OLS/EBI outage produces) is recognized
-    even if only the inner cause is a recognized type.
+    even if only the inner cause is a recognized type. An implicit context that
+    was explicitly suppressed (``raise ... from None``) is not followed, so an
+    unrelated in-flight connection error cannot cause a false positive.
     """
     seen: set[int] = set()
     current: Optional[BaseException] = exc
@@ -98,7 +100,12 @@ def is_connectivity_error(exc: BaseException) -> bool:
         seen.add(id(current))
         if isinstance(current, _CONNECTIVITY_EXC_TUPLE):
             return True
-        current = current.__cause__ or current.__context__
+        # An explicit cause wins; otherwise follow the implicit context only when
+        # it was not suppressed via ``raise ... from None``.
+        next_exc = current.__cause__
+        if next_exc is None and not current.__suppress_context__:
+            next_exc = current.__context__
+        current = next_exc
     return False
 
 

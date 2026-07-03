@@ -120,6 +120,47 @@ def test_validate_schema_service_outage_reports_distinctly(
     assert "not found" not in result.output
 
 
+def test_validate_data_service_outage_reports_distinctly(
+    runner, tests_data_dir, tmp_path, monkeypatch
+):
+    """validate-data (the originally reported command) also fails fast with the
+    distinct exit code 2, here exercising the HTTP 5xx outage path end-to-end."""
+    import requests
+
+    from linkml_term_validator.utils import oak_utils
+
+    class ErroringAdapter:
+        def label(self, curie):
+            response = requests.Response()
+            response.status_code = 503
+            raise requests.exceptions.HTTPError(
+                "503 Server Error: Service Unavailable", response=response
+            )
+
+    monkeypatch.setattr(oak_utils, "get_adapter", lambda s: ErroringAdapter())
+
+    result = runner.invoke(
+        app,
+        [
+            "validate-data",
+            str(tests_data_dir / "dynamic_enum_valid_data.yaml"),
+            "--schema",
+            str(tests_data_dir / "dynamic_enum_schema.yaml"),
+            "--target-class",
+            "Sample",
+            "--config",
+            str(tests_data_dir / "test_oak_config.yaml"),
+            "--no-bindings",
+            "--no-cache",
+            "--cache-dir",
+            str(tmp_path / "cache"),
+        ],
+    )
+
+    assert result.exit_code == 2, result.output
+    assert "Unable to validate at this time" in result.output
+
+
 def test_offline_flag_in_help(runner):
     """The --offline flag is documented on the validation commands."""
     for command in ["validate-schema", "validate-data", "validate", "validate-text-file"]:

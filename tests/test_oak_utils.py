@@ -345,6 +345,22 @@ def test_is_connectivity_error_ignores_non_connection_errors():
     assert is_connectivity_error(_http_error(404)) is False
 
 
+def test_is_connectivity_error_respects_suppressed_context():
+    """A suppressed context (raise ... from None) is not walked into.
+
+    An unrelated in-flight connection error must not turn a deliberately
+    context-suppressed error into a false "outage".
+    """
+    try:
+        try:
+            raise requests.exceptions.ConnectionError("in-flight outage")
+        except requests.exceptions.ConnectionError:
+            raise ValueError("definitive answer") from None
+    except ValueError as e:
+        assert e.__suppress_context__ is True
+        assert is_connectivity_error(e) is False
+
+
 def test_get_label_raises_service_unavailable_on_outage(monkeypatch):
     """A network outage during lookup fails fast, not "term not found"."""
 
