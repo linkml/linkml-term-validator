@@ -32,6 +32,7 @@ from linkml_term_validator.cache_utils import atomic_write_csv, locked_cache_fil
 from linkml_term_validator.models import CacheStrategy, ValidationConfig
 from linkml_term_validator.utils import (
     EmptyReachableClosureError,
+    InconsistentReachabilityError,
     OntologyAccess,
     OntologyServiceUnavailableError,
     get_prefix,
@@ -105,9 +106,10 @@ class BaseOntologyPlugin(ValidationPlugin):
         # Enum-expansion caches (plugin-specific, not shared).
         self._enum_cache: dict[str, set[str]] = {}  # enum_name -> cached values
         self._closed_enum_caches: set[str] = set()  # enum_name -> cache is known complete
-        # (source_node, predicates, traverse_up) -> whether the source node
-        # resolves but reaches an empty closure (a broken/misconfigured graph).
-        self._source_closure_empty_cache: dict[tuple[str, tuple[str, ...], bool], bool] = {}
+        # (source_node, predicates, traverse_up) -> the closure member proving the
+        # adapter's ancestor/descendant directions disagree, or None if consistent.
+        # A broken graph (e.g. OLS4 MONDO) is probed at most once per source node.
+        self._source_inconsistency_cache: dict[tuple[str, tuple[str, ...], bool], Optional[str]] = {}
 
         # Read plugin-specific extras (cache strategy/flags) from the same
         # oak_config.yaml the ontology service already parsed.
@@ -691,23 +693,25 @@ class BaseOntologyPlugin(ValidationPlugin):
 
         # No source node reached `value`. `value` itself resolved (checked above),
         # so before returning a definitive negative, make sure the verdict is
-        # trustworthy. Consider only the source nodes of `value`'s own ontology
-        # (the ones that could possibly reach it). If EVERY such resolving source
-        # node has an empty closure, that whole ontology contributes nothing and
-        # every one of its terms is silently rejected — the signature of a
-        # broken/misconfigured graph (the OLS4 MONDO defect, dismech#7012), not a
-        # real out-of-enum result. Fail loud instead. Requiring *all* same-prefix
-        # sources to be empty keeps a legitimate multi-source union safe: a
-        # childless leaf source alongside a populated sibling does not trip this.
+        # trustworthy. The negative was computed from `value`'s ancestor closure
+        # (or the source node's, under traverse_up); if that same adapter's
+        # ancestor and descendant directions disagree for a same-ontology source
+        # node, the closure is broken and the "not reachable" answer is a silent
+        # false negative (the OLS4 MONDO defect, dismech#7012), not a real
+        # out-of-enum result. Detecting the round-trip inconsistency is
+        # false-positive-free: a genuinely out-of-enum term and a legitimate
+        # childless-leaf source both keep the two directions in agreement.
         traverse_up = bool(getattr(query, "traverse_up", False))
-        same_prefix_sources = [
-            sn for sn in query.source_nodes if sn != value and self._get_prefix(sn) == prefix
-        ]
-        if same_prefix_sources and all(
-            self._reachable_source_reaches_nothing(adapter, sn, predicates, traverse_up)
-            for sn in same_prefix_sources
-        ):
-            raise EmptyReachableClosureError(same_prefix_sources[0], traverse_up=traverse_up)
+        for source_node in query.source_nodes:
+            if source_node == value or self._get_prefix(source_node) != prefix:
+                continue
+            witness = self._reachability_inconsistency_witness(
+                adapter, source_node, predicates, traverse_up
+            )
+            if witness is not None:
+                raise InconsistentReachabilityError(
+                    source_node, witness, traverse_up=traverse_up
+                )
 
         return False
 
@@ -762,77 +766,131 @@ class BaseOntologyPlugin(ValidationPlugin):
     # reachable_from source-node integrity (dismech#7012)
     # =========================================================================
 
-    def _reachable_source_reaches_nothing(
+    # How many closure members to sample when probing round-trip consistency.
+    # The OLS4 MONDO defect is universal (every disease descendant is missing the
+    # root from its ancestors), so a small sample reveals it; more than one guards
+    # against an incidental multi-parent term whose sampled edge happens to hold.
+    _INCONSISTENCY_SAMPLE_SIZE = 8
+
+    def _reachability_inconsistency_witness(
         self, adapter: object, source_node: str, predicates: list[str], traverse_up: bool
-    ) -> bool:
-        """Whether a ``reachable_from`` source node resolves but reaches nothing.
+    ) -> Optional[str]:
+        """Return a closure member proving the adapter's directions disagree.
 
-        A source node is meant to root a subtree (descendants, or ancestors when
-        ``traverse_up``). If it resolves to a real term yet the adapter returns an
-        empty closure for it, every same-ontology term is silently rejected — the
-        signature of a broken/misconfigured graph (dismech#7012). The verdict is
-        cached per (source_node, predicates, direction) so the probe runs once.
+        A round-trip-consistent ontology satisfies: if ``D`` is a descendant of
+        ``S`` then ``S`` is among ``D``'s ancestors (and symmetrically for
+        ``traverse_up``). This samples a few of the source node's closure members
+        and returns the first one that fails the round trip — the signature of a
+        broken graph such as OLS4's MONDO (dismech#7012) — or ``None`` when the
+        directions agree (a healthy graph) or emptiness/undeterminability means we
+        must not flag it (a legitimate childless-leaf source, or an adapter that
+        cannot answer the reverse query). The verdict is cached per
+        (source_node, predicates, direction) so the probe runs at most once.
 
-        A source node that does *not* resolve is left to the ordinary
-        "term not found" handling and reported here as ``False`` (not our concern).
+        A source node that does not resolve is left to ordinary "term not found"
+        handling and reported here as consistent (``None``).
         """
         key = (source_node, tuple(predicates), traverse_up)
-        cached = self._source_closure_empty_cache.get(key)
-        if cached is not None:
-            return cached
+        if key in self._source_inconsistency_cache:
+            return self._source_inconsistency_cache[key]
 
-        if self.get_ontology_label(source_node) is None:
-            self._source_closure_empty_cache[key] = False
-            return False
+        witness: Optional[str] = None
+        if self.get_ontology_label(source_node) is not None:
+            # traverse_up checks "value is an ancestor of source", so its closure
+            # is the source node's ancestors, verified against descendants; the
+            # default checks "value is a descendant of source", so its closure is
+            # the source node's descendants, verified against ancestors.
+            forward = "ancestors" if traverse_up else "descendants"
+            reverse = "descendants" if traverse_up else "ancestors"
+            for member in self._sample_closure(adapter, forward, source_node, predicates):
+                reverse_closure = self._graph_closure(adapter, reverse, member, predicates)
+                if reverse_closure is None:
+                    break  # cannot verify the reverse direction → do not flag
+                if source_node not in reverse_closure:
+                    witness = member
+                    break
 
-        method_name = "ancestors" if traverse_up else "descendants"
-        empty = self._source_closure_is_empty(adapter, method_name, source_node, predicates)
-        self._source_closure_empty_cache[key] = empty
-        return empty
+        self._source_inconsistency_cache[key] = witness
+        return witness
 
-    def _source_closure_is_empty(
+    def _sample_closure(
         self, adapter: object, method_name: str, start_curie: str, predicates: list[str]
-    ) -> bool:
-        """Whether an adapter reports no closure members for ``start_curie``.
+    ) -> list[str]:
+        """Return up to a few genuine closure members for ``start_curie``.
 
-        Iterates the traversal lazily and stops at the first genuine member, so a
-        healthy root (thousands of descendants) is confirmed non-empty in O(1).
-        Only when a native traversal comes back empty do we consult the OLS REST
-        descendants fallback the expansion path already trusts — OAK's OLS adapter
-        returns nothing from ``descendants()`` even for healthy roots — before
-        concluding the closure is truly empty. When emptiness cannot be
-        determined (no usable traversal), returns ``False`` to avoid false alarms.
+        Iterates the traversal lazily and stops after a small sample, so probing a
+        huge root is cheap. Falls back to the OLS REST descendants endpoint (OAK's
+        OLS adapter answers ``descendants()`` with nothing) when a native
+        descendant traversal comes back empty. Returns an empty list when the
+        source node genuinely reaches nothing (a legitimate leaf) or the traversal
+        cannot be answered — either way there is nothing to flag.
         """
-        ran_native = False
+        members: list[str] = []
         method = getattr(adapter, method_name, None)
         if callable(method):
-            ran_native = True
             try:
                 for term in method([start_curie], predicates=predicates):
                     if term != start_curie:
-                        return False  # a real closure member → not empty
+                        members.append(term)
+                    if len(members) >= self._INCONSISTENCY_SAMPLE_SIZE:
+                        return members
             except OntologyServiceUnavailableError:
                 raise
             except Exception as e:  # noqa: BLE001 - adapters raise varied errors
                 raise_if_service_unavailable(start_curie, e)
                 logger.debug(
-                    "Source-closure probe %s([%s]) failed: %s", method_name, start_curie, e
+                    "Closure sample %s([%s]) failed: %s", method_name, start_curie, e
                 )
-                return False  # undeterminable → do not flag
+                return []
 
-        # OAK's OLS adapter answers descendants() with nothing; confirm against the
-        # REST descendants endpoint before deciding a descendant closure is empty.
-        if method_name == "descendants" and self.ontology._is_ols_adapter(adapter):
-            if self._ols_descendants(
+        if not members and method_name == "descendants" and self.ontology._is_ols_adapter(adapter):
+            fallback = self._ols_descendants(
                 adapter=adapter,
                 source_node=start_curie,
                 predicates=predicates,
                 reflexive=False,
-            ):
-                return False
-            return True  # OLS confirmed: resolves but no descendants
+            )
+            members = list(fallback)[: self._INCONSISTENCY_SAMPLE_SIZE]
+        return members
 
-        return ran_native
+    def _graph_closure(
+        self, adapter: object, method_name: str, start_curie: str, predicates: list[str]
+    ) -> Optional[set[str]]:
+        """Return the full closure set for ``start_curie``, or None if unanswerable.
+
+        Used to verify the reverse direction of a round-trip check. Returns an
+        empty set (not None) when the adapter answers with no members, so callers
+        can distinguish "answered: empty" from "could not answer" and never flag
+        an inconsistency they could not actually confirm.
+        """
+        method = getattr(adapter, method_name, None)
+        closure: set[str] = set()
+        answered = False
+        if callable(method):
+            answered = True
+            try:
+                for term in method([start_curie], predicates=predicates):
+                    if term != start_curie:
+                        closure.add(term)
+            except OntologyServiceUnavailableError:
+                raise
+            except Exception as e:  # noqa: BLE001 - adapters raise varied errors
+                raise_if_service_unavailable(start_curie, e)
+                logger.debug(
+                    "Closure lookup %s([%s]) failed: %s", method_name, start_curie, e
+                )
+                return None
+
+        if not closure and method_name == "descendants" and self.ontology._is_ols_adapter(adapter):
+            fallback = self._ols_descendants(
+                adapter=adapter,
+                source_node=start_curie,
+                predicates=predicates,
+                reflexive=False,
+            )
+            if fallback:
+                return set(fallback)
+        return closure if answered else None
 
     # =========================================================================
     # Dynamic Enum Expansion (for cache_strategy="greedy")

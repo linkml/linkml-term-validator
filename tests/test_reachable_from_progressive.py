@@ -29,7 +29,10 @@ from linkml_runtime.linkml_model.meta import (
 )
 
 from linkml_term_validator.plugins import DynamicEnumPlugin
-from linkml_term_validator.utils import EmptyReachableClosureError
+from linkml_term_validator.utils import (
+    EmptyReachableClosureError,
+    InconsistentReachabilityError,
+)
 
 OAK_CONFIG = Path("tests/data/test_oak_config.yaml")
 
@@ -166,22 +169,28 @@ def test_failed_expansion_is_not_cached_as_complete(tmp_path):
     assert plugin._is_enum_cache_complete(enum_def) is False
 
 
-class _EmptyClosureAdapter:
-    """Adapter stub: the source node resolves but reaches an empty closure.
+class _InconsistentClosureAdapter:
+    """Adapter stub whose ancestor/descendant directions disagree.
 
-    Simulates the OLS4 MONDO defect (dismech#7012) where MONDO:0000001 has a
-    label but no descendants, without needing a network call.
+    Faithfully reproduces the OLS4 MONDO defect (dismech#7012) offline: the source
+    root has descendants (the disease tree), but those descendants do NOT report
+    the root among their ancestors — the up-edge is severed while the down-edge is
+    intact. ``MONDO:0000001`` → child ``MONDO:0004992``; that child's ancestors
+    omit the root (they float to a foreign upper term).
     """
 
     def label(self, curie):
-        # Every TEST term resolves (including the source root and the value under
-        # test); only the *closure* is broken, mirroring the OLS4 MONDO defect.
-        return f"term {curie}" if str(curie).startswith("TEST:") else None
+        return f"term {curie}" if str(curie).startswith("MONDO:") else None
 
     def descendants(self, curies, predicates=None):
-        return iter(())  # resolves, but nothing below it
+        if "MONDO:0000001" in list(curies):
+            return iter(["MONDO:0004992"])  # down-edge intact
+        return iter(())
 
     def ancestors(self, curies, predicates=None):
+        # The disease descendant's ancestors omit the root — the OLS4 up-edge bug.
+        if "MONDO:0004992" in list(curies):
+            return iter(["FOREIGN:0000001"])
         return iter(())
 
 
@@ -196,31 +205,49 @@ def _island_enum() -> EnumDefinition:
     )
 
 
-def test_progressive_empty_source_closure_fails_loud(plugin):
-    """dismech#7012: a resolving source node that reaches nothing must fail loud.
+def test_progressive_inconsistent_directions_fail_loud(tmp_path):
+    """dismech#7012: an ancestor/descendant disagreement must fail loud.
 
-    A leaf source node resolves but has no descendants, so the default
-    (traverse-down) enum matches nothing. Rejecting a same-ontology term must
-    raise a distinct error rather than returning a silent wrong ``False`` that
-    looks like an ordinary "not in enum" result.
+    This reproduces the *real* OLS4 MONDO defect: the source root's descendant
+    direction is intact but its ancestor direction is severed, so an ancestor-
+    based membership check silently returns a wrong ``False``. Rejecting a
+    same-ontology term must raise InconsistentReachabilityError, naming the
+    descendant that fails the round trip — not a quiet "not in enum" result.
     """
-    with pytest.raises(EmptyReachableClosureError) as excinfo:
-        plugin.is_value_in_enum("TEST:0000002", _island_enum())
-    assert excinfo.value.source_node == "TEST:0000004"
-    assert excinfo.value.traverse_up is False
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+    plugin.ontology._adapter_cache["MONDO"] = _InconsistentClosureAdapter()
+
+    enum_def = EnumDefinition(
+        name="DiseaseEnum",
+        reachable_from=ReachabilityQuery(
+            source_nodes=["MONDO:0000001"],
+            relationship_types=["rdfs:subClassOf"],
+        ),
+    )
+    with pytest.raises(InconsistentReachabilityError) as excinfo:
+        # MONDO:0004992 is genuinely a descendant of the root, but the severed
+        # ancestor direction makes the check wrongly say "not reachable".
+        plugin.is_value_in_enum("MONDO:0004992", enum_def)
+    assert excinfo.value.source_node == "MONDO:0000001"
+    assert excinfo.value.descendant == "MONDO:0004992"
 
 
 def test_progressive_healthy_source_still_reports_true_negative(plugin):
     """A genuine out-of-enum term under a healthy source must stay a quiet False.
 
-    The integrity guard must not fire when the source node has a real closure:
+    The integrity guard must not fire when the adapter is round-trip consistent:
     TEST:0000005 is a separate root, correctly *not* reachable from TEST:0000001,
-    and that verdict is a legitimate ``False`` — not an EmptyReachableClosureError.
+    and that verdict is a legitimate ``False`` — not an error.
     """
     healthy = EnumDefinition(
         name="HealthyEnum",
         reachable_from=ReachabilityQuery(
-            source_nodes=["TEST:0000001"],  # root → has descendants
+            source_nodes=["TEST:0000001"],  # root → has descendants that round-trip
             relationship_types=["rdfs:subClassOf"],
         ),
     )
@@ -228,13 +255,30 @@ def test_progressive_healthy_source_still_reports_true_negative(plugin):
     assert plugin.is_value_in_enum("TEST:0000005", healthy) is False  # true negative
 
 
-def test_progressive_multi_source_union_leaf_sibling_is_safe(plugin):
-    """A childless leaf source is safe when a sibling source is populated.
+def test_progressive_leaf_source_negative_does_not_flag(plugin):
+    """A childless leaf source producing a correct negative must not be flagged.
 
-    The integrity guard requires *every* same-ontology source node to reach
-    nothing, so a legitimate union (child_one has a descendant; child_two is a
-    leaf) still reports ordinary results — True for a member, a quiet False for a
-    genuine non-member — never EmptyReachableClosureError.
+    A leaf source node has no descendants, so nothing round-trips and there is no
+    inconsistency to detect: rejecting a non-member is a legitimate quiet
+    ``False``, never an error. (This is the false positive an earlier
+    empty-closure heuristic would have raised.)
+    """
+    leaf_enum = EnumDefinition(
+        name="LeafEnum",
+        reachable_from=ReachabilityQuery(
+            source_nodes=["TEST:0000004"],  # grandchild leaf, zero descendants
+            relationship_types=["rdfs:subClassOf"],
+        ),
+    )
+    assert plugin.is_value_in_enum("TEST:0000002", leaf_enum) is False
+
+
+def test_progressive_multi_source_union_leaf_sibling_is_safe(plugin):
+    """A childless leaf source is safe alongside a populated, consistent sibling.
+
+    A legitimate union (child_one has a round-tripping descendant; child_two is a
+    leaf) reports ordinary results — True for a member, a quiet False for a
+    genuine non-member — never an error.
     """
     union = EnumDefinition(
         name="UnionEnum",
@@ -247,37 +291,13 @@ def test_progressive_multi_source_union_leaf_sibling_is_safe(plugin):
     assert plugin.is_value_in_enum("TEST:0000005", union) is False  # genuine negative
 
 
-def test_progressive_empty_source_closure_via_stub_adapter(tmp_path):
-    """The guard triggers on an adapter whose source node resolves but reaches nothing.
-
-    Uses a stub standing in for the OLS4 MONDO graph (resolvable root, empty
-    descendant closure) so the OLS-specific defect is covered offline.
-    """
-    plugin = DynamicEnumPlugin(
-        oak_config_path=OAK_CONFIG,
-        cache_labels=False,
-        cache_enum_expansions=False,
-        cache_dir=tmp_path / "cache",
-    )
-    plugin.ontology._adapter_cache["TEST"] = _EmptyClosureAdapter()
-
-    enum_def = EnumDefinition(
-        name="OlsLikeEnum",
-        reachable_from=ReachabilityQuery(
-            source_nodes=["TEST:0000001"],
-            relationship_types=["rdfs:subClassOf"],
-        ),
-    )
-    with pytest.raises(EmptyReachableClosureError):
-        plugin.is_value_in_enum("TEST:0000002", enum_def)
-
-
 def test_greedy_empty_source_closure_is_not_cached_as_complete(tmp_path):
-    """dismech#7012: an empty closure must not be persisted as a complete cache.
+    """dismech#7012: an empty expansion must not be persisted as a complete cache.
 
-    Regenerating an enum whose source node reaches nothing (the OLS4 MONDO case)
-    previously produced an empty-but-``complete`` cache that silently rejected
-    every term forever. Expansion must now raise and leave no completion marker.
+    A resolvable source node that expands to nothing (e.g. the only source is a
+    childless leaf) would otherwise produce an empty-but-``complete`` cache that
+    silently rejects every term forever. Expansion must raise instead and leave
+    no completion marker.
     """
     plugin = DynamicEnumPlugin(
         oak_config_path=OAK_CONFIG,
@@ -293,20 +313,43 @@ def test_greedy_empty_source_closure_is_not_cached_as_complete(tmp_path):
     assert plugin._is_enum_cache_complete(enum_def) is False
 
 
-def test_empty_source_closure_probe_is_cached(plugin):
-    """The source-closure integrity probe is computed once and memoized."""
-    adapter = plugin._get_adapter("TEST")
-    # A leaf source node resolves but reaches nothing → flagged and cached.
-    assert plugin._reachable_source_reaches_nothing(
-        adapter, "TEST:0000004", ["rdfs:subClassOf"], False
+def test_inconsistency_probe_is_cached(tmp_path):
+    """The round-trip inconsistency probe is computed once and memoized."""
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
     )
-    assert plugin._source_closure_empty_cache[("TEST:0000004", ("rdfs:subClassOf",), False)] is True
-    # A healthy root is recorded as non-empty (no false positive).
-    assert not plugin._reachable_source_reaches_nothing(
-        adapter, "TEST:0000001", ["rdfs:subClassOf"], False
+    adapter = _InconsistentClosureAdapter()
+    plugin.ontology._adapter_cache["MONDO"] = adapter  # so the source node resolves
+    # A severed ancestor direction is flagged, with the offending descendant cached.
+    witness = plugin._reachability_inconsistency_witness(
+        adapter, "MONDO:0000001", ["rdfs:subClassOf"], False
+    )
+    assert witness == "MONDO:0004992"
+    assert (
+        plugin._source_inconsistency_cache[("MONDO:0000001", ("rdfs:subClassOf",), False)]
+        == "MONDO:0004992"
+    )
+
+    # A healthy, round-trip-consistent adapter is recorded as consistent (None).
+    healthy_adapter = plugin._get_adapter("TEST")
+    assert (
+        plugin._reachability_inconsistency_witness(
+            healthy_adapter, "TEST:0000001", ["rdfs:subClassOf"], False
+        )
+        is None
     )
     assert (
-        plugin._source_closure_empty_cache[("TEST:0000001", ("rdfs:subClassOf",), False)] is False
+        plugin._source_inconsistency_cache[("TEST:0000001", ("rdfs:subClassOf",), False)] is None
+    )
+    # A childless leaf reaches nothing → nothing to round-trip → consistent (None).
+    assert (
+        plugin._reachability_inconsistency_witness(
+            healthy_adapter, "TEST:0000004", ["rdfs:subClassOf"], False
+        )
+        is None
     )
 
 

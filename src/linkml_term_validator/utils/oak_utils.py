@@ -50,25 +50,26 @@ class OntologyServiceUnavailableError(Exception):
         super().__init__(f"could not reach ontology service to resolve {curie}{detail}")
 
 
-class EmptyReachableClosureError(Exception):
+class UnreliableReachabilityError(Exception):
+    """Base for "a reachable_from verdict could not be trusted" failures.
+
+    Distinct from invalid data: the term's membership could not be reliably
+    computed because the configured ontology adapter returned a broken or
+    self-contradictory graph. Callers surface this as "unable to validate"
+    (a configuration/ontology-graph problem) rather than "term not in enum".
+    """
+
+
+class EmptyReachableClosureError(UnreliableReachabilityError):
     """Raised when a ``reachable_from`` source node resolves but reaches nothing.
 
     A ``reachable_from`` source node is meant to root a subtree — its descendants
-    (or, for ``traverse_up``, its ancestors). When the node resolves to a real
-    ontology term yet the configured adapter returns an *empty* closure for it,
-    two silent failures follow: every same-ontology term is rejected as "not in
+    (or, for ``traverse_up``, its ancestors). When at least one source node
+    resolves to a real ontology term yet the whole query expands to an *empty*
+    set, two silent failures follow: every candidate term is rejected as "not in
     enum" (a wrong ``False``, not an error), and any greedy expansion is cached as
     an empty-but-``complete`` closure that poisons later runs. That is never a
-    useful validation configuration — it is the signature of a broken or
-    misconfigured ontology graph — so this exception is raised to fail loud
-    instead of silently mislabeling terms.
-
-    The motivating case (dismech#7012): OLS4 drops ``MONDO:0000001`` from every
-    MONDO ancestor closure (the ``human disease`` axiom is rewired to a
-    cross-ontology ``AFO_O:0000001`` term), so ``ols:mondo`` returns no
-    descendants for ``MONDO:0000001`` and silently rejects all MONDO terms.
-    Configuring a local, deterministic adapter (e.g. ``sqlite:obo:mondo``) for the
-    prefix restores the correct closure.
+    useful validation configuration, so this exception is raised to fail loud.
     """
 
     def __init__(self, source_node: str, traverse_up: bool = False):
@@ -78,12 +79,54 @@ class EmptyReachableClosureError(Exception):
         prefix = get_prefix(source_node) or source_node
         super().__init__(
             f"reachable_from source node {source_node!r} resolves to a valid term but "
-            f"its {direction} closure is empty under the configured adapter, so every "
-            f"{prefix} term would be silently rejected. This usually means the ontology "
-            f"graph returned by the adapter is broken or misconfigured (e.g. OLS4 drops "
-            f"MONDO:0000001 from MONDO closures — see dismech#7012). Configure a local "
-            f"adapter such as 'sqlite:obo:{prefix.lower()}' for the {prefix} prefix, or "
-            f"verify the source node is correct."
+            f"the query expands to an empty set (its {direction} closure is empty under "
+            f"the configured adapter), so every {prefix} term would be silently rejected. "
+            f"This usually means the source node or adapter is misconfigured. Verify the "
+            f"source node, or configure a local adapter such as 'sqlite:obo:{prefix.lower()}'."
+        )
+
+
+class InconsistentReachabilityError(UnreliableReachabilityError):
+    """Raised when an adapter's ancestor and descendant directions disagree.
+
+    A correct ontology is round-trip consistent: if ``D`` is a descendant of
+    ``S`` then ``S`` is among ``D``'s ancestors. When a ``reachable_from`` source
+    node ``S`` resolves and *has* descendants, yet those descendants do **not**
+    report ``S`` among their ancestors, the adapter's hierarchy is internally
+    inconsistent. Ancestor-based membership checks (the progressive per-value
+    path) then silently return wrong negatives while the descendant direction
+    looks fine — a failure no "term not found" or "empty closure" check catches.
+
+    The motivating case (dismech#7012): OLS4 drops ``MONDO:0000001`` from every
+    MONDO *ancestor* closure — the ``human disease`` axiom is rewired to a
+    cross-ontology ``AFO_O:0000001`` term — while ``descendants(MONDO:0000001)``
+    still returns the whole disease tree. So ``ols:mondo`` silently rejects every
+    MONDO term validated by ancestor reachability. Configuring a local,
+    deterministic adapter (e.g. ``sqlite:obo:mondo``) restores a consistent graph.
+    """
+
+    def __init__(self, source_node: str, descendant: str, traverse_up: bool = False):
+        self.source_node = source_node
+        self.descendant = descendant
+        self.traverse_up = traverse_up
+        prefix = get_prefix(source_node) or source_node
+        if traverse_up:
+            detail = (
+                f"ancestor {descendant!r} of source node {source_node!r} does not report "
+                f"it among its descendants"
+            )
+        else:
+            detail = (
+                f"descendant {descendant!r} of source node {source_node!r} does not report "
+                f"it among its ancestors"
+            )
+        super().__init__(
+            f"reachable_from graph is internally inconsistent: {detail}. The adapter's "
+            f"ancestor and descendant directions disagree, so ancestor-based membership "
+            f"checks silently return wrong negatives for {prefix} terms (the OLS4 MONDO "
+            f"defect — MONDO:0000001 is dropped from MONDO ancestor closures; see "
+            f"dismech#7012). Configure a local, consistent adapter such as "
+            f"'sqlite:obo:{prefix.lower()}' for the {prefix} prefix."
         )
 
 

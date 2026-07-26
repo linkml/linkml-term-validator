@@ -169,29 +169,44 @@ Dynamic enums are appropriate when:
 linkml-term-validator validate-data data.yaml -s schema.yaml -t ClassName
 ```
 
-### Broken-adapter safeguard (empty source closures)
+### Broken-adapter safeguards
 
-A `reachable_from` source node is meant to root a subtree — its descendants
-(or, with `traverse_up`, its ancestors). If a source node **resolves to a real
-ontology term but the configured adapter returns an empty closure for it**, the
-validator fails loudly with an `EmptyReachableClosureError` (CLI exit code `3`)
-instead of silently rejecting every term of that ontology.
+`reachable_from` validation fails loudly (CLI exit code `3`) rather than
+silently mislabeling terms when the configured ontology adapter returns a
+broken graph. Two distinct defects are caught:
 
-This guards against a broken or misconfigured ontology graph. The motivating
-case ([dismech#7012](https://github.com/monarch-initiative/dismech/issues/7012))
-is the OLS4 adapter (`ols:mondo`) dropping `MONDO:0000001` from every MONDO
-ancestor closure: under it, `reachable_from` rooted at `MONDO:0000001` returns
-no descendants, so every MONDO term would otherwise be silently marked "not in
-enum," and a greedy/materialized expansion would cache an *empty-but-complete*
-closure that poisons later runs.
+**1. Inconsistent hierarchy directions (`InconsistentReachabilityError`).**
+A correct ontology is round-trip consistent: if `D` is a descendant of `S`,
+then `S` is among `D`'s ancestors. The progressive per-value check answers
+"is `S` an ancestor of the value?" from the value's *ancestor* closure, so an
+adapter whose ancestor and descendant directions **disagree** returns wrong
+negatives with no error. Before reporting such a negative, the validator
+samples a few of the source node's descendants and checks the round trip; if a
+genuine descendant does not report the source node among its ancestors, it
+raises instead.
 
-The check is deliberately conservative — it never flags a legitimate config:
+This is the motivating case
+([dismech#7012](https://github.com/monarch-initiative/dismech/issues/7012)):
+the OLS4 adapter (`ols:mondo`) drops `MONDO:0000001` from every MONDO
+**ancestor** closure (the `human disease` axiom is rewired to a cross-ontology
+`AFO_O:0000001` term), while `descendants(MONDO:0000001)` still returns the
+whole disease tree. So ancestor-based membership silently rejects every MONDO
+term even though the descendant direction looks fine.
 
-- A **multi-source union** where one branch is a childless leaf and another has
-  descendants still expands non-empty, so it is never flagged.
-- The per-value (progressive) check only fires when **every** source node of the
-  value's own ontology reaches nothing.
-- An `include_self` single-term enum keeps its source node, so it is non-empty.
+**2. Empty expansion (`EmptyReachableClosureError`).** If at least one source
+node resolves yet the whole `reachable_from` query expands to nothing, the enum
+matches no term and a greedy/materialized expansion would cache an
+*empty-but-complete* closure that poisons later runs. Expansion raises instead
+of persisting it.
+
+Both checks are deliberately conservative and never flag a legitimate config:
+
+- A genuinely out-of-enum term keeps the two directions in agreement (it is
+  absent from both), so a correct negative is never flagged.
+- A **childless leaf source** reaches nothing, so nothing round-trips — a
+  correct negative under it stays a quiet `False`.
+- A **multi-source union** (a leaf branch alongside a populated one) still
+  expands non-empty and round-trips.
 
 The fix is to configure a local, deterministic adapter (e.g.
 `sqlite:obo:mondo`) for the affected prefix, or correct the source node.
