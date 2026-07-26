@@ -175,23 +175,25 @@ linkml-term-validator validate-data data.yaml -s schema.yaml -t ClassName
 silently mislabeling terms when the configured ontology adapter returns a
 broken graph. Two distinct defects are caught:
 
-**1. Inconsistent hierarchy directions (`InconsistentReachabilityError`).**
+**1. Reachability inconsistent by CURIE (`InconsistentReachabilityError`).**
 A correct ontology is round-trip consistent: if `D` is a descendant of `S`,
 then `S` is among `D`'s ancestors. The progressive per-value check answers
-"is `S` an ancestor of the value?" from the value's *ancestor* closure, so an
-adapter whose ancestor and descendant directions **disagree** returns wrong
-negatives with no error. Before reporting such a negative, the validator
-samples a few of the source node's descendants and checks the round trip; if a
-genuine descendant does not report the source node among its ancestors, it
+"is `S` an ancestor of the value?" by **CURIE**, so an adapter that reports a
+term under a different CURIE than the one used to root the enum returns wrong
+negatives with no error. Before reporting such a negative, the validator samples
+a few of the source node's descendants and checks the round trip; if a genuine
+descendant does not report the source node among its ancestors by CURIE, it
 raises instead.
 
-This is the motivating case
-([dismech#7012](https://github.com/monarch-initiative/dismech/issues/7012)):
-the OLS4 adapter (`ols:mondo`) drops `MONDO:0000001` from every MONDO
-**ancestor** closure (the `human disease` axiom is rewired to a cross-ontology
-`AFO_O:0000001` term), while `descendants(MONDO:0000001)` still returns the
-whole disease tree. So ancestor-based membership silently rejects every MONDO
-term even though the descendant direction looks fine.
+The motivating case
+([dismech#7012](https://github.com/monarch-initiative/dismech/issues/7012)) is a
+CURIE/identifier merge, **not** a broken hierarchy: OLS4 conflates
+`MONDO:0000001` with a cross-ontology term also labelled "disease" and returns
+the term at IRI `.../MONDO_0000001` under the wrong `obo_id` `AFO_O:0000001`.
+The hierarchy is *correct by IRI* — the root really is an ancestor — but every
+CURIE-matching consumer (oaklib's OLS adapter, and therefore this validator)
+sees the ancestor as `AFO_O:0000001`, so `MONDO:0000001` is unmatchable by CURIE
+and every MONDO term silently fails ancestor-based reachability.
 
 **2. Empty expansion (`EmptyReachableClosureError`).** If at least one source
 node resolves yet the whole `reachable_from` query expands to nothing, the enum

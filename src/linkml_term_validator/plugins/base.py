@@ -693,14 +693,16 @@ class BaseOntologyPlugin(ValidationPlugin):
 
         # No source node reached `value`. `value` itself resolved (checked above),
         # so before returning a definitive negative, make sure the verdict is
-        # trustworthy. The negative was computed from `value`'s ancestor closure
-        # (or the source node's, under traverse_up); if that same adapter's
-        # ancestor and descendant directions disagree for a same-ontology source
-        # node, the closure is broken and the "not reachable" answer is a silent
-        # false negative (the OLS4 MONDO defect, dismech#7012), not a real
-        # out-of-enum result. Detecting the round-trip inconsistency is
-        # false-positive-free: a genuinely out-of-enum term and a legitimate
-        # childless-leaf source both keep the two directions in agreement.
+        # trustworthy. The negative was computed by CURIE from `value`'s ancestor
+        # closure (or the source node's, under traverse_up); if the adapter reports
+        # a same-ontology source node's own descendants without listing that source
+        # among their ancestors *by CURIE*, reachability is broken and the "not
+        # reachable" answer is a silent false negative, not a real out-of-enum
+        # result. The motivating case (dismech#7012): OLS4 returns MONDO:0000001
+        # under the wrong obo_id AFO_O:0000001, so the hierarchy is right by IRI
+        # but MONDO:0000001 is unmatchable by CURIE. Detecting the round-trip
+        # mismatch is false-positive-free: a genuinely out-of-enum term and a
+        # legitimate childless-leaf source both keep the round trip consistent.
         traverse_up = bool(getattr(query, "traverse_up", False))
         for source_node in query.source_nodes:
             if source_node == value or self._get_prefix(source_node) != prefix:

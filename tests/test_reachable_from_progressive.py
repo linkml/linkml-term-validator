@@ -170,13 +170,15 @@ def test_failed_expansion_is_not_cached_as_complete(tmp_path):
 
 
 class _InconsistentClosureAdapter:
-    """Adapter stub whose ancestor/descendant directions disagree.
+    """Adapter stub reproducing the OLS4 MONDO defect (dismech#7012) offline.
 
-    Faithfully reproduces the OLS4 MONDO defect (dismech#7012) offline: the source
-    root has descendants (the disease tree), but those descendants do NOT report
-    the root among their ancestors — the up-edge is severed while the down-edge is
-    intact. ``MONDO:0000001`` → child ``MONDO:0004992``; that child's ancestors
-    omit the root (they float to a foreign upper term).
+    The defect is a CURIE/identifier merge, not a broken hierarchy: OLS4 returns
+    the term at IRI ``.../MONDO_0000001`` under the wrong ``obo_id``
+    ``AFO_O:0000001`` (a cross-ontology term also labelled "disease"). As a
+    result, by CURIE the source root's own descendants never list it among their
+    ancestors — ``MONDO:0000001`` → descendant ``MONDO:0004992``, whose ancestors
+    report the root as ``AFO_O:0000001`` instead of ``MONDO:0000001``. This is
+    exactly what oaklib's OLS adapter hands the validator.
     """
 
     def label(self, curie):
@@ -184,13 +186,14 @@ class _InconsistentClosureAdapter:
 
     def descendants(self, curies, predicates=None):
         if "MONDO:0000001" in list(curies):
-            return iter(["MONDO:0004992"])  # down-edge intact
+            return iter(["MONDO:0004992"])  # hierarchy intact by IRI
         return iter(())
 
     def ancestors(self, curies, predicates=None):
-        # The disease descendant's ancestors omit the root — the OLS4 up-edge bug.
+        # The root appears, but under its corrupted CURIE (AFO_O:0000001), so a
+        # CURIE match for MONDO:0000001 misses it — the observed OLS4 behavior.
         if "MONDO:0004992" in list(curies):
-            return iter(["FOREIGN:0000001"])
+            return iter(["AFO_O:0000001"])
         return iter(())
 
 
@@ -206,13 +209,14 @@ def _island_enum() -> EnumDefinition:
 
 
 def test_progressive_inconsistent_directions_fail_loud(tmp_path):
-    """dismech#7012: an ancestor/descendant disagreement must fail loud.
+    """dismech#7012: a CURIE-level reachability inconsistency must fail loud.
 
-    This reproduces the *real* OLS4 MONDO defect: the source root's descendant
-    direction is intact but its ancestor direction is severed, so an ancestor-
-    based membership check silently returns a wrong ``False``. Rejecting a
-    same-ontology term must raise InconsistentReachabilityError, naming the
-    descendant that fails the round trip — not a quiet "not in enum" result.
+    This reproduces the *real* OLS4 MONDO defect: the root is present in the
+    hierarchy (by IRI) but returned under a corrupted CURIE (``AFO_O:0000001``),
+    so an ancestor-based membership check matching by CURIE silently returns a
+    wrong ``False``. Rejecting a same-ontology term must raise
+    InconsistentReachabilityError, naming the descendant that fails the round
+    trip — not a quiet "not in enum" result.
     """
     plugin = DynamicEnumPlugin(
         oak_config_path=OAK_CONFIG,

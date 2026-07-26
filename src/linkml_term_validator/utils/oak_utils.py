@@ -87,22 +87,25 @@ class EmptyReachableClosureError(UnreliableReachabilityError):
 
 
 class InconsistentReachabilityError(UnreliableReachabilityError):
-    """Raised when an adapter's ancestor and descendant directions disagree.
+    """Raised when an adapter's reachability is inconsistent *by CURIE*.
 
     A correct ontology is round-trip consistent: if ``D`` is a descendant of
     ``S`` then ``S`` is among ``D``'s ancestors. When a ``reachable_from`` source
     node ``S`` resolves and *has* descendants, yet those descendants do **not**
-    report ``S`` among their ancestors, the adapter's hierarchy is internally
-    inconsistent. Ancestor-based membership checks (the progressive per-value
-    path) then silently return wrong negatives while the descendant direction
-    looks fine — a failure no "term not found" or "empty closure" check catches.
+    report ``S`` among their ancestors (matched by CURIE), ancestor-based
+    membership checks (the progressive per-value path) silently return wrong
+    negatives — a failure no "term not found" or "empty closure" check catches.
 
-    The motivating case (dismech#7012): OLS4 drops ``MONDO:0000001`` from every
-    MONDO *ancestor* closure — the ``human disease`` axiom is rewired to a
-    cross-ontology ``AFO_O:0000001`` term — while ``descendants(MONDO:0000001)``
-    still returns the whole disease tree. So ``ols:mondo`` silently rejects every
-    MONDO term validated by ancestor reachability. Configuring a local,
-    deterministic adapter (e.g. ``sqlite:obo:mondo``) restores a consistent graph.
+    The motivating case (dismech#7012) is subtler than a broken hierarchy: OLS4
+    conflates ``MONDO:0000001`` with a cross-ontology term also labelled
+    "disease" and reports the term at IRI ``.../MONDO_0000001`` under the wrong
+    ``obo_id`` ``AFO_O:0000001`` (its ``short_form`` and ``label`` are corrupted
+    too). The *hierarchy is correct by IRI* — the root really is an ancestor —
+    but every CURIE-matching consumer (oaklib's OLS adapter, and therefore this
+    validator) sees the ancestor as ``AFO_O:0000001``, so ``MONDO:0000001``'s own
+    descendants never list it as an ancestor by CURIE and every MONDO term fails
+    CURIE-based reachability. Configuring a local, deterministic adapter (e.g.
+    ``sqlite:obo:mondo``) avoids the corrupted identifiers.
     """
 
     def __init__(self, source_node: str, descendant: str, traverse_up: bool = False):
@@ -121,11 +124,13 @@ class InconsistentReachabilityError(UnreliableReachabilityError):
                 f"it among its ancestors"
             )
         super().__init__(
-            f"reachable_from graph is internally inconsistent: {detail}. The adapter's "
-            f"ancestor and descendant directions disagree, so ancestor-based membership "
-            f"checks silently return wrong negatives for {prefix} terms (the OLS4 MONDO "
-            f"defect — MONDO:0000001 is dropped from MONDO ancestor closures; see "
-            f"dismech#7012). Configure a local, consistent adapter such as "
+            f"reachable_from reachability is inconsistent by CURIE: {detail}. This happens "
+            f"when the adapter reports a term under a different CURIE than the one used to "
+            f"root the enum, so ancestor-based checks silently return wrong negatives for "
+            f"{prefix} terms. The motivating case (dismech#7012): OLS4 returns the term at "
+            f"IRI .../MONDO_0000001 with obo_id 'AFO_O:0000001' (a cross-ontology term also "
+            f"labelled 'disease'), so the hierarchy is correct by IRI but MONDO:0000001 is "
+            f"unmatchable by CURIE. Configure a local adapter such as "
             f"'sqlite:obo:{prefix.lower()}' for the {prefix} prefix."
         )
 
