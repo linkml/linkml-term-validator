@@ -169,6 +169,33 @@ Dynamic enums are appropriate when:
 linkml-term-validator validate-data data.yaml -s schema.yaml -t ClassName
 ```
 
+### Broken-adapter safeguard (empty source closures)
+
+A `reachable_from` source node is meant to root a subtree — its descendants
+(or, with `traverse_up`, its ancestors). If a source node **resolves to a real
+ontology term but the configured adapter returns an empty closure for it**, the
+validator fails loudly with an `EmptyReachableClosureError` (CLI exit code `3`)
+instead of silently rejecting every term of that ontology.
+
+This guards against a broken or misconfigured ontology graph. The motivating
+case ([dismech#7012](https://github.com/monarch-initiative/dismech/issues/7012))
+is the OLS4 adapter (`ols:mondo`) dropping `MONDO:0000001` from every MONDO
+ancestor closure: under it, `reachable_from` rooted at `MONDO:0000001` returns
+no descendants, so every MONDO term would otherwise be silently marked "not in
+enum," and a greedy/materialized expansion would cache an *empty-but-complete*
+closure that poisons later runs.
+
+The check is deliberately conservative — it never flags a legitimate config:
+
+- A **multi-source union** where one branch is a childless leaf and another has
+  descendants still expands non-empty, so it is never flagged.
+- The per-value (progressive) check only fires when **every** source node of the
+  value's own ontology reaches nothing.
+- An `include_self` single-term enum keeps its source node, so it is non-empty.
+
+The fix is to configure a local, deterministic adapter (e.g.
+`sqlite:obo:mondo`) for the affected prefix, or correct the source node.
+
 ## Static vs Dynamic: Trade-offs
 
 | Aspect | Static Enum | Dynamic Enum |

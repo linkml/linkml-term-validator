@@ -29,6 +29,7 @@ from linkml_runtime.linkml_model.meta import (
 )
 
 from linkml_term_validator.plugins import DynamicEnumPlugin
+from linkml_term_validator.utils import EmptyReachableClosureError
 
 OAK_CONFIG = Path("tests/data/test_oak_config.yaml")
 
@@ -163,6 +164,150 @@ def test_failed_expansion_is_not_cached_as_complete(tmp_path):
 
     # And the cache must not have been marked complete.
     assert plugin._is_enum_cache_complete(enum_def) is False
+
+
+class _EmptyClosureAdapter:
+    """Adapter stub: the source node resolves but reaches an empty closure.
+
+    Simulates the OLS4 MONDO defect (dismech#7012) where MONDO:0000001 has a
+    label but no descendants, without needing a network call.
+    """
+
+    def label(self, curie):
+        # Every TEST term resolves (including the source root and the value under
+        # test); only the *closure* is broken, mirroring the OLS4 MONDO defect.
+        return f"term {curie}" if str(curie).startswith("TEST:") else None
+
+    def descendants(self, curies, predicates=None):
+        return iter(())  # resolves, but nothing below it
+
+    def ancestors(self, curies, predicates=None):
+        return iter(())
+
+
+def _island_enum() -> EnumDefinition:
+    """Enum whose (leaf) source node resolves but has no descendants."""
+    return EnumDefinition(
+        name="IslandEnum",
+        reachable_from=ReachabilityQuery(
+            source_nodes=["TEST:0000004"],  # grandchild leaf → zero descendants
+            relationship_types=["rdfs:subClassOf"],
+        ),
+    )
+
+
+def test_progressive_empty_source_closure_fails_loud(plugin):
+    """dismech#7012: a resolving source node that reaches nothing must fail loud.
+
+    A leaf source node resolves but has no descendants, so the default
+    (traverse-down) enum matches nothing. Rejecting a same-ontology term must
+    raise a distinct error rather than returning a silent wrong ``False`` that
+    looks like an ordinary "not in enum" result.
+    """
+    with pytest.raises(EmptyReachableClosureError) as excinfo:
+        plugin.is_value_in_enum("TEST:0000002", _island_enum())
+    assert excinfo.value.source_node == "TEST:0000004"
+    assert excinfo.value.traverse_up is False
+
+
+def test_progressive_healthy_source_still_reports_true_negative(plugin):
+    """A genuine out-of-enum term under a healthy source must stay a quiet False.
+
+    The integrity guard must not fire when the source node has a real closure:
+    TEST:0000005 is a separate root, correctly *not* reachable from TEST:0000001,
+    and that verdict is a legitimate ``False`` — not an EmptyReachableClosureError.
+    """
+    healthy = EnumDefinition(
+        name="HealthyEnum",
+        reachable_from=ReachabilityQuery(
+            source_nodes=["TEST:0000001"],  # root → has descendants
+            relationship_types=["rdfs:subClassOf"],
+        ),
+    )
+    assert plugin.is_value_in_enum("TEST:0000004", healthy) is True  # in-enum
+    assert plugin.is_value_in_enum("TEST:0000005", healthy) is False  # true negative
+
+
+def test_progressive_multi_source_union_leaf_sibling_is_safe(plugin):
+    """A childless leaf source is safe when a sibling source is populated.
+
+    The integrity guard requires *every* same-ontology source node to reach
+    nothing, so a legitimate union (child_one has a descendant; child_two is a
+    leaf) still reports ordinary results — True for a member, a quiet False for a
+    genuine non-member — never EmptyReachableClosureError.
+    """
+    union = EnumDefinition(
+        name="UnionEnum",
+        reachable_from=ReachabilityQuery(
+            source_nodes=["TEST:0000002", "TEST:0000003"],  # populated + leaf
+            relationship_types=["rdfs:subClassOf"],
+        ),
+    )
+    assert plugin.is_value_in_enum("TEST:0000004", union) is True  # under child_one
+    assert plugin.is_value_in_enum("TEST:0000005", union) is False  # genuine negative
+
+
+def test_progressive_empty_source_closure_via_stub_adapter(tmp_path):
+    """The guard triggers on an adapter whose source node resolves but reaches nothing.
+
+    Uses a stub standing in for the OLS4 MONDO graph (resolvable root, empty
+    descendant closure) so the OLS-specific defect is covered offline.
+    """
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+    plugin.ontology._adapter_cache["TEST"] = _EmptyClosureAdapter()
+
+    enum_def = EnumDefinition(
+        name="OlsLikeEnum",
+        reachable_from=ReachabilityQuery(
+            source_nodes=["TEST:0000001"],
+            relationship_types=["rdfs:subClassOf"],
+        ),
+    )
+    with pytest.raises(EmptyReachableClosureError):
+        plugin.is_value_in_enum("TEST:0000002", enum_def)
+
+
+def test_greedy_empty_source_closure_is_not_cached_as_complete(tmp_path):
+    """dismech#7012: an empty closure must not be persisted as a complete cache.
+
+    Regenerating an enum whose source node reaches nothing (the OLS4 MONDO case)
+    previously produced an empty-but-``complete`` cache that silently rejected
+    every term forever. Expansion must now raise and leave no completion marker.
+    """
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=True,  # caching on, so we can inspect the marker
+        cache_dir=tmp_path / "cache",
+    )
+    enum_def = _island_enum()
+
+    with pytest.raises(EmptyReachableClosureError):
+        plugin.expand_enum(enum_def, use_cache=True)
+
+    assert plugin._is_enum_cache_complete(enum_def) is False
+
+
+def test_empty_source_closure_probe_is_cached(plugin):
+    """The source-closure integrity probe is computed once and memoized."""
+    adapter = plugin._get_adapter("TEST")
+    # A leaf source node resolves but reaches nothing → flagged and cached.
+    assert plugin._reachable_source_reaches_nothing(
+        adapter, "TEST:0000004", ["rdfs:subClassOf"], False
+    )
+    assert plugin._source_closure_empty_cache[("TEST:0000004", ("rdfs:subClassOf",), False)] is True
+    # A healthy root is recorded as non-empty (no false positive).
+    assert not plugin._reachable_source_reaches_nothing(
+        adapter, "TEST:0000001", ["rdfs:subClassOf"], False
+    )
+    assert (
+        plugin._source_closure_empty_cache[("TEST:0000001", ("rdfs:subClassOf",), False)] is False
+    )
 
 
 def _base_enum() -> EnumDefinition:

@@ -22,7 +22,10 @@ from linkml_term_validator.plugins import (
     BindingValidationPlugin,
     DynamicEnumPlugin,
 )
-from linkml_term_validator.utils import OntologyServiceUnavailableError
+from linkml_term_validator.utils import (
+    EmptyReachableClosureError,
+    OntologyServiceUnavailableError,
+)
 from linkml_term_validator.validator import EnumValidator
 
 app = typer.Typer(
@@ -35,6 +38,12 @@ app = typer.Typer(
 # code 1 used for genuine validation failures so callers/scripts can tell an
 # ontology-service outage apart from invalid data.
 EXIT_SERVICE_UNAVAILABLE = 2
+
+# Exit code for "could not validate" because the ontology graph / adapter config
+# is broken (a reachable_from source node reaches an empty closure). Distinct
+# from both invalid data (1) and a transient service outage (2): this one is not
+# fixed by retrying, only by fixing the adapter configuration.
+EXIT_ONTOLOGY_MISCONFIGURED = 3
 
 
 def _fail_service_unavailable(exc: OntologyServiceUnavailableError) -> typer.Exit:
@@ -53,6 +62,25 @@ def _fail_service_unavailable(exc: OntologyServiceUnavailableError) -> typer.Exi
         err=True,
     )
     return typer.Exit(code=EXIT_SERVICE_UNAVAILABLE)
+
+
+def _fail_empty_reachable_closure(exc: EmptyReachableClosureError) -> typer.Exit:
+    """Report a dynamic-enum source node that reaches nothing, with a distinct code.
+
+    A resolving ``reachable_from`` source node whose closure is empty makes every
+    same-ontology term silently invalid, so reachability could not be computed
+    reliably. That is a configuration/ontology-graph problem, not invalid data,
+    and unlike a transient outage it will not fix itself on retry.
+    """
+    typer.echo(
+        "\n🚫 Unable to validate: a dynamic-enum source node reaches nothing.\n"
+        f"   {exc}\n"
+        "   Reachability could not be computed reliably, so terms were not "
+        "checked. This is a configuration/ontology-graph problem, not invalid "
+        "data.",
+        err=True,
+    )
+    return typer.Exit(code=EXIT_ONTOLOGY_MISCONFIGURED)
 
 
 @app.command()
@@ -355,6 +383,8 @@ def validate_data(
             report = validator.validate_source(loader, target_class=target_class)
         except OntologyServiceUnavailableError as exc:
             raise _fail_service_unavailable(exc) from exc
+        except EmptyReachableClosureError as exc:
+            raise _fail_empty_reachable_closure(exc) from exc
 
         if len(report.results) == 0:
             if len(data_paths) > 1:

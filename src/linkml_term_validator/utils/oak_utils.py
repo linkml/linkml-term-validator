@@ -50,6 +50,43 @@ class OntologyServiceUnavailableError(Exception):
         super().__init__(f"could not reach ontology service to resolve {curie}{detail}")
 
 
+class EmptyReachableClosureError(Exception):
+    """Raised when a ``reachable_from`` source node resolves but reaches nothing.
+
+    A ``reachable_from`` source node is meant to root a subtree — its descendants
+    (or, for ``traverse_up``, its ancestors). When the node resolves to a real
+    ontology term yet the configured adapter returns an *empty* closure for it,
+    two silent failures follow: every same-ontology term is rejected as "not in
+    enum" (a wrong ``False``, not an error), and any greedy expansion is cached as
+    an empty-but-``complete`` closure that poisons later runs. That is never a
+    useful validation configuration — it is the signature of a broken or
+    misconfigured ontology graph — so this exception is raised to fail loud
+    instead of silently mislabeling terms.
+
+    The motivating case (dismech#7012): OLS4 drops ``MONDO:0000001`` from every
+    MONDO ancestor closure (the ``human disease`` axiom is rewired to a
+    cross-ontology ``AFO_O:0000001`` term), so ``ols:mondo`` returns no
+    descendants for ``MONDO:0000001`` and silently rejects all MONDO terms.
+    Configuring a local, deterministic adapter (e.g. ``sqlite:obo:mondo``) for the
+    prefix restores the correct closure.
+    """
+
+    def __init__(self, source_node: str, traverse_up: bool = False):
+        self.source_node = source_node
+        self.traverse_up = traverse_up
+        direction = "ancestor" if traverse_up else "descendant"
+        prefix = get_prefix(source_node) or source_node
+        super().__init__(
+            f"reachable_from source node {source_node!r} resolves to a valid term but "
+            f"its {direction} closure is empty under the configured adapter, so every "
+            f"{prefix} term would be silently rejected. This usually means the ontology "
+            f"graph returned by the adapter is broken or misconfigured (e.g. OLS4 drops "
+            f"MONDO:0000001 from MONDO closures — see dismech#7012). Configure a local "
+            f"adapter such as 'sqlite:obo:{prefix.lower()}' for the {prefix} prefix, or "
+            f"verify the source node is correct."
+        )
+
+
 # Well-defined exception TYPES that mean "the ontology service could not be
 # reached", matched by isinstance (never by class name). OAK's OLS adapter goes
 # label() -> client.get_term() -> requests.get()/raise_for_status(), so a network

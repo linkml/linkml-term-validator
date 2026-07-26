@@ -1,6 +1,7 @@
 """Shared utilities for ontology access and caching."""
 
 from linkml_term_validator.utils.oak_utils import (
+    EmptyReachableClosureError,
     OntologyAccess,
     OntologyServiceUnavailableError,
     get_prefix,
@@ -11,6 +12,7 @@ from linkml_term_validator.utils.oak_utils import (
 )
 
 __all__ = [
+    "EmptyReachableClosureError",
     "OntologyAccess",
     "OntologyServiceUnavailableError",
     "get_prefix",
