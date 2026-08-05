@@ -192,8 +192,13 @@ CURIE/identifier merge, **not** a broken hierarchy: OLS4 conflates
 the term at IRI `.../MONDO_0000001` under the wrong `obo_id` `AFO_O:0000001`.
 The hierarchy is *correct by IRI* — the root really is an ancestor — but every
 CURIE-matching consumer (oaklib's OLS adapter, and therefore this validator)
-sees the ancestor as `AFO_O:0000001`, so `MONDO:0000001` is unmatchable by CURIE
-and every MONDO term silently fails ancestor-based reachability.
+saw the ancestor as `AFO_O:0000001`, so `MONDO:0000001` was unmatchable by CURIE
+and every MONDO term silently failed ancestor-based reachability.
+
+That specific OLS defect was fixed upstream
+([EBISPOT/ols4#1334](https://github.com/EBISPOT/ols4/issues/1334)); the guard is
+retained as a general safety net against this class of adapter identifier
+corruption (and is covered end-to-end by an OLS integration test).
 
 **2. Empty expansion (`EmptyReachableClosureError`).** If at least one source
 node resolves yet the whole `reachable_from` query expands to nothing, the enum
