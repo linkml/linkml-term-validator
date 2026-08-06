@@ -396,27 +396,30 @@ ERROR: Term 'GO:9999999' not found in ontology
 ### Label Mismatch
 
 ```
-WARN: Label mismatch for GO:0007049
+ERROR: Label mismatch for GO:0007049
   Expected (from data): "Cell Cycle"
   Found (from ontology): "cell cycle"
   path: process.label
 ```
 
-Label mismatches are reported at `WARN`, not `ERROR`. This is worth knowing for
-CI: `linkml-validate` exits non-zero only when a result has severity `ERROR`, so
-by default a label mismatch is printed and the process still exits 0. (The
-standalone `linkml-term-validator validate-data` command differs — it exits 1 on
-any result, warnings included.)
+Label mismatches are reported at `ERROR`, so they fail CI. This matters because
+`linkml-validate` exits non-zero only when a result has severity `ERROR` — a
+mismatch reported at `WARN` would be printed while the process still exited 0.
 
-To make label agreement mandatory under `linkml-validate`, promote the mode:
+!!! note "Changed default"
 
-```yaml
-plugins:
-  "linkml_term_validator.plugins.BindingValidationPlugin":
-    validate_labels: true
-    severity_overrides:
-      binding_label_mismatch: ERROR
-```
+    Label mismatches were reported at `WARN` in earlier releases. If a project
+    is not ready to enforce label agreement, restore the previous behavior
+    per-mode rather than disabling label validation entirely:
+
+    ```yaml
+    plugins:
+      "linkml_term_validator.plugins.BindingValidationPlugin":
+        validate_labels: true
+        severity_overrides:
+          binding_label_mismatch: WARN
+          binding_label_invalid: WARN
+    ```
 
 See [Severity Overrides](plugin-reference.md#severity-overrides) for the full
 list of error modes and their defaults.

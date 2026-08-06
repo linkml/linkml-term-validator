@@ -180,7 +180,7 @@ process:
 
 Output:
 ```
-WARNING: Label mismatch for GO:0007049
+ERROR: Label mismatch for GO:0007049
   Expected: "DNA repair"
   Ontology: "cell cycle"
 ```

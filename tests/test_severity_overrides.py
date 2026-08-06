@@ -61,18 +61,16 @@ def test_severity_for_returns_default_when_unset(cache_dir):
     """An unconfigured mode keeps the severity the plugin passes in."""
     plugin = BindingValidationPlugin(cache_dir=cache_dir)
     assert plugin.severity_overrides == {}
-    assert (
-        plugin.severity_for(ErrorMode.BINDING_LABEL_MISMATCH, Severity.WARN) is Severity.WARN
-    )
+    assert plugin.severity_for(ErrorMode.BINDING_LABEL_MISMATCH, Severity.ERROR) is Severity.ERROR
 
 
 def test_severity_for_returns_override(cache_dir):
     """A configured mode is remapped; unrelated modes are untouched."""
     plugin = BindingValidationPlugin(
         cache_dir=cache_dir,
-        severity_overrides={"binding_label_mismatch": "ERROR"},
+        severity_overrides={"binding_label_mismatch": "WARN"},
     )
-    assert plugin.severity_for(ErrorMode.BINDING_LABEL_MISMATCH, Severity.WARN) is Severity.ERROR
+    assert plugin.severity_for(ErrorMode.BINDING_LABEL_MISMATCH, Severity.ERROR) is Severity.WARN
     assert plugin.severity_for(ErrorMode.BINDING_VALIDATION, Severity.ERROR) is Severity.ERROR
 
 
@@ -134,29 +132,11 @@ def test_unknown_error_mode_message_lists_valid_keys(cache_dir):
 # =============================================================================
 
 
-def test_label_mismatch_defaults_to_warn(
+def test_label_mismatch_defaults_to_error(
     binding_schema_path, label_mismatch_data_path, cache_dir
 ):
-    """Default behavior is unchanged: a label mismatch is advisory."""
+    """A wrong label is a hard failure by default."""
     results = _validate(binding_schema_path, label_mismatch_data_path, cache_dir)
-
-    mismatches = [r for r in results if r.type == "binding_label_mismatch"]
-    assert len(mismatches) == 1
-    assert mismatches[0].severity is Severity.WARN
-    # No ERROR result means `linkml-validate` would exit 0 here.
-    assert not [r for r in results if r.severity is Severity.ERROR]
-
-
-def test_label_mismatch_can_be_promoted_to_error(
-    binding_schema_path, label_mismatch_data_path, cache_dir
-):
-    """With the override, the same mismatch becomes a hard failure."""
-    results = _validate(
-        binding_schema_path,
-        label_mismatch_data_path,
-        cache_dir,
-        severity_overrides={"binding_label_mismatch": "ERROR"},
-    )
 
     mismatches = [r for r in results if r.type == "binding_label_mismatch"]
     assert len(mismatches) == 1
@@ -165,7 +145,25 @@ def test_label_mismatch_can_be_promoted_to_error(
     assert [r for r in results if r.severity is Severity.ERROR]
 
 
-def test_promoting_one_mode_leaves_others_alone(
+def test_label_mismatch_can_be_demoted_to_warn(
+    binding_schema_path, label_mismatch_data_path, cache_dir
+):
+    """Projects not ready to enforce labels can restore the advisory behavior."""
+    results = _validate(
+        binding_schema_path,
+        label_mismatch_data_path,
+        cache_dir,
+        severity_overrides={"binding_label_mismatch": "WARN"},
+    )
+
+    mismatches = [r for r in results if r.type == "binding_label_mismatch"]
+    assert len(mismatches) == 1
+    assert mismatches[0].severity is Severity.WARN
+    # No ERROR result means `linkml-validate` would exit 0 again.
+    assert not [r for r in results if r.severity is Severity.ERROR]
+
+
+def test_overriding_one_mode_leaves_others_alone(
     binding_schema_path, label_mismatch_data_path, cache_dir
 ):
     """Overriding a mode must not disturb the severity of other modes."""
@@ -173,16 +171,16 @@ def test_promoting_one_mode_leaves_others_alone(
         binding_schema_path,
         label_mismatch_data_path,
         cache_dir,
-        severity_overrides={"binding_label_invalid": "ERROR"},
+        severity_overrides={"binding_label_invalid": "WARN"},
     )
 
     mismatches = [r for r in results if r.type == "binding_label_mismatch"]
     assert len(mismatches) == 1
-    assert mismatches[0].severity is Severity.WARN
+    assert mismatches[0].severity is Severity.ERROR
 
 
 def test_error_mode_can_be_demoted(binding_schema_path, label_mismatch_data_path, cache_dir):
-    """The mapping works in both directions, not just toward ERROR."""
+    """A mode can be dropped below WARN entirely."""
     results = _validate(
         binding_schema_path,
         label_mismatch_data_path,
@@ -257,6 +255,7 @@ def test_severity_overrides_can_come_from_oak_config(tmp_path, cache_dir):
     )
     plugin = BindingValidationPlugin(cache_dir=cache_dir, oak_config_path=config_path)
     assert plugin.severity_for(ErrorMode.BINDING_LABEL_MISMATCH, Severity.WARN) is Severity.ERROR
+    assert plugin.severity_overrides["binding_label_mismatch"] is Severity.ERROR
 
 
 def test_constructor_overrides_win_over_oak_config(tmp_path, cache_dir):
@@ -273,4 +272,4 @@ def test_constructor_overrides_win_over_oak_config(tmp_path, cache_dir):
         oak_config_path=config_path,
         severity_overrides={"binding_label_mismatch": "INFO"},
     )
-    assert plugin.severity_for(ErrorMode.BINDING_LABEL_MISMATCH, Severity.WARN) is Severity.INFO
+    assert plugin.severity_for(ErrorMode.BINDING_LABEL_MISMATCH, Severity.ERROR) is Severity.INFO

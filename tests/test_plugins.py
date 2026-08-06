@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 from linkml.validator import Validator  # type: ignore[import-untyped]
+from linkml.validator.report import Severity  # type: ignore[import-untyped]
 
 from linkml_term_validator.plugins import (
     BindingValidationPlugin,
@@ -464,6 +465,7 @@ def test_binding_plugin_non_string_label_reports_warning(plugin_cache_dir):
 
     assert len(results) == 1
     assert results[0].type == "binding_label_invalid"
+    assert results[0].severity is Severity.ERROR
     assert "must be a string" in results[0].message
 
 
@@ -486,8 +488,8 @@ def test_binding_plugin_list_label_matches_any_string(plugin_cache_dir):
     assert results == []
 
 
-def test_binding_plugin_list_label_mismatch_reports_warning(plugin_cache_dir):
-    """Multivalued label slots should warn when no string label matches."""
+def test_binding_plugin_list_label_mismatch_reports_error(plugin_cache_dir):
+    """Multivalued label slots should fail when no string label matches."""
     plugin = BindingValidationPlugin(validate_labels=True, cache_dir=plugin_cache_dir)
     plugin.get_ontology_label = lambda curie: "child term one"  # type: ignore[method-assign]
 
@@ -504,6 +506,7 @@ def test_binding_plugin_list_label_mismatch_reports_warning(plugin_cache_dir):
 
     assert len(results) == 1
     assert results[0].type == "binding_label_mismatch"
+    assert results[0].severity is Severity.ERROR
     assert "child term one" in results[0].message
 
 

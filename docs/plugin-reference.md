@@ -32,22 +32,22 @@ default severity. `severity_overrides` remaps any of them:
 from linkml_term_validator.plugins import BindingValidationPlugin
 
 plugin = BindingValidationPlugin(
-    severity_overrides={"binding_label_mismatch": "ERROR"},
+    severity_overrides={"binding_label_mismatch": "WARN"},
 )
 ```
 
 This matters most in CI. `linkml-validate` exits non-zero **only** when a result
-has severity `ERROR`, so a label mismatch — which defaults to `WARN` — is
-printed but the process still exits 0. Promoting the mode makes the same
-mismatch a hard failure, without turning every unrelated warning into one.
+has severity `ERROR`, so anything reported at `WARN` is printed while the
+process still exits 0. Remapping a single mode lets a project tighten or relax
+one specific check without touching the severity of everything else.
 
 The available error modes, and the severity each is reported at by default:
 
 | Error mode | Default | Emitted by |
 |------------|---------|------------|
 | `binding_validation` | `ERROR` | `BindingValidationPlugin` |
-| `binding_label_invalid` | `WARN` | `BindingValidationPlugin` |
-| `binding_label_mismatch` | `WARN` | `BindingValidationPlugin` |
+| `binding_label_invalid` | `ERROR` | `BindingValidationPlugin` |
+| `binding_label_mismatch` | `ERROR` | `BindingValidationPlugin` |
 | `term_not_found` | `ERROR` | `BindingValidationPlugin` |
 | `dynamic_enum_validation` | `ERROR` | `DynamicEnumPlugin` |
 | `permissible_value_meaning` | `ERROR` | `PermissibleValueMeaningPlugin` |
@@ -67,7 +67,7 @@ ontology_adapters:
   GO: sqlite:obo:go
 
 severity_overrides:
-  binding_label_mismatch: ERROR
+  binding_label_mismatch: WARN
 ```
 
 Constructor arguments win over the config file. For

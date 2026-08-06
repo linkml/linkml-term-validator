@@ -118,8 +118,8 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             offline: If True, force offline validation: never build OAK adapters
                 and resolve everything exclusively from the file cache
             severity_overrides: Mapping of ErrorMode to severity, e.g.
-                ``{"binding_label_mismatch": "ERROR"}`` to make label
-                disagreements fail ``linkml-validate`` instead of warning
+                ``{"binding_label_mismatch": "WARN"}`` to make label
+                disagreements advisory rather than the default hard failure
         """
         super().__init__(
             oak_adapter_string=oak_adapter_string,
@@ -679,7 +679,7 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                         yield ValidationResult(
                             type="binding_label_invalid",
                             severity=self.severity_for(
-                                ErrorMode.BINDING_LABEL_INVALID, Severity.WARN
+                                ErrorMode.BINDING_LABEL_INVALID, Severity.ERROR
                             ),
                             message=(
                                 f"Label field '{label_field}' for '{field_value}' must contain "
@@ -699,7 +699,7 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                     yield ValidationResult(
                         type="binding_label_invalid",
                         severity=self.severity_for(
-                            ErrorMode.BINDING_LABEL_INVALID, Severity.WARN
+                            ErrorMode.BINDING_LABEL_INVALID, Severity.ERROR
                         ),
                         message=(
                             f"Label field '{label_field}' for '{field_value}' must be a string "
@@ -724,7 +724,7 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                     yield ValidationResult(
                         type="binding_label_mismatch",
                         severity=self.severity_for(
-                            ErrorMode.BINDING_LABEL_MISMATCH, Severity.WARN
+                            ErrorMode.BINDING_LABEL_MISMATCH, Severity.ERROR
                         ),
                         message=f"Label mismatch for '{field_value}': expected '{ontology_label}', got '{provided_label}'",
                         instance=instance,
