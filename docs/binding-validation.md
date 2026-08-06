@@ -356,6 +356,7 @@ for result in report.results:
 | `cache_strategy` | `str \| CacheStrategy` | `progressive` | Dynamic enum cache strategy |
 | `offline` | `bool` | `False` | Resolve only from existing cache files |
 | `cache_dir` | `str` | `"cache"` | Cache directory |
+| `severity_overrides` | `dict \| None` | `None` | Map an error mode to the severity it is reported at |
 
 ## Error Messages
 
@@ -395,11 +396,30 @@ ERROR: Term 'GO:9999999' not found in ontology
 ### Label Mismatch
 
 ```
-ERROR: Label mismatch for GO:0007049
+WARN: Label mismatch for GO:0007049
   Expected (from data): "Cell Cycle"
   Found (from ontology): "cell cycle"
   path: process.label
 ```
+
+Label mismatches are reported at `WARN`, not `ERROR`. This is worth knowing for
+CI: `linkml-validate` exits non-zero only when a result has severity `ERROR`, so
+by default a label mismatch is printed and the process still exits 0. (The
+standalone `linkml-term-validator validate-data` command differs — it exits 1 on
+any result, warnings included.)
+
+To make label agreement mandatory under `linkml-validate`, promote the mode:
+
+```yaml
+plugins:
+  "linkml_term_validator.plugins.BindingValidationPlugin":
+    validate_labels: true
+    severity_overrides:
+      binding_label_mismatch: ERROR
+```
+
+See [Severity Overrides](plugin-reference.md#severity-overrides) for the full
+list of error modes and their defaults.
 
 ### Nested Path Example
 

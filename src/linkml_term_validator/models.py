@@ -32,6 +32,46 @@ class CacheStrategy(str, Enum):
     """Expand entire enum upfront and cache all terms."""
 
 
+class ErrorMode(str, Enum):
+    """Categories of problem the validation plugins can report.
+
+    Each member's value is the ``type`` field of an emitted
+    ``linkml.validator.report.ValidationResult``. Passing a mapping of these
+    to severities as ``severity_overrides`` lets a schema owner decide which
+    problems are hard failures, without changing the plugin code.
+
+    Examples:
+        >>> ErrorMode.BINDING_LABEL_MISMATCH.value
+        'binding_label_mismatch'
+        >>> ErrorMode("term_not_found")
+        <ErrorMode.TERM_NOT_FOUND: 'term_not_found'>
+    """
+
+    BINDING_VALIDATION = "binding_validation"
+    """A bound field's value is outside its enum's permitted values."""
+
+    BINDING_LABEL_INVALID = "binding_label_invalid"
+    """A label field is not a string or list of strings."""
+
+    BINDING_LABEL_MISMATCH = "binding_label_mismatch"
+    """A label field disagrees with the ontology's canonical label."""
+
+    TERM_NOT_FOUND = "term_not_found"
+    """A term ID could not be found in the configured ontologies."""
+
+    DYNAMIC_ENUM_VALIDATION = "dynamic_enum_validation"
+    """A value is outside a dynamic enum's expanded closure."""
+
+    PERMISSIBLE_VALUE_MEANING = "permissible_value_meaning"
+    """A permissible value's ``meaning`` does not resolve to a real term."""
+
+    PERMISSIBLE_VALUE_OBSOLETE = "permissible_value_obsolete"
+    """A permissible value's ``meaning`` points at an obsolete term."""
+
+    PERMISSIBLE_VALUE_LABEL_MISMATCH = "permissible_value_label_mismatch"
+    """A permissible value's title/description disagrees with the ontology."""
+
+
 class ValidationIssue(BaseModel):
     """A single validation issue found during term validation.
 

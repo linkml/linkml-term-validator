@@ -8,6 +8,7 @@ from linkml.validator.report import Severity, ValidationResult  # type: ignore[i
 from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]
 from linkml_runtime.linkml_model import PermissibleValue
 
+from linkml_term_validator.models import ErrorMode
 from linkml_term_validator.plugins.base import BaseOntologyPlugin
 from linkml_term_validator.utils import obsolete_term_message
 
@@ -35,6 +36,7 @@ class PermissibleValueMeaningPlugin(BaseOntologyPlugin):
         oak_config_path: Optional[Path | str] = None,
         strict_mode: bool = False,
         offline: bool = False,
+        severity_overrides: Optional[dict[str, str]] = None,
     ):
         """Initialize permissible value meaning plugin.
 
@@ -46,6 +48,9 @@ class PermissibleValueMeaningPlugin(BaseOntologyPlugin):
             strict_mode: If True, treat warnings as errors
             offline: If True, force offline validation: never build OAK adapters
                 and resolve everything exclusively from the file cache
+            severity_overrides: Mapping of ErrorMode to severity, e.g.
+                ``{"permissible_value_label_mismatch": "ERROR"}``. Takes
+                precedence over ``strict_mode`` for the modes it names.
         """
         super().__init__(
             oak_adapter_string=oak_adapter_string,
@@ -53,6 +58,7 @@ class PermissibleValueMeaningPlugin(BaseOntologyPlugin):
             cache_dir=cache_dir,
             oak_config_path=oak_config_path,
             offline=offline,
+            severity_overrides=severity_overrides,
         )
         self.strict_mode = strict_mode
         self.schema_view = None
@@ -120,7 +126,9 @@ class PermissibleValueMeaningPlugin(BaseOntologyPlugin):
             # Term not found in ontology
             yield ValidationResult(
                 type="permissible_value_meaning",
-                severity=Severity.ERROR,
+                severity=self.severity_for(
+                    ErrorMode.PERMISSIBLE_VALUE_MEANING, Severity.ERROR
+                ),
                 message=f"Ontology term '{meaning}' not found",
                 instance={"enum": enum_name, "value": pv_name, "meaning": meaning},
                 instantiates=enum_name,
@@ -135,7 +143,9 @@ class PermissibleValueMeaningPlugin(BaseOntologyPlugin):
         if self.is_obsolete(meaning):
             yield ValidationResult(
                 type="permissible_value_obsolete",
-                severity=Severity.ERROR,
+                severity=self.severity_for(
+                    ErrorMode.PERMISSIBLE_VALUE_OBSOLETE, Severity.ERROR
+                ),
                 message=obsolete_term_message(meaning),
                 instance={"enum": enum_name, "value": pv_name, "meaning": meaning},
                 instantiates=enum_name,
@@ -153,7 +163,10 @@ class PermissibleValueMeaningPlugin(BaseOntologyPlugin):
 
             # Check if any alias matches
             if normalized_ontology not in aliases:
-                severity = Severity.ERROR if self.strict_mode else Severity.WARN
+                severity = self.severity_for(
+                    ErrorMode.PERMISSIBLE_VALUE_LABEL_MISMATCH,
+                    Severity.ERROR if self.strict_mode else Severity.WARN,
+                )
 
                 # Build expected vs actual message
                 expected_labels = [pv.title] if pv.title else []

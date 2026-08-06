@@ -43,7 +43,7 @@ from typing import Any, Literal, Optional
 from linkml.validator.report import Severity, ValidationResult  # type: ignore[import-untyped]
 from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]
 
-from linkml_term_validator.models import CacheStrategy
+from linkml_term_validator.models import CacheStrategy, ErrorMode
 from linkml_term_validator.plugins.base import BaseOntologyPlugin
 
 # Ontology properties that represent labels
@@ -101,6 +101,7 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         oak_config_path: Optional[Path | str] = None,
         cache_strategy: Literal["progressive", "greedy"] | CacheStrategy = CacheStrategy.PROGRESSIVE,
         offline: bool = False,
+        severity_overrides: Optional[dict[str, str]] = None,
     ):
         """Initialize binding validation plugin.
 
@@ -116,6 +117,9 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             cache_strategy: Caching strategy for dynamic enums ('progressive' or 'greedy')
             offline: If True, force offline validation: never build OAK adapters
                 and resolve everything exclusively from the file cache
+            severity_overrides: Mapping of ErrorMode to severity, e.g.
+                ``{"binding_label_mismatch": "ERROR"}`` to make label
+                disagreements fail ``linkml-validate`` instead of warning
         """
         super().__init__(
             oak_adapter_string=oak_adapter_string,
@@ -126,6 +130,7 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             oak_config_path=oak_config_path,
             cache_strategy=cache_strategy,
             offline=offline,
+            severity_overrides=severity_overrides,
         )
         self.validate_labels = validate_labels
         self.strict = strict
@@ -330,7 +335,9 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             if obligation_level == "REQUIRED":
                 yield ValidationResult(
                     type="binding_validation",
-                    severity=Severity.ERROR,
+                    severity=self.severity_for(
+                        ErrorMode.BINDING_VALIDATION, Severity.ERROR
+                    ),
                     message=f"Required binding field '{field_path}' not found at {path}",
                     instance=instance,
                     instantiates=target_class,
@@ -492,7 +499,9 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                 if field_value not in valid_values:
                     yield ValidationResult(
                         type="binding_validation",
-                        severity=Severity.ERROR,
+                        severity=self.severity_for(
+                            ErrorMode.BINDING_VALIDATION, Severity.ERROR
+                        ),
                         message=f"Value '{field_value}' not in dynamic enum '{enum_name}' (expanded from ontology)",
                         instance=instance,
                         instantiates=target_class,
@@ -520,7 +529,9 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                     validation_note = "validation: progressive (lazy)"
                 yield ValidationResult(
                     type="binding_validation",
-                    severity=Severity.ERROR,
+                    severity=self.severity_for(
+                        ErrorMode.BINDING_VALIDATION, Severity.ERROR
+                    ),
                     message=message,
                     instance=instance,
                     instantiates=target_class,
@@ -551,7 +562,7 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         if field_value not in valid_values:
             yield ValidationResult(
                 type="binding_validation",
-                severity=Severity.ERROR,
+                severity=self.severity_for(ErrorMode.BINDING_VALIDATION, Severity.ERROR),
                 message=f"Value '{field_value}' not in enum '{enum_name}'",
                 instance=instance,
                 instantiates=target_class,
@@ -609,7 +620,7 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                 prefix_context = f"prefix: {prefix} (configured in oak_config)"
             yield ValidationResult(
                 type="term_not_found",
-                severity=Severity.ERROR,
+                severity=self.severity_for(ErrorMode.TERM_NOT_FOUND, Severity.ERROR),
                 message=message,
                 instance=instance,
                 instantiates=target_class,
@@ -667,7 +678,9 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                     if not provided_labels:
                         yield ValidationResult(
                             type="binding_label_invalid",
-                            severity=Severity.WARN,
+                            severity=self.severity_for(
+                                ErrorMode.BINDING_LABEL_INVALID, Severity.WARN
+                            ),
                             message=(
                                 f"Label field '{label_field}' for '{field_value}' must contain "
                                 f"a string label, got '{provided_label}'"
@@ -685,7 +698,9 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                 else:
                     yield ValidationResult(
                         type="binding_label_invalid",
-                        severity=Severity.WARN,
+                        severity=self.severity_for(
+                            ErrorMode.BINDING_LABEL_INVALID, Severity.WARN
+                        ),
                         message=(
                             f"Label field '{label_field}' for '{field_value}' must be a string "
                             f"or list of strings, got {type(provided_label).__name__}"
@@ -708,7 +723,9 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                 ):
                     yield ValidationResult(
                         type="binding_label_mismatch",
-                        severity=Severity.WARN,
+                        severity=self.severity_for(
+                            ErrorMode.BINDING_LABEL_MISMATCH, Severity.WARN
+                        ),
                         message=f"Label mismatch for '{field_value}': expected '{ontology_label}', got '{provided_label}'",
                         instance=instance,
                         instantiates=target_class,
