@@ -71,6 +71,15 @@ _FAIL_ON_SEVERITIES = {
     FailOn.WARN: {Severity.FATAL, Severity.ERROR, Severity.WARN},
 }
 
+# INFO is reachable now that severity_overrides can demote a mode to it, so it
+# gets its own marker rather than borrowing the warning one.
+_SEVERITY_EMOJI = {
+    Severity.FATAL: "❌",
+    Severity.ERROR: "❌",
+    Severity.WARN: "⚠️ ",
+    Severity.INFO: "ℹ️ ",
+}
+
 
 def _counts_as_failure(results: list, fail_on: FailOn) -> bool:
     """Decide whether a file's results should make the process exit non-zero.
@@ -441,7 +450,7 @@ def validate_data(
             else:
                 typer.echo(f"\n❌ Validation failed with {len(report.results)} issue(s):\n")
             for result in report.results:
-                severity_emoji = "❌" if result.severity.name == "ERROR" else "⚠️ "
+                severity_emoji = _SEVERITY_EMOJI.get(result.severity, "⚠️ ")
                 typer.echo(f"  {severity_emoji} {result.severity.name}: {result.message}")
                 if result.context:
                     for ctx in result.context:
@@ -451,8 +460,12 @@ def validate_data(
     if len(data_paths) > 1:
         typer.echo("")
         if files_with_issues:
+            # Under the default threshold every file with issues is a failure, so
+            # keep the long-standing wording; "had issues" only appears when
+            # --fail-on has actually spared some of them.
+            noun = "failed" if len(failed_files) == len(files_with_issues) else "had issues"
             typer.echo(
-                f"Summary: {len(files_with_issues)}/{len(data_paths)} files had issues, "
+                f"Summary: {len(files_with_issues)}/{len(data_paths)} files {noun}, "
                 f"{total_issues} total issue(s)"
             )
         else:

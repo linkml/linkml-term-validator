@@ -82,7 +82,7 @@ depends on the command:
 | Command | Effect |
 |---------|--------|
 | `linkml-validate` | Full effect: exits non-zero only on `ERROR` |
-| `linkml-term-validator validate-data` | Results are reported at the new severity, but the default `--fail-on any` exits 1 on any result regardless. Pass `--fail-on error` to make the severity decide |
+| `linkml-term-validator validate-data` | Results are reported at the new severity, but the default `--fail-on any` exits 1 on any result regardless. Pass `--fail-on error` to make the severity decide. There is no `severity_overrides` CLI flag — set it in `oak_config.yaml` and pass that with `-c`, as with other plugin config |
 | `linkml-term-validator validate-schema` | **No effect.** This command uses `EnumValidator`, a separate implementation that does not run `PermissibleValueMeaningPlugin`. Use `strict_mode` there |
 
 ## PermissibleValueMeaningPlugin

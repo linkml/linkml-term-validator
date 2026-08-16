@@ -406,10 +406,20 @@ Label mismatches are reported at `ERROR`, so they fail CI. This matters because
 `linkml-validate` exits non-zero only when a result has severity `ERROR` — a
 mismatch reported at `WARN` would be printed while the process still exited 0.
 
-A label field set to an explicit `null` is treated as *no label supplied*, not
-as a malformed one — YAML and JSON round-trips routinely materialize optional
-slots as null, and there is nothing to compare against the ontology. A label
-that is present but not a string (a number, a mapping) is still an error.
+A label field is treated as *no label supplied* — and skipped, not failed — when
+it is any of the values a serializer produces for an absent slot:
+
+| Value | Treated as |
+|-------|-----------|
+| `label: null` | absent (skipped) |
+| `label: []` | absent (skipped) — an absent multivalued slot |
+| `label: [null]` | absent (skipped) |
+| `label: ""` | **error** — a mismatch against the ontology label |
+| `label: 42`, `label: {…}` | **error** — malformed |
+
+The empty string is a deliberate exception: nothing produces it mechanically the
+way a round-trip produces `null` or `[]`, so it reads as a real label defect
+rather than a missing value.
 
 !!! note "Changed default"
 

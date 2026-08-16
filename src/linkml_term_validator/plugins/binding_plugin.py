@@ -626,6 +626,45 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                 ],
             )
 
+    @staticmethod
+    def _is_absent_label(provided_label: Any) -> bool:
+        """Report whether a label value means "no label supplied".
+
+        YAML and JSON round-trips routinely materialize an optional slot as an
+        explicit null, and an optional *multivalued* slot as an empty list or a
+        list of nulls. None of those are malformed labels -- there is simply
+        nothing to compare against the ontology, exactly as if the key had been
+        omitted. Failing on them would break pipelines that never opted into
+        label checking.
+
+        An empty string is deliberately *not* absent: unlike null, nothing
+        produces it mechanically, so it reads as a real (and actionable) label
+        defect rather than a missing value.
+
+        Args:
+            provided_label: The raw value found in the label field
+
+        Returns:
+            True if the value should be treated as no label at all
+
+        Examples:
+            >>> BindingValidationPlugin._is_absent_label(None)
+            True
+            >>> BindingValidationPlugin._is_absent_label([])
+            True
+            >>> BindingValidationPlugin._is_absent_label([None, None])
+            True
+            >>> BindingValidationPlugin._is_absent_label("")
+            False
+            >>> BindingValidationPlugin._is_absent_label(["cell cycle"])
+            False
+        """
+        if provided_label is None:
+            return True
+        if isinstance(provided_label, list):
+            return all(item is None for item in provided_label)
+        return False
+
     def _validate_label(
         self,
         value: dict,
@@ -661,12 +700,9 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             if label_field not in value:
                 continue
 
+
             provided_label = value[label_field]
-            # An explicit null is an absent label, not a malformed one. YAML/JSON
-            # round-trips routinely materialize optional slots as null, and that
-            # is the same "no label supplied" case as omitting the key entirely --
-            # there is nothing to compare against the ontology.
-            if provided_label is None:
+            if self._is_absent_label(provided_label):
                 continue
 
             ontology_label = self.get_ontology_label(field_value)
@@ -675,6 +711,8 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                 if isinstance(provided_label, str):
                     provided_labels = [provided_label]
                 elif isinstance(provided_label, list):
+                    # Reached only when the list holds something non-null and
+                    # non-string; the all-null and empty cases are absent labels.
                     provided_labels = [label for label in provided_label if isinstance(label, str)]
                     if not provided_labels:
                         yield ValidationResult(

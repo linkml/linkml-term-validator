@@ -159,9 +159,11 @@ class PermissibleValueMeaningPlugin(BaseOntologyPlugin):
 
             # Check if any alias matches
             if normalized_ontology not in aliases:
+                # Passing None when not in strict mode defers to the mode's own
+                # declared default, so that default lives in exactly one place.
                 severity = self.severity_for(
                     ErrorMode.PERMISSIBLE_VALUE_LABEL_MISMATCH,
-                    Severity.ERROR if self.strict_mode else Severity.WARN,
+                    Severity.ERROR if self.strict_mode else None,
                 )
 
                 # Build expected vs actual message

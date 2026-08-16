@@ -443,3 +443,66 @@ def test_docs_table_matches_the_error_mode_defaults():
             f"docs/plugin-reference.md does not list {mode.value} as "
             f"{mode.default_severity.value}; update the Severity Overrides table"
         )
+
+
+def test_no_emission_site_bypasses_severity_for():
+    """A hardcoded severity would silently ignore the override map.
+
+    The complement of test_every_error_mode_is_actually_emitted: that one
+    catches a dead ErrorMode, this one catches a live result that no
+    configuration can reach.
+    """
+    sources = "".join(path.read_text() for path in PLUGIN_SOURCE_DIR.glob("*.py"))
+    assert "severity=Severity." not in sources, (
+        "an emission site hardcodes a severity instead of routing through severity_for()"
+    )
+
+
+@pytest.mark.parametrize(
+    "label_yaml",
+    ["null", "[]", "[null]", "[null, null]"],
+    ids=["null", "empty-list", "list-of-one-null", "list-of-nulls"],
+)
+def test_absent_labels_are_not_failures(binding_schema_path, tmp_path, label_yaml):
+    """Every mechanical spelling of "no label supplied" must pass.
+
+    An optional multivalued slot round-trips to [] or [null], exactly as an
+    optional scalar round-trips to null.
+    """
+    data_path = tmp_path / "data.yaml"
+    data_path.write_text(
+        f"annotation_id: ann:1\nprocess:\n  id: TEST:0000006\n  label: {label_yaml}\n"
+    )
+
+    results = _validate(binding_schema_path, data_path, tmp_path / "cache")
+
+    assert results == []
+
+
+@pytest.mark.parametrize(
+    ("label_yaml", "expected_type"),
+    [
+        ('""', "binding_label_mismatch"),
+        ("42", "binding_label_invalid"),
+        ("[42]", "binding_label_invalid"),
+        ("{k: v}", "binding_label_invalid"),
+    ],
+    ids=["empty-string", "int", "list-of-int", "mapping"],
+)
+def test_present_but_wrong_labels_are_still_failures(
+    binding_schema_path, tmp_path, label_yaml, expected_type
+):
+    """Exempting absent labels must not exempt genuinely bad ones.
+
+    An empty string is deliberately included: nothing produces it
+    mechanically, so it reads as a real defect rather than a missing value.
+    """
+    data_path = tmp_path / "data.yaml"
+    data_path.write_text(
+        f"annotation_id: ann:1\nprocess:\n  id: TEST:0000006\n  label: {label_yaml}\n"
+    )
+
+    results = _validate(binding_schema_path, data_path, tmp_path / "cache")
+
+    assert [r.type for r in results] == [expected_type]
+    assert results[0].severity is Severity.ERROR
