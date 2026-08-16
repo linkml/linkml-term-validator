@@ -9,12 +9,14 @@ For integration with LinkML's validator framework, see documentation.
 """
 
 import re
+from enum import Enum
 from pathlib import Path
 from typing import Optional
 
 import typer
 from linkml.validator import Validator  # type: ignore[import-untyped]
 from linkml.validator.loaders import default_loader_for_file  # type: ignore[import-untyped]
+from linkml.validator.report import Severity  # type: ignore[import-untyped]
 from typing_extensions import Annotated
 
 from linkml_term_validator.models import CacheStrategy, ValidationConfig
@@ -35,6 +37,57 @@ app = typer.Typer(
 # code 1 used for genuine validation failures so callers/scripts can tell an
 # ontology-service outage apart from invalid data.
 EXIT_SERVICE_UNAVAILABLE = 2
+
+
+class FailOn(str, Enum):
+    """Which validation results should make ``validate-data`` exit non-zero.
+
+    Results are printed either way; this only selects the exit code. ``ANY`` is
+    the default because it preserves this command's long-standing behavior --
+    quietly becoming *less* strict on upgrade is the failure mode this
+    validator exists to prevent.
+
+    Examples:
+        >>> FailOn.ERROR.value
+        'error'
+        >>> FailOn("warn")
+        <FailOn.WARN: 'warn'>
+    """
+
+    ANY = "any"
+    """Any result at all fails, whatever its severity (default)."""
+
+    ERROR = "error"
+    """Only ERROR (and FATAL) fails -- the rule ``linkml-validate`` uses."""
+
+    WARN = "warn"
+    """WARN and above fails; INFO does not."""
+
+
+# Severities that count as a failure under each mode. ANY is handled separately
+# because it does not inspect severity at all.
+_FAIL_ON_SEVERITIES = {
+    FailOn.ERROR: {Severity.FATAL, Severity.ERROR},
+    FailOn.WARN: {Severity.FATAL, Severity.ERROR, Severity.WARN},
+}
+
+
+def _counts_as_failure(results: list, fail_on: FailOn) -> bool:
+    """Decide whether a file's results should make the process exit non-zero.
+
+    Args:
+        results: ValidationResults for a single data file
+        fail_on: The configured threshold
+
+    Returns:
+        True if the process should exit non-zero because of these results
+    """
+    if not results:
+        return False
+    if fail_on == FailOn.ANY:
+        return True
+    failing = _FAIL_ON_SEVERITIES[fail_on]
+    return any(result.severity in failing for result in results)
 
 
 def _fail_service_unavailable(exc: OntologyServiceUnavailableError) -> typer.Exit:
@@ -278,6 +331,16 @@ def validate_data(
             help="Force offline validation: resolve only from the cache, never access ontology services",
         ),
     ] = False,
+    fail_on: Annotated[
+        FailOn,
+        typer.Option(
+            "--fail-on",
+            help=(
+                "Which results cause a non-zero exit: 'any' (default, every result), "
+                "'error' (only ERROR, matching linkml-validate), or 'warn' (WARN and above)"
+            ),
+        ),
+    ] = FailOn.ANY,
 ):
     """Validate data against dynamic enums and binding constraints.
 
@@ -287,11 +350,17 @@ def validate_data(
 
     Accepts multiple data files - each is validated independently.
 
+    All results are always printed. --fail-on controls only the exit code, so
+    lowering it never hides a problem. Use --fail-on error to match how
+    linkml-validate decides its exit code, which is what makes a
+    severity_overrides demotion take effect here too.
+
     Examples:
         linkml-term-validator validate-data data.yaml --schema schema.yaml
         linkml-term-validator validate-data data.yaml -s schema.yaml -t Person
         linkml-term-validator validate-data *.yaml -s schema.yaml --labels
         linkml-term-validator validate-data data.yaml -s schema.yaml --offline
+        linkml-term-validator validate-data data.yaml -s schema.yaml --fail-on error
     """
     # Verify all data files exist
     for data_path in data_paths:
@@ -347,6 +416,7 @@ def validate_data(
 
     # Validate each data file
     total_issues = 0
+    files_with_issues = []
     failed_files = []
 
     for data_path in data_paths:
@@ -360,7 +430,11 @@ def validate_data(
             if len(data_paths) > 1:
                 typer.echo(f"✅ {data_path.name}")
         else:
-            failed_files.append(data_path)
+            # Every result is reported regardless of --fail-on; the threshold
+            # decides only the exit code, never what the user gets to see.
+            files_with_issues.append(data_path)
+            if _counts_as_failure(report.results, fail_on):
+                failed_files.append(data_path)
             total_issues += len(report.results)
             if len(data_paths) > 1:
                 typer.echo(f"\n❌ {data_path.name} - {len(report.results)} issue(s):")
@@ -376,16 +450,22 @@ def validate_data(
     # Output summary
     if len(data_paths) > 1:
         typer.echo("")
-        if failed_files:
+        if files_with_issues:
             typer.echo(
-                f"Summary: {len(failed_files)}/{len(data_paths)} files failed, "
+                f"Summary: {len(files_with_issues)}/{len(data_paths)} files had issues, "
                 f"{total_issues} total issue(s)"
             )
         else:
             typer.echo(f"✅ All {len(data_paths)} files passed validation")
-    elif not failed_files:
+    elif not files_with_issues:
         # Single file success
         typer.echo("✅ Validation passed")
+
+    if files_with_issues and not failed_files:
+        typer.echo(
+            f"\n⚠️  {total_issues} issue(s) reported, none at or above the "
+            f"--fail-on {fail_on.value} threshold; exiting 0."
+        )
 
     if failed_files:
         raise typer.Exit(code=1)

@@ -406,6 +406,11 @@ Label mismatches are reported at `ERROR`, so they fail CI. This matters because
 `linkml-validate` exits non-zero only when a result has severity `ERROR` — a
 mismatch reported at `WARN` would be printed while the process still exited 0.
 
+A label field set to an explicit `null` is treated as *no label supplied*, not
+as a malformed one — YAML and JSON round-trips routinely materialize optional
+slots as null, and there is nothing to compare against the ontology. A label
+that is present but not a string (a number, a mapping) is still an error.
+
 !!! note "Changed default"
 
     Label mismatches were reported at `WARN` in earlier releases. If a project
@@ -420,6 +425,10 @@ mismatch reported at `WARN` would be printed while the process still exited 0.
           binding_label_mismatch: WARN
           binding_label_invalid: WARN
     ```
+
+    Under `linkml-term-validator validate-data`, also pass `--fail-on error`:
+    that command exits 1 on any result by default, so a demotion to `WARN`
+    alone will not turn the build green there.
 
 See [Severity Overrides](plugin-reference.md#severity-overrides) for the full
 list of error modes and their defaults.

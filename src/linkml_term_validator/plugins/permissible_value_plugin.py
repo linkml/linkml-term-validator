@@ -9,7 +9,7 @@ from linkml.validator.validation_context import ValidationContext  # type: ignor
 from linkml_runtime.linkml_model import PermissibleValue
 
 from linkml_term_validator.models import ErrorMode
-from linkml_term_validator.plugins.base import BaseOntologyPlugin
+from linkml_term_validator.plugins.base import BaseOntologyPlugin, SeverityOverrides
 from linkml_term_validator.utils import obsolete_term_message
 
 
@@ -36,7 +36,7 @@ class PermissibleValueMeaningPlugin(BaseOntologyPlugin):
         oak_config_path: Optional[Path | str] = None,
         strict_mode: bool = False,
         offline: bool = False,
-        severity_overrides: Optional[dict[str, str]] = None,
+        severity_overrides: Optional[SeverityOverrides] = None,
     ):
         """Initialize permissible value meaning plugin.
 
@@ -126,9 +126,7 @@ class PermissibleValueMeaningPlugin(BaseOntologyPlugin):
             # Term not found in ontology
             yield ValidationResult(
                 type="permissible_value_meaning",
-                severity=self.severity_for(
-                    ErrorMode.PERMISSIBLE_VALUE_MEANING, Severity.ERROR
-                ),
+                severity=self.severity_for(ErrorMode.PERMISSIBLE_VALUE_MEANING),
                 message=f"Ontology term '{meaning}' not found",
                 instance={"enum": enum_name, "value": pv_name, "meaning": meaning},
                 instantiates=enum_name,
@@ -143,9 +141,7 @@ class PermissibleValueMeaningPlugin(BaseOntologyPlugin):
         if self.is_obsolete(meaning):
             yield ValidationResult(
                 type="permissible_value_obsolete",
-                severity=self.severity_for(
-                    ErrorMode.PERMISSIBLE_VALUE_OBSOLETE, Severity.ERROR
-                ),
+                severity=self.severity_for(ErrorMode.PERMISSIBLE_VALUE_OBSOLETE),
                 message=obsolete_term_message(meaning),
                 instance={"enum": enum_name, "value": pv_name, "meaning": meaning},
                 instantiates=enum_name,

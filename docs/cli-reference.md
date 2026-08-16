@@ -65,6 +65,7 @@ linkml-term-validator validate-data [OPTIONS] DATA_PATHS...
 | `--config`, `-c` | none | Path to `oak_config.yaml` |
 | `--cache-strategy` | `progressive` | `progressive` for lazy checks or `greedy` for upfront expansion |
 | `--offline` | `false` | Resolve only from the cache; never build OAK adapters |
+| `--fail-on` | `any` | Which results exit non-zero: `any`, `error` (matches `linkml-validate`), or `warn` |
 
 Examples:
 

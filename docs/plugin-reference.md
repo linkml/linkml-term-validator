@@ -73,6 +73,18 @@ severity_overrides:
 Constructor arguments win over the config file. For
 `permissible_value_label_mismatch`, an explicit override wins over `strict_mode`.
 
+#### Which commands honor it
+
+`severity_overrides` changes the severity a *plugin* reports at, so it takes
+effect wherever that plugin runs — but whether the severity changes an exit code
+depends on the command:
+
+| Command | Effect |
+|---------|--------|
+| `linkml-validate` | Full effect: exits non-zero only on `ERROR` |
+| `linkml-term-validator validate-data` | Results are reported at the new severity, but the default `--fail-on any` exits 1 on any result regardless. Pass `--fail-on error` to make the severity decide |
+| `linkml-term-validator validate-schema` | **No effect.** This command uses `EnumValidator`, a separate implementation that does not run `PermissibleValueMeaningPlugin`. Use `strict_mode` there |
+
 ## PermissibleValueMeaningPlugin
 
 Validates schema enum permissible value `meaning` fields. It checks that each CURIE resolves and that the ontology label matches one of the schema-provided labels.

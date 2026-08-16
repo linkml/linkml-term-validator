@@ -15,11 +15,11 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Literal, Optional
 
-from linkml.validator.report import Severity, ValidationResult  # type: ignore[import-untyped]
+from linkml.validator.report import ValidationResult  # type: ignore[import-untyped]
 from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]
 
 from linkml_term_validator.models import CacheStrategy, ErrorMode
-from linkml_term_validator.plugins.base import BaseOntologyPlugin
+from linkml_term_validator.plugins.base import BaseOntologyPlugin, SeverityOverrides
 from linkml_term_validator.utils import obsolete_term_message
 
 
@@ -57,7 +57,7 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
         oak_config_path: Optional[Path | str] = None,
         cache_strategy: Literal["progressive", "greedy"] | CacheStrategy = CacheStrategy.PROGRESSIVE,
         offline: bool = False,
-        severity_overrides: Optional[dict[str, str]] = None,
+        severity_overrides: Optional[SeverityOverrides] = None,
     ):
         """Initialize dynamic enum plugin.
 
@@ -201,9 +201,7 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
             if val_str not in allowed_values:
                 yield ValidationResult(
                     type="dynamic_enum_validation",
-                    severity=self.severity_for(
-                        ErrorMode.DYNAMIC_ENUM_VALIDATION, Severity.ERROR
-                    ),
+                    severity=self.severity_for(ErrorMode.DYNAMIC_ENUM_VALIDATION),
                     message=f"Value '{val_str}' not in dynamic enum '{enum_name}' (expanded from ontology)",
                     instance=instance,
                     instantiates=target_class,
@@ -270,9 +268,7 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
                     validation_note = "validation: progressive (lazy)"
                 yield ValidationResult(
                     type="dynamic_enum_validation",
-                    severity=self.severity_for(
-                        ErrorMode.DYNAMIC_ENUM_VALIDATION, Severity.ERROR
-                    ),
+                    severity=self.severity_for(ErrorMode.DYNAMIC_ENUM_VALIDATION),
                     message=message,
                     instance=instance,
                     instantiates=target_class,

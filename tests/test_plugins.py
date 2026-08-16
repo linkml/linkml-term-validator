@@ -447,8 +447,34 @@ classes:
     assert "title" not in label_slots
 
 
-def test_binding_plugin_non_string_label_reports_warning(plugin_cache_dir):
-    """Non-string label values should report a validation result, not crash."""
+def test_binding_plugin_non_string_label_reports_error(plugin_cache_dir):
+    """Non-string label values should report a validation result, not crash (issue #38)."""
+    plugin = BindingValidationPlugin(validate_labels=True, cache_dir=plugin_cache_dir)
+    plugin.get_ontology_label = lambda curie: "child term one"  # type: ignore[method-assign]
+
+    results = list(
+        plugin._validate_label(
+            value={"label": {"unexpected": "mapping"}},
+            field_value="TEST:0000002",
+            slot_name="term",
+            instance={"term": {"id": "TEST:0000002", "label": {"unexpected": "mapping"}}},
+            target_class="Annotation",
+            path="term",
+        )
+    )
+
+    assert len(results) == 1
+    assert results[0].type == "binding_label_invalid"
+    assert results[0].severity is Severity.ERROR
+    assert "must be a string" in results[0].message
+
+
+def test_binding_plugin_null_label_is_treated_as_absent(plugin_cache_dir):
+    """An explicit null is 'no label supplied', not a malformed label.
+
+    YAML/JSON round-trips routinely materialize optional slots as null, so
+    failing on it would break pipelines that never opted into label checking.
+    """
     plugin = BindingValidationPlugin(validate_labels=True, cache_dir=plugin_cache_dir)
     plugin.get_ontology_label = lambda curie: "child term one"  # type: ignore[method-assign]
 
@@ -463,10 +489,7 @@ def test_binding_plugin_non_string_label_reports_warning(plugin_cache_dir):
         )
     )
 
-    assert len(results) == 1
-    assert results[0].type == "binding_label_invalid"
-    assert results[0].severity is Severity.ERROR
-    assert "must be a string" in results[0].message
+    assert results == []
 
 
 def test_binding_plugin_list_label_matches_any_string(plugin_cache_dir):

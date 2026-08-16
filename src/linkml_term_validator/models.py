@@ -2,8 +2,9 @@
 
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
+from linkml.validator.report import Severity  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field
 
 
@@ -36,40 +37,65 @@ class ErrorMode(str, Enum):
     """Categories of problem the validation plugins can report.
 
     Each member's value is the ``type`` field of an emitted
-    ``linkml.validator.report.ValidationResult``. Passing a mapping of these
-    to severities as ``severity_overrides`` lets a schema owner decide which
+    ``linkml.validator.report.ValidationResult``, and each carries the severity
+    it is reported at unless overridden. Passing a mapping of these to
+    severities as ``severity_overrides`` lets a schema owner decide which
     problems are hard failures, without changing the plugin code.
+
+    Members are declared as ``(value, default_severity)``; the default severity
+    lives here rather than at each emission site so the two cannot drift.
 
     Examples:
         >>> ErrorMode.BINDING_LABEL_MISMATCH.value
         'binding_label_mismatch'
         >>> ErrorMode("term_not_found")
         <ErrorMode.TERM_NOT_FOUND: 'term_not_found'>
+        >>> ErrorMode.BINDING_LABEL_MISMATCH.default_severity
+        <Severity.ERROR: 'ERROR'>
+        >>> ErrorMode.PERMISSIBLE_VALUE_LABEL_MISMATCH.default_severity
+        <Severity.WARN: 'WARN'>
     """
 
-    BINDING_VALIDATION = "binding_validation"
+    def __new__(cls, value: str, default_severity: str = "ERROR") -> "ErrorMode":
+        """Attach a default severity to each member alongside its string value."""
+        obj = str.__new__(cls, value)
+        obj._value_ = value
+        obj._default_severity = Severity(default_severity)  # type: ignore[attr-defined]
+        return obj
+
+    @property
+    def default_severity(self) -> Any:
+        """Severity this problem is reported at unless a config overrides it."""
+        return self._default_severity  # type: ignore[attr-defined]
+
+    BINDING_VALIDATION = ("binding_validation", "ERROR")
     """A bound field's value is outside its enum's permitted values."""
 
-    BINDING_LABEL_INVALID = "binding_label_invalid"
-    """A label field is not a string or list of strings."""
+    BINDING_LABEL_INVALID = ("binding_label_invalid", "ERROR")
+    """A label field is present but is not a string or list of strings."""
 
-    BINDING_LABEL_MISMATCH = "binding_label_mismatch"
+    BINDING_LABEL_MISMATCH = ("binding_label_mismatch", "ERROR")
     """A label field disagrees with the ontology's canonical label."""
 
-    TERM_NOT_FOUND = "term_not_found"
+    TERM_NOT_FOUND = ("term_not_found", "ERROR")
     """A term ID could not be found in the configured ontologies."""
 
-    DYNAMIC_ENUM_VALIDATION = "dynamic_enum_validation"
+    DYNAMIC_ENUM_VALIDATION = ("dynamic_enum_validation", "ERROR")
     """A value is outside a dynamic enum's expanded closure."""
 
-    PERMISSIBLE_VALUE_MEANING = "permissible_value_meaning"
+    PERMISSIBLE_VALUE_MEANING = ("permissible_value_meaning", "ERROR")
     """A permissible value's ``meaning`` does not resolve to a real term."""
 
-    PERMISSIBLE_VALUE_OBSOLETE = "permissible_value_obsolete"
+    PERMISSIBLE_VALUE_OBSOLETE = ("permissible_value_obsolete", "ERROR")
     """A permissible value's ``meaning`` points at an obsolete term."""
 
-    PERMISSIBLE_VALUE_LABEL_MISMATCH = "permissible_value_label_mismatch"
-    """A permissible value's title/description disagrees with the ontology."""
+    PERMISSIBLE_VALUE_LABEL_MISMATCH = ("permissible_value_label_mismatch", "WARN")
+    """A permissible value's title/description disagrees with the ontology.
+
+    Defaults to WARN rather than ERROR because the check fuzzy-matches a
+    permissible value's title/description against the ontology label, where
+    cosmetic wording differences are common. ``strict_mode`` promotes it.
+    """
 
 
 class ValidationIssue(BaseModel):

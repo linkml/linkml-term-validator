@@ -20,8 +20,9 @@ import inspect
 import json
 import logging
 import re
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Union
 from urllib.parse import quote
 
 from linkml.validator.plugins import ValidationPlugin  # type: ignore[import-untyped]
@@ -40,6 +41,10 @@ from linkml_term_validator.utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Accepted shape for severity_overrides: keys and values may each arrive as a
+# plain string (the YAML case) or as their enum member.
+SeverityOverrides = Mapping[Union[str, ErrorMode], Union[str, Severity]]
 
 
 class BaseOntologyPlugin(ValidationPlugin):
@@ -62,7 +67,7 @@ class BaseOntologyPlugin(ValidationPlugin):
         oak_config_path: Optional[Path | str] = None,
         cache_strategy: Literal["progressive", "greedy"] | CacheStrategy = CacheStrategy.PROGRESSIVE,
         offline: bool = False,
-        severity_overrides: Optional[dict[str, str]] = None,
+        severity_overrides: Optional[SeverityOverrides] = None,
     ):
         """Initialize base ontology plugin.
 
@@ -126,14 +131,14 @@ class BaseOntologyPlugin(ValidationPlugin):
 
     @staticmethod
     def _normalize_severity_overrides(
-        overrides: Optional[dict[str, str]],
+        overrides: Optional[SeverityOverrides],
     ) -> dict[str, Severity]:
         """Validate and normalize an ErrorMode -> Severity mapping.
 
         Both keys and values are accepted as strings (as they arrive from YAML)
-        or as their enum members. Unknown names raise rather than being ignored,
-        so a typo in a config file surfaces immediately instead of silently
-        leaving a problem at its default severity.
+        or as enum members. Unknown names raise rather than being ignored, so a
+        typo in a config file surfaces immediately instead of silently leaving a
+        problem at its default severity.
 
         Args:
             overrides: Raw mapping from config, or None
@@ -142,14 +147,22 @@ class BaseOntologyPlugin(ValidationPlugin):
             Mapping of ErrorMode value -> Severity
 
         Raises:
-            ValueError: If a key is not an ErrorMode or a value is not a Severity
+            ValueError: If the input is not a mapping, a key is not an
+                ErrorMode, or a value is not a Severity
         """
         if not overrides:
             return {}
+        if not isinstance(overrides, Mapping):
+            raise ValueError(
+                f"severity_overrides must be a mapping of error mode to severity, "
+                f"got {type(overrides).__name__}: {overrides!r}"
+            )
 
         normalized: dict[str, Severity] = {}
         for raw_mode, raw_severity in overrides.items():
-            mode_value = raw_mode.value if isinstance(raw_mode, ErrorMode) else str(raw_mode)
+            # getattr(..., "value") unwraps any enum member uniformly. str() alone
+            # is not enough: on a (str, Enum) subclass it yields "Class.MEMBER".
+            mode_value = str(getattr(raw_mode, "value", raw_mode)).strip().lower()
             try:
                 mode = ErrorMode(mode_value)
             except ValueError:
@@ -158,12 +171,9 @@ class BaseOntologyPlugin(ValidationPlugin):
                     f"Unknown severity_overrides key: {raw_mode!r}. Valid keys are: {valid}"
                 ) from None
 
-            severity_value = (
-                raw_severity.value if isinstance(raw_severity, Severity) else str(raw_severity)
-            )
+            severity_value = str(getattr(raw_severity, "value", raw_severity)).strip().upper()
             # "WARNING" is accepted as an alias for "WARN" because this project's
             # own SeverityLevel enum spells it that way.
-            severity_value = severity_value.strip().upper()
             if severity_value == "WARNING":
                 severity_value = "WARN"
             try:
@@ -178,29 +188,32 @@ class BaseOntologyPlugin(ValidationPlugin):
             normalized[mode.value] = severity
         return normalized
 
-    def severity_for(self, error_mode: ErrorMode, default: Severity) -> Severity:
+    def severity_for(self, error_mode: ErrorMode, default: Optional[Severity] = None) -> Severity:
         """Resolve the severity to report a problem at.
 
         Args:
             error_mode: The category of problem being reported
-            default: Severity to use when the caller has not overridden this mode
+            default: Severity to fall back to instead of the mode's own default.
+                Only for modes whose baseline depends on other configuration,
+                such as ``PermissibleValueMeaningPlugin.strict_mode``.
 
         Returns:
-            The configured severity, or ``default`` if unconfigured
+            The configured override, else ``default``, else the mode's default
 
         Examples:
             >>> from linkml_term_validator.plugins import BindingValidationPlugin
-            >>> from linkml.validator.report import Severity
             >>> from linkml_term_validator.models import ErrorMode
             >>> plugin = BindingValidationPlugin(
-            ...     severity_overrides={"binding_label_mismatch": "ERROR"}
+            ...     severity_overrides={"binding_label_mismatch": "WARN"}
             ... )
-            >>> plugin.severity_for(ErrorMode.BINDING_LABEL_MISMATCH, Severity.WARN)
-            <Severity.ERROR: 'ERROR'>
-            >>> plugin.severity_for(ErrorMode.BINDING_LABEL_INVALID, Severity.WARN)
+            >>> plugin.severity_for(ErrorMode.BINDING_LABEL_MISMATCH)
             <Severity.WARN: 'WARN'>
+            >>> plugin.severity_for(ErrorMode.BINDING_LABEL_INVALID)
+            <Severity.ERROR: 'ERROR'>
         """
-        return self.severity_overrides.get(error_mode.value, default)
+        if error_mode.value in self.severity_overrides:
+            return self.severity_overrides[error_mode.value]
+        return default if default is not None else error_mode.default_severity
 
     def _load_oak_config_extras(self, config: dict[str, Any]) -> None:
         """Apply plugin-specific overrides from the parsed oak_config.yaml.
