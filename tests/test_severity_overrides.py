@@ -450,11 +450,25 @@ def test_no_emission_site_bypasses_severity_for():
 
     The complement of test_every_error_mode_is_actually_emitted: that one
     catches a dead ErrorMode, this one catches a live result that no
-    configuration can reach.
+    configuration can reach. Checked per line rather than as a substring so
+    it also catches SeverityLevel (this project's other severity enum) and a
+    severity bound to a local a few lines earlier.
     """
-    sources = "".join(path.read_text() for path in PLUGIN_SOURCE_DIR.glob("*.py"))
-    assert "severity=Severity." not in sources, (
-        "an emission site hardcodes a severity instead of routing through severity_for()"
+    offenders = []
+    for path in sorted(PLUGIN_SOURCE_DIR.glob("*.py")):
+        for lineno, line in enumerate(path.read_text().splitlines(), 1):
+            stripped = line.strip()
+            if not stripped.startswith("severity="):
+                continue
+            # `severity=severity` is allowed: the local it reads is assigned
+            # from severity_for() (permissible_value_plugin's strict_mode path).
+            if "severity_for" in stripped or stripped.rstrip(",") == "severity=severity":
+                continue
+            offenders.append(f"{path.name}:{lineno}: {stripped}")
+
+    assert not offenders, (
+        "emission sites must route through severity_for() so severity_overrides "
+        "can reach them:\n" + "\n".join(offenders)
     )
 
 
@@ -506,3 +520,25 @@ def test_present_but_wrong_labels_are_still_failures(
 
     assert [r.type for r in results] == [expected_type]
     assert results[0].severity is Severity.ERROR
+
+
+def test_malformed_label_is_caught_without_ontology_resolution(
+    binding_schema_path, tmp_path
+):
+    """A malformed label is a defect in the data, independent of the ontology.
+
+    The type check must not sit behind a successful term lookup: otherwise the
+    same file passes or fails depending on which prefixes happen to be
+    configured, and on cache state.
+    """
+    data_path = tmp_path / "data.yaml"
+    # OTHER: has no configured adapter, so the label cannot be resolved. The
+    # value is also outside the bound enum, which is reported separately.
+    data_path.write_text("annotation_id: ann:1\nprocess:\n  id: OTHER:0000001\n  label: 42\n")
+
+    results = _validate(binding_schema_path, data_path, tmp_path / "cache")
+
+    invalid = [r for r in results if r.type == "binding_label_invalid"]
+    assert len(invalid) == 1
+    assert invalid[0].severity is Severity.ERROR
+    assert "must be a string" in invalid[0].message

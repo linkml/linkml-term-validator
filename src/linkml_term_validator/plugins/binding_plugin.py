@@ -700,72 +700,71 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             if label_field not in value:
                 continue
 
-
             provided_label = value[label_field]
             if self._is_absent_label(provided_label):
                 continue
 
-            ontology_label = self.get_ontology_label(field_value)
+            result_context = [
+                f"path: {path}",
+                f"slot: {slot_name}",
+                f"label_field: {label_field}",
+                f"curie: {field_value}",
+            ]
 
-            if ontology_label:
-                if isinstance(provided_label, str):
-                    provided_labels = [provided_label]
-                elif isinstance(provided_label, list):
-                    # Reached only when the list holds something non-null and
-                    # non-string; the all-null and empty cases are absent labels.
-                    provided_labels = [label for label in provided_label if isinstance(label, str)]
-                    if not provided_labels:
-                        yield ValidationResult(
-                            type="binding_label_invalid",
-                            severity=self.severity_for(ErrorMode.BINDING_LABEL_INVALID),
-                            message=(
-                                f"Label field '{label_field}' for '{field_value}' must contain "
-                                f"a string label, got '{provided_label}'"
-                            ),
-                            instance=instance,
-                            instantiates=target_class,
-                            context=[
-                                f"path: {path}",
-                                f"slot: {slot_name}",
-                                f"label_field: {label_field}",
-                                f"curie: {field_value}",
-                            ],
-                        )
-                        continue
-                else:
+            # Shape is checked before the ontology is consulted. "This is not a
+            # string" is a defect in the data alone, so it must not depend on
+            # whether the term's prefix happens to be configured -- otherwise the
+            # same file passes or fails based on cache state.
+            if isinstance(provided_label, str):
+                provided_labels = [provided_label]
+            elif isinstance(provided_label, list):
+                # Reached only when the list holds something non-null and
+                # non-string; the all-null and empty cases are absent labels.
+                provided_labels = [label for label in provided_label if isinstance(label, str)]
+                if not provided_labels:
                     yield ValidationResult(
                         type="binding_label_invalid",
                         severity=self.severity_for(ErrorMode.BINDING_LABEL_INVALID),
                         message=(
-                            f"Label field '{label_field}' for '{field_value}' must be a string "
-                            f"or list of strings, got {type(provided_label).__name__}"
+                            f"Label field '{label_field}' for '{field_value}' must contain "
+                            f"a string label, got '{provided_label}'"
                         ),
                         instance=instance,
                         instantiates=target_class,
-                        context=[
-                            f"path: {path}",
-                            f"slot: {slot_name}",
-                            f"label_field: {label_field}",
-                            f"curie: {field_value}",
-                        ],
+                        context=result_context,
                     )
                     continue
+            else:
+                yield ValidationResult(
+                    type="binding_label_invalid",
+                    severity=self.severity_for(ErrorMode.BINDING_LABEL_INVALID),
+                    message=(
+                        f"Label field '{label_field}' for '{field_value}' must be a string "
+                        f"or list of strings, got {type(provided_label).__name__}"
+                    ),
+                    instance=instance,
+                    instantiates=target_class,
+                    context=result_context,
+                )
+                continue
 
-                normalized_ontology = self.normalize_string(ontology_label)
+            # The mismatch check genuinely needs the ontology; if the term does
+            # not resolve there is nothing to compare against. Term existence is
+            # reported separately by _validate_term_exists.
+            ontology_label = self.get_ontology_label(field_value)
+            if not ontology_label:
+                continue
 
-                if not any(
-                    self.normalize_string(label) == normalized_ontology for label in provided_labels
-                ):
-                    yield ValidationResult(
-                        type="binding_label_mismatch",
-                        severity=self.severity_for(ErrorMode.BINDING_LABEL_MISMATCH),
-                        message=f"Label mismatch for '{field_value}': expected '{ontology_label}', got '{provided_label}'",
-                        instance=instance,
-                        instantiates=target_class,
-                        context=[
-                            f"path: {path}",
-                            f"slot: {slot_name}",
-                            f"label_field: {label_field}",
-                            f"curie: {field_value}",
-                        ],
-                    )
+            normalized_ontology = self.normalize_string(ontology_label)
+
+            if not any(
+                self.normalize_string(label) == normalized_ontology for label in provided_labels
+            ):
+                yield ValidationResult(
+                    type="binding_label_mismatch",
+                    severity=self.severity_for(ErrorMode.BINDING_LABEL_MISMATCH),
+                    message=f"Label mismatch for '{field_value}': expected '{ontology_label}', got '{provided_label}'",
+                    instance=instance,
+                    instantiates=target_class,
+                    context=result_context,
+                )
