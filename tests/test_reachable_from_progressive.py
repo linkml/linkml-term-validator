@@ -244,6 +244,43 @@ class _InconsistentTraverseUpAdapter:
         return iter(())
 
 
+class _OlsLikeInconsistentAdapter:
+    """OLS-shaped adapter whose native ``descendants()`` returns nothing.
+
+    Mirrors OAK's OLS adapter on the versions where ``descendants()`` yields
+    nothing and the REST ``_ols_descendants`` fallback is required. If the
+    integrity probe did not consult that fallback, the forward sample would be
+    empty and the guard would silently never fire — the exact no-op finding from
+    the PR re-review. Here the fallback returns one child whose ancestors omit the
+    root by CURIE, so a correctly-wired guard still flags it.
+    """
+
+    focus_ontology = "mondo"
+
+    def __init__(self):
+        class _Client:
+            def get_paged(self, path, key=None):
+                if path.endswith("descendants"):
+                    return [{"obo_id": "MONDO:0004992"}]
+                return []
+
+        self.client = _Client()
+
+    def curie_to_uri(self, curie):
+        return "http://purl.obolibrary.org/obo/" + str(curie).replace(":", "_")
+
+    def label(self, curie):
+        return f"term {curie}" if str(curie).startswith("MONDO:") else None
+
+    def descendants(self, curies, predicates=None):
+        return iter(())  # native OLS descendants is empty → forces the fallback
+
+    def ancestors(self, curies, predicates=None):
+        if "MONDO:0004992" in list(curies):
+            return iter(["AFO_O:0000001"])  # omits the root by CURIE
+        return iter(())
+
+
 def _island_enum() -> EnumDefinition:
     """Enum whose (leaf) source node resolves but has no descendants."""
     return EnumDefinition(
@@ -285,6 +322,33 @@ def test_progressive_inconsistent_directions_fail_loud(tmp_path):
         # ancestor direction makes the check wrongly say "not reachable".
         plugin.is_value_in_enum("MONDO:0004992", enum_def)
     assert excinfo.value.source_node == "MONDO:0000001"
+    assert excinfo.value.witness == "MONDO:0004992"
+
+
+def test_progressive_inconsistency_uses_ols_descendants_fallback(tmp_path):
+    """The forward sample must consult the OLS fallback when native yields nothing.
+
+    Re-review finding: OAK's OLS ``descendants()`` can return nothing, so sampling
+    only the native traversal would leave the guard a silent no-op on a live
+    ``ols:`` adapter for the default direction — the exact dismech#7012 case. With
+    the bounded ``_ols_descendants`` fallback the forward sample is non-empty and
+    the inconsistency is still detected.
+    """
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+    plugin.ontology._adapter_cache["MONDO"] = _OlsLikeInconsistentAdapter()
+    enum_def = EnumDefinition(
+        name="DiseaseEnum",
+        reachable_from=ReachabilityQuery(
+            source_nodes=["MONDO:0000001"], relationship_types=["rdfs:subClassOf"]
+        ),
+    )
+    with pytest.raises(InconsistentReachabilityError) as excinfo:
+        plugin.is_value_in_enum("MONDO:0004992", enum_def)
     assert excinfo.value.witness == "MONDO:0004992"
 
 
@@ -436,6 +500,63 @@ def test_greedy_empty_source_closure_is_not_cached_as_complete(tmp_path):
         plugin.expand_enum(enum_def, use_cache=True)
 
     assert plugin._is_enum_cache_complete(enum_def) is False
+
+
+def test_greedy_empty_reachable_from_plus_permissible_values_not_flagged(tmp_path):
+    """An empty reachable_from is fine when other clauses populate the enum.
+
+    Re-review finding: EmptyReachableClosureError must fire per-enum, not per
+    reachable_from clause. A leaf source contributes nothing, but the enum also
+    carries permissible_values, so the whole enum is non-empty and must not abort.
+    """
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+    enum_def = EnumDefinition(
+        name="Composed",
+        reachable_from=ReachabilityQuery(
+            source_nodes=["TEST:0000004"],  # leaf → empty
+            relationship_types=["rdfs:subClassOf"],
+        ),
+        permissible_values={"EXTRA": PermissibleValue(text="EXTRA", meaning="TEST:0000006")},
+    )
+    values = plugin.expand_enum(enum_def, use_cache=False)
+    assert "EXTRA" in values and "TEST:0000006" in values
+
+
+def test_greedy_minus_reachable_from_leaf_not_flagged(tmp_path):
+    """A ``minus`` clause rooted at a childless leaf subtracts nothing — legitimate.
+
+    Re-review finding: the old per-clause raise aborted this legitimate config
+    (``minus`` of an empty subtree). The base reachable_from is populated, so the
+    enum expands non-empty and must not raise.
+    """
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+    enum_def = EnumDefinition(
+        name="MinusLeaf",
+        reachable_from=ReachabilityQuery(
+            source_nodes=["TEST:0000001"],  # root → populated
+            relationship_types=["rdfs:subClassOf"],
+        ),
+        minus=[
+            AnonymousEnumExpression(
+                reachable_from=ReachabilityQuery(
+                    source_nodes=["TEST:0000004"],  # leaf → subtracts nothing
+                    relationship_types=["rdfs:subClassOf"],
+                )
+            )
+        ],
+    )
+    values = plugin.expand_enum(enum_def, use_cache=False)
+    assert "TEST:0000002" in values  # base survived; no false EmptyReachableClosureError
 
 
 def test_inconsistency_probe_is_cached(tmp_path):
