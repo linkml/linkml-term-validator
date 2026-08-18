@@ -200,12 +200,16 @@ That specific OLS defect was fixed upstream
 retained as a general safety net against this class of adapter identifier
 corruption (and is covered end-to-end by an OLS integration test).
 
-**2. Empty expansion (`EmptyReachableClosureError`).** If at least one source
-node resolves yet the whole `reachable_from` query expands to nothing, the enum
-matches no term and a greedy/materialized expansion would cache an
-*empty-but-complete* closure that poisons later runs. Expansion raises instead
-of persisting it. This applies to the **whole query**: a source node whose only
-contribution would be empty is fine as long as the query expands to *something*.
+**2. Empty expansion (`EmptyReachableClosureError`).** If the enum's top-level
+`reachable_from` resolves at least one source node yet the **whole enum** expands
+to nothing, the enum matches no term and a greedy/materialized expansion would
+cache an *empty-but-complete* closure that poisons later runs. Expansion raises
+instead of persisting it. The decision is made against the **entire expanded
+enum** — including any `permissible_values`, `concepts`, `include:` and
+`inherits:` contributions — so a source node whose only contribution would be
+empty is fine as long as *something else* populates the enum. (A `reachable_from`
+nested only inside an `include:` branch is not guarded here; it is fail-safe —
+never a false abort — but can still cache an empty closure.)
 
 The **round-trip check (1)** never flags a legitimate config:
 

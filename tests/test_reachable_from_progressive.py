@@ -244,24 +244,29 @@ class _InconsistentTraverseUpAdapter:
         return iter(())
 
 
-class _OlsLikeInconsistentAdapter:
-    """OLS-shaped adapter whose native ``descendants()`` returns nothing.
+class _OlsPagedAdapter:
+    """OLS-shaped adapter with a configurable REST descendants page.
 
-    Mirrors OAK's OLS adapter on the versions where ``descendants()`` yields
-    nothing and the REST ``_ols_descendants`` fallback is required. If the
-    integrity probe did not consult that fallback, the forward sample would be
-    empty and the guard would silently never fire — the exact no-op finding from
-    the PR re-review. Here the fallback returns one child whose ancestors omit the
-    root by CURIE, so a correctly-wired guard still flags it.
+    Mirrors OAK's OLS adapter on the versions where native ``descendants()``
+    yields nothing (or raises) and the REST ``_ols_descendants`` fallback is
+    required. ``rest_descendants`` is the paged descendant list the fallback
+    returns; ``native`` selects whether native ``descendants()`` returns empty or
+    raises; ``ancestors_map`` supplies the reverse direction. Lets one stub cover
+    the fallback-wiring, raising-native, and truncation-boundary cases offline.
     """
 
     focus_ontology = "mondo"
 
-    def __init__(self):
+    def __init__(self, rest_descendants, native="empty", ancestors_map=None):
+        self._rest = list(rest_descendants)
+        self._native = native
+        self._anc = ancestors_map or {}
+        outer = self
+
         class _Client:
             def get_paged(self, path, key=None):
                 if path.endswith("descendants"):
-                    return [{"obo_id": "MONDO:0004992"}]
+                    return [{"obo_id": d} for d in outer._rest]
                 return []
 
         self.client = _Client()
@@ -273,12 +278,15 @@ class _OlsLikeInconsistentAdapter:
         return f"term {curie}" if str(curie).startswith("MONDO:") else None
 
     def descendants(self, curies, predicates=None):
-        return iter(())  # native OLS descendants is empty → forces the fallback
+        if self._native == "raise":
+            raise RuntimeError("native descendants unavailable")
+        return iter(())
 
     def ancestors(self, curies, predicates=None):
-        if "MONDO:0004992" in list(curies):
-            return iter(["AFO_O:0000001"])  # omits the root by CURIE
-        return iter(())
+        out: list[str] = []
+        for c in list(curies):
+            out.extend(self._anc.get(c, []))
+        return iter(out)
 
 
 def _island_enum() -> EnumDefinition:
@@ -340,7 +348,11 @@ def test_progressive_inconsistency_uses_ols_descendants_fallback(tmp_path):
         cache_enum_expansions=False,
         cache_dir=tmp_path / "cache",
     )
-    plugin.ontology._adapter_cache["MONDO"] = _OlsLikeInconsistentAdapter()
+    plugin.ontology._adapter_cache["MONDO"] = _OlsPagedAdapter(
+        rest_descendants=["MONDO:0004992"],
+        native="empty",
+        ancestors_map={"MONDO:0004992": ["AFO_O:0000001"]},
+    )
     enum_def = EnumDefinition(
         name="DiseaseEnum",
         reachable_from=ReachabilityQuery(
@@ -350,6 +362,78 @@ def test_progressive_inconsistency_uses_ols_descendants_fallback(tmp_path):
     with pytest.raises(InconsistentReachabilityError) as excinfo:
         plugin.is_value_in_enum("MONDO:0004992", enum_def)
     assert excinfo.value.witness == "MONDO:0004992"
+
+
+def test_progressive_inconsistency_when_native_descendants_raises(tmp_path):
+    """The forward sample must fall back even when native descendants() *raises*.
+
+    Re-review finding #2: `_reverse_reaches` recovered via the REST fallback on a
+    native exception but `_sample_closure` returned early, so an OLS adapter whose
+    `descendants()` raised left the forward sample empty → guard silently disabled.
+    Both paths must now be symmetric.
+    """
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+    plugin.ontology._adapter_cache["MONDO"] = _OlsPagedAdapter(
+        rest_descendants=["MONDO:0004992"],
+        native="raise",
+        ancestors_map={"MONDO:0004992": ["AFO_O:0000001"]},
+    )
+    enum_def = EnumDefinition(
+        name="DiseaseEnum",
+        reachable_from=ReachabilityQuery(
+            source_nodes=["MONDO:0000001"], relationship_types=["rdfs:subClassOf"]
+        ),
+    )
+    with pytest.raises(InconsistentReachabilityError):
+        plugin.is_value_in_enum("MONDO:0004992", enum_def)
+
+
+def test_reverse_reaches_truncation_boundary(tmp_path):
+    """A fallback truncated at the cap must read as UNANSWERABLE, not WITHOUT.
+
+    Re-review finding #1: `_ols_descendants` skips the source node during
+    collection, so a set of exactly the cap reliably signals truncation (even when
+    the REST page includes the start term). Truncated evidence must not be misread
+    as "exhausted without the target", which would hard-abort a healthy ontology.
+    """
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+    plugin._REVERSE_FALLBACK_LIMIT = 3
+    # REST page includes the start term plus > cap distinct members, none the target.
+    adapter = _OlsPagedAdapter(
+        rest_descendants=["MONDO:0000001", "MONDO:1", "MONDO:2", "MONDO:3", "MONDO:4"]
+    )
+    assert (
+        plugin._reverse_reaches(
+            adapter, "descendants", "MONDO:0000001", ["rdfs:subClassOf"], "MONDO:9999"
+        )
+        == plugin._REVERSE_UNANSWERABLE
+    )
+    # Exhausted below the cap without the target → demonstrably WITHOUT.
+    adapter2 = _OlsPagedAdapter(rest_descendants=["MONDO:0000001", "MONDO:1"])
+    assert (
+        plugin._reverse_reaches(
+            adapter2, "descendants", "MONDO:0000001", ["rdfs:subClassOf"], "MONDO:9999"
+        )
+        == plugin._REVERSE_WITHOUT
+    )
+    # Target present past nothing special → FOUND via stop_at.
+    adapter3 = _OlsPagedAdapter(rest_descendants=["MONDO:1", "MONDO:9999", "MONDO:2"])
+    assert (
+        plugin._reverse_reaches(
+            adapter3, "descendants", "MONDO:0000001", ["rdfs:subClassOf"], "MONDO:9999"
+        )
+        == plugin._REVERSE_FOUND
+    )
 
 
 def test_progressive_empty_reverse_closure_does_not_flag(tmp_path):

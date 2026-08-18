@@ -839,10 +839,10 @@ class BaseOntologyPlugin(ValidationPlugin):
 
         members = self._sample_closure(adapter, forward, source_node, predicates, source_prefix)
         if not members:
-            # No same-ontology member to test. For the default (descendants)
-            # direction a resolvable source that reaches nothing is a genuine leaf;
-            # but if the source is known to have children yet sampling found none,
-            # the guard is silently disabled — surface that.
+            # No same-ontology member to round-trip. Most often a legitimate leaf
+            # source that genuinely reaches nothing, so this is logged at debug
+            # rather than warned (a sampling that errored already warned in
+            # _sample_closure). Nothing to check → treat as consistent.
             logger.debug(
                 "reachable_from integrity probe found no same-prefix %s members for %s; "
                 "round-trip consistency not checked",
@@ -876,22 +876,26 @@ class BaseOntologyPlugin(ValidationPlugin):
     ) -> list[str]:
         """Return up to a few genuine closure members for ``start_curie``.
 
-        Iterates lazily and stops once ``_INCONSISTENCY_SAMPLE_SIZE`` members
-        sharing ``prefix`` have been collected, so probing a huge root stays cheap.
-        When the native traversal yields too few members and the direction is
-        ``descendants``, it consults a *bounded* OLS REST fallback (first pages
-        only) — OAK's OLS adapter answers ``descendants()`` with nothing on some
-        versions, so without this the guard would silently never fire on a live
-        ``ols:`` adapter (the exact dismech#7012 shape). Returns an empty list when
-        the source reaches nothing (a legitimate leaf) or cannot be answered.
+        Iterates lazily and stops once ``_INCONSISTENCY_SAMPLE_SIZE`` distinct
+        members sharing ``prefix`` have been collected, so probing a huge root
+        stays cheap. When the native ``descendants`` traversal yields nothing —
+        whether it returned empty or raised — it consults a *bounded* OLS REST
+        fallback (first pages only); OAK's OLS adapter answers ``descendants()``
+        with nothing on some versions, so without this the guard would silently
+        never fire on a live ``ols:`` adapter (the exact dismech#7012 shape). This
+        mirrors the reverse probe, keeping the two paths symmetric. Returns an
+        empty list when the source reaches nothing (a legitimate leaf) or cannot be
+        answered.
         """
         members: list[str] = []
+        seen: set[str] = set()
 
         def _accept(term: str) -> bool:
-            if term == start_curie:
+            if term == start_curie or term in seen:
                 return False
             if prefix is not None and self._get_prefix(term) != prefix:
                 return False
+            seen.add(term)
             members.append(term)
             return len(members) >= self._INCONSISTENCY_SAMPLE_SIZE
 
@@ -905,18 +909,23 @@ class BaseOntologyPlugin(ValidationPlugin):
                 raise
             except Exception as e:  # noqa: BLE001 - adapters raise varied errors
                 raise_if_service_unavailable(start_curie, e)
-                # A probe that cannot run leaves the guard silently disabled for
-                # this source node; warn (not debug) so that is discoverable.
+                # A probe that errored leaves the guard disabled unless the OLS
+                # fallback below can answer; warn (not debug) so that is
+                # discoverable. Do NOT return here — fall through so a raising
+                # native descendants() still gets the fallback (symmetry with
+                # _reverse_reaches).
                 logger.warning(
-                    "reachable_from integrity probe could not sample %s([%s]); "
-                    "consistency guard disabled for this source node: %s",
+                    "reachable_from integrity probe could not sample %s([%s]) natively; "
+                    "trying fallback: %s",
                     method_name,
                     start_curie,
                     e,
                 )
-                return members
 
-        if len(members) < self._INCONSISTENCY_SAMPLE_SIZE and method_name == "descendants":
+        # Only fall back when the native traversal produced no usable members: a
+        # non-empty native sample already suffices for consensus, so avoid the
+        # extra REST call for a healthy adapter that returns a few descendants.
+        if not members and method_name == "descendants":
             # Bounded fallback: fetch a few extra to survive prefix filtering, but
             # never the full root-scale crawl.
             fallback = self._ols_descendants(
@@ -977,22 +986,33 @@ class BaseOntologyPlugin(ValidationPlugin):
 
         if not saw_any and method_name == "descendants":
             # OAK's OLS adapter answers descendants() with nothing (or raises); the
-            # REST fallback self-guards to a no-op on non-OLS adapters. Bounded so a
-            # near-root reverse closure under traverse_up is never fully paged.
+            # REST fallback self-guards to a no-op on non-OLS adapters. `stop_at`
+            # short-circuits the moment the target appears (membership succeeds even
+            # past the cap); the cap otherwise bounds a near-root reverse closure so
+            # traverse_up never fully pages.
             fallback = self._ols_descendants(
                 adapter=adapter,
                 source_node=start_curie,
                 predicates=predicates,
                 reflexive=False,
                 limit=self._REVERSE_FALLBACK_LIMIT,
+                stop_at=target,
             )
             if target in fallback:
                 return self._REVERSE_FOUND
+            # `_ols_descendants` skips the source node during collection, so a set
+            # of exactly the cap reliably means the crawl was truncated; anything
+            # smaller means it was exhausted (demonstrably non-empty, target absent).
             if 0 < len(fallback) < self._REVERSE_FALLBACK_LIMIT:
-                # Exhausted the descendant set without the target → demonstrably
-                # non-empty and without it. A result at the cap may be truncated,
-                # so it stays UNANSWERABLE (we cannot claim "without").
                 saw_any = True
+            elif len(fallback) >= self._REVERSE_FALLBACK_LIMIT:
+                logger.debug(
+                    "reachable_from integrity probe hit the descendant cap (%d) for %s "
+                    "without finding %s; consistency not determined for this member",
+                    self._REVERSE_FALLBACK_LIMIT,
+                    start_curie,
+                    target,
+                )
 
         return self._REVERSE_WITHOUT if saw_any else self._REVERSE_UNANSWERABLE
 
@@ -1137,7 +1157,10 @@ class BaseOntologyPlugin(ValidationPlugin):
             # `minus` branch, or a reachable_from combined with permissible_values /
             # concepts / include / inherits that populate the enum, is unaffected.
             # The source-resolution lookup runs only on this empty path, so the
-            # healthy path pays nothing.
+            # healthy path pays nothing. NOTE: this keys on the *top-level*
+            # reachable_from only; an enum whose sole reachable_from lives in an
+            # `include:` branch is intentionally not guarded here (fail-safe — it can
+            # still cache an empty closure, but never false-aborts a valid config).
             if not values and enum_def.reachable_from:
                 resolved = next(
                     (
@@ -1275,14 +1298,18 @@ class BaseOntologyPlugin(ValidationPlugin):
         predicates: list[str],
         reflexive: bool,
         limit: Optional[int] = None,
+        stop_at: Optional[str] = None,
     ) -> set[str]:
         """Fallback descendant expansion for OAK OLS adapters without descendants().
 
-        ``limit`` caps how many descendants are collected before the paged crawl is
-        stopped early (``client.get_paged`` yields lazily). Callers that only need a
-        small sample or a bounded membership check pass a limit so a root-scale
-        descendant set is never fully paged; ``None`` (the default) collects all,
-        preserving the greedy-expansion behavior.
+        ``limit`` caps how many *genuine* descendants are collected before the paged
+        crawl is stopped early (``client.get_paged`` yields lazily). The source node
+        is skipped during collection (not discarded afterwards) so it never occupies
+        a slot — a returned set of exactly ``limit`` therefore reliably signals a
+        truncated crawl to callers, and a smaller set signals an exhausted one.
+        ``stop_at`` short-circuits the crawl the moment that CURIE is seen (returned
+        in the set), so a membership check can succeed even past ``limit``. ``None``
+        limit collects all, preserving the greedy-expansion behavior.
         """
         if predicates != ["rdfs:subClassOf"]:
             logger.debug(
@@ -1311,14 +1338,18 @@ class BaseOntologyPlugin(ValidationPlugin):
         )
         values: set[str] = set()
         for record in records:
-            if isinstance(record, dict) and isinstance(record.get("obo_id"), str):
-                values.add(record["obo_id"])
-                if limit is not None and len(values) >= limit:
-                    break  # stop paging early; caller only needs a bounded set
+            if not isinstance(record, dict) or not isinstance(record.get("obo_id"), str):
+                continue
+            obo_id = record["obo_id"]
+            if obo_id == source_node and not reflexive:
+                continue  # never let the source occupy a slot toward the cap
+            values.add(obo_id)
+            if stop_at is not None and obo_id == stop_at:
+                break  # membership satisfied; no need to page further
+            if limit is not None and len(values) >= limit:
+                break  # stop paging early; caller only needs a bounded set
         if reflexive:
             values.add(source_node)
-        else:
-            values.discard(source_node)
         return values
 
     def _expand_matches(self, query: Any) -> set[str]:
