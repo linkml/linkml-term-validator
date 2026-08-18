@@ -93,14 +93,21 @@ class EmptyReachableClosureError(UnreliableReachabilityError):
         # different remedies, so the message is branched accordingly.
         self.source_closure_empty = source_closure_empty
         direction = "ancestor" if traverse_up else "descendant"
+        boundary = "root" if traverse_up else "leaf"
         prefix = get_prefix(source_node) or source_node
         if source_closure_empty:
+            # An empty closure most often means the source node genuinely has no
+            # descendants/ancestors — a leaf (descendants) or a root (ancestors) —
+            # so the enum would match only the term itself. That is a schema issue,
+            # not necessarily a broken adapter, so the remedy leads with the schema
+            # and mentions the adapter only as a secondary possibility.
             super().__init__(
-                f"reachable_from source node {source_node!r} resolves to a valid term but "
-                f"the query expands to an empty set (its {direction} closure is empty under "
-                f"the configured adapter), so every {prefix} term would be silently rejected. "
-                f"This usually means the source node or adapter is misconfigured. Verify the "
-                f"source node, or configure a local adapter such as 'sqlite:obo:{prefix.lower()}'."
+                f"reachable_from source node {source_node!r} resolves but its {direction} "
+                f"closure is empty, so the enum matches no useful term. The source may be a "
+                f"{boundary} term with no {direction}s — an enum whose only member is the term "
+                f"itself should be written as concepts:/permissible_values:. If you expected a "
+                f"populated subtree, verify the source node id and that the adapter resolves "
+                f"its {prefix} hierarchy (e.g. a local 'sqlite:obo:{prefix.lower()}' adapter)."
             )
         else:
             super().__init__(

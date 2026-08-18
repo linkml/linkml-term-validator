@@ -219,8 +219,9 @@ clauses rather than the source node.
 
 `include_self: true` does not mask the check: when the traversal reaches nothing
 real and the enum's only members are its own `reachable_from` source nodes (and the
-enum declares no `concepts`/`permissible_values`/`matches`/`include`/`inherits`
-clause that could have contributed them), the enum is treated as empty and flagged.
+enum declares no other value clause — `concepts`/`permissible_values`/`matches`/
+`include`/`inherits`), the enum is treated as empty and flagged. (A declared
+`matches:` suppresses it fail-safe even though `matches` is a placeholder today.)
 A legitimate union that lists a branch root together with a specific sub-branch
 (`source_nodes: [parent, child]`) still expands normally — the check keys on whether
 any source actually reached a term, not on subtracting source nodes from the result.

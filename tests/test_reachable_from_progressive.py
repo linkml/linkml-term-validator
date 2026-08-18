@@ -935,6 +935,37 @@ def test_greedy_traverse_up_include_self_root_is_flagged(tmp_path):
     with pytest.raises(EmptyReachableClosureError) as excinfo:
         plugin.expand_enum(enum_def, use_cache=False)
     assert excinfo.value.source_closure_empty is True
+    # The remedy is schema-first, naming the root/leaf boundary, not adapter-blaming.
+    assert "root" in str(excinfo.value)
+
+
+def test_greedy_include_self_childless_with_concepts_keeps_reflexive_source(tmp_path):
+    """Pins `if fallback: result = fallback` in _expand_reachable_from_detailed.
+
+    Re-review test lock: a non-OLS adapter's fallback is a no-op (empty set); it must
+    not clobber the reflexive source the native traversal already produced. With a
+    `concepts:` clause suppressing the empty-arm raise, the reflexive source must
+    survive into the merged values — it would be lost under an unconditional
+    `result = fallback`.
+    """
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+    enum_def = EnumDefinition(
+        name="IncludeSelfConcepts",
+        reachable_from=ReachabilityQuery(
+            source_nodes=["TEST:0000004"],  # childless leaf
+            relationship_types=["rdfs:subClassOf"],
+            include_self=True,
+        ),
+        concepts=["TEST:0000002"],
+    )
+    values = plugin.expand_enum(enum_def, use_cache=False)  # must not raise
+    assert "TEST:0000004" in values  # reflexive source kept (lost if fallback clobbered)
+    assert "TEST:0000002" in values  # concepts contribution
 
 
 def test_greedy_include_self_over_populated_source_expands_normally(tmp_path):

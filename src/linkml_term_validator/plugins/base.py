@@ -1235,6 +1235,11 @@ class BaseOntologyPlugin(ValidationPlugin):
                 enum_def.reachable_from.source_nodes or [] if enum_def.reachable_from else []
             )
             rf_source_nodes = set(source_nodes_list)
+            # NOTE: `_expand_matches` is currently a placeholder that returns an
+            # empty set, so a declared `matches:` clause suppresses the include_self
+            # arm fail-safe (the author clearly intended another populating clause),
+            # not because it contributes values today. It is listed here so the
+            # behavior stays correct once `matches` is implemented.
             has_other_value_clause = bool(
                 enum_def.concepts
                 or enum_def.permissible_values
