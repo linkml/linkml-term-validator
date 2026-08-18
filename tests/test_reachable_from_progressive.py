@@ -197,6 +197,53 @@ class _InconsistentClosureAdapter:
         return iter(())
 
 
+class _EmptyReverseAdapter:
+    """Adapter whose reverse direction returns empty for every term.
+
+    The source root has descendants, but ``ancestors()`` answers with nothing for
+    everything — an adapter that does not really support the reverse direction
+    (wrong predicate spelling, focus-ontology restriction, no-op). An empty reverse
+    closure must NOT be read as proof of inconsistency (that would hard-abort a
+    healthy setup), so the guard must stay quiet here.
+    """
+
+    def label(self, curie):
+        return f"term {curie}" if str(curie).startswith("MONDO:") else None
+
+    def descendants(self, curies, predicates=None):
+        if "MONDO:0000001" in list(curies):
+            return iter(["MONDO:0004992"])
+        return iter(())
+
+    def ancestors(self, curies, predicates=None):
+        return iter(())  # reverse direction unsupported → answers empty for all
+
+
+class _InconsistentTraverseUpAdapter:
+    """traverse_up analogue of the CURIE-merge defect.
+
+    Under ``traverse_up`` the forward closure is the source's *ancestors* and the
+    reverse check is *descendants*. Here source ``MONDO:0005`` has ancestor
+    ``MONDO:0001``, but ``descendants(MONDO:0001)`` is non-empty yet omits
+    ``MONDO:0005`` — the round trip is broken in the traverse_up direction.
+    """
+
+    def label(self, curie):
+        return f"term {curie}" if str(curie).startswith("MONDO:") else None
+
+    def ancestors(self, curies, predicates=None):
+        if "MONDO:0005" in list(curies):
+            return iter(["MONDO:0001"])
+        return iter(())
+
+    def descendants(self, curies, predicates=None):
+        # MONDO:0001's descendants are non-empty (reverse direction works) but do
+        # not round-trip back to MONDO:0005.
+        if "MONDO:0001" in list(curies):
+            return iter(["MONDO:9999"])
+        return iter(())
+
+
 def _island_enum() -> EnumDefinition:
     """Enum whose (leaf) source node resolves but has no descendants."""
     return EnumDefinition(
@@ -238,7 +285,81 @@ def test_progressive_inconsistent_directions_fail_loud(tmp_path):
         # ancestor direction makes the check wrongly say "not reachable".
         plugin.is_value_in_enum("MONDO:0004992", enum_def)
     assert excinfo.value.source_node == "MONDO:0000001"
-    assert excinfo.value.descendant == "MONDO:0004992"
+    assert excinfo.value.witness == "MONDO:0004992"
+
+
+def test_progressive_empty_reverse_closure_does_not_flag(tmp_path):
+    """An adapter whose reverse direction answers empty for all must not be flagged.
+
+    Guards against the false positive of treating an empty-but-answered reverse
+    closure as proof of inconsistency: the reverse direction must demonstrably
+    work (a non-empty closure that omits the source) before the guard fires. Here
+    ``ancestors()`` is empty for everything, so rejecting a non-member is a quiet
+    ``False``, never InconsistentReachabilityError.
+    """
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+    plugin.ontology._adapter_cache["MONDO"] = _EmptyReverseAdapter()
+    enum_def = EnumDefinition(
+        name="DiseaseEnum",
+        reachable_from=ReachabilityQuery(
+            source_nodes=["MONDO:0000001"], relationship_types=["rdfs:subClassOf"]
+        ),
+    )
+    # A resolvable non-member: reachable check fails, but the empty reverse
+    # direction means we cannot (and must not) confirm an inconsistency.
+    assert plugin.is_value_in_enum("MONDO:0700000", enum_def) is False
+
+
+def test_progressive_traverse_up_inconsistency_fails_loud(tmp_path):
+    """The round-trip guard also covers the traverse_up direction.
+
+    Locks the forward/reverse direction mapping (forward=ancestors,
+    reverse=descendants under traverse_up); a swap would go unnoticed otherwise.
+    """
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+    plugin.ontology._adapter_cache["MONDO"] = _InconsistentTraverseUpAdapter()
+    enum_def = EnumDefinition(
+        name="AncestorsEnum",
+        reachable_from=ReachabilityQuery(
+            source_nodes=["MONDO:0005"],
+            relationship_types=["rdfs:subClassOf"],
+            traverse_up=True,
+        ),
+    )
+    with pytest.raises(InconsistentReachabilityError) as excinfo:
+        plugin.is_value_in_enum("MONDO:7777", enum_def)
+    assert excinfo.value.source_node == "MONDO:0005"
+    assert excinfo.value.witness == "MONDO:0001"
+    assert excinfo.value.traverse_up is True
+
+
+def test_progressive_traverse_up_healthy_does_not_flag(plugin):
+    """A round-trip-consistent traverse_up enum reports ordinary negatives.
+
+    Source TEST:0000004 (a leaf) has ancestors {root, child_one}; each of those
+    lists the leaf among its descendants, so the round trip holds and a genuine
+    non-ancestor stays a quiet ``False``.
+    """
+    enum_def = EnumDefinition(
+        name="TUHealthy",
+        reachable_from=ReachabilityQuery(
+            source_nodes=["TEST:0000004"],
+            relationship_types=["rdfs:subClassOf"],
+            traverse_up=True,
+        ),
+    )
+    assert plugin.is_value_in_enum("TEST:0000001", enum_def) is True  # ancestor of leaf
+    assert plugin.is_value_in_enum("TEST:0000003", enum_def) is False  # not an ancestor
 
 
 def test_progressive_healthy_source_still_reports_true_negative(plugin):

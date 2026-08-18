@@ -161,6 +161,62 @@ def test_validate_data_service_outage_reports_distinctly(
     assert "Unable to validate at this time" in result.output
 
 
+def test_validate_data_inconsistent_reachability_reports_distinctly(
+    runner, tests_data_dir, tmp_path, monkeypatch
+):
+    """validate-data fails with the distinct exit code 3 when an adapter's
+    ancestor/descendant directions disagree by CURIE (the OLS4 MONDO defect
+    shape), separate from invalid data (1) and a transient outage (2)."""
+    from linkml_term_validator.utils import oak_utils
+
+    class InconsistentAdapter:
+        """descendants(root)=[child] but ancestors(child) omits the root by CURIE."""
+
+        def label(self, curie):
+            return f"term {curie}" if str(curie).startswith("TEST:") else None
+
+        def descendants(self, curies, predicates=None):
+            if "TEST:0000001" in list(curies):
+                return iter(["TEST:0000002"])
+            return iter(())
+
+        def ancestors(self, curies, predicates=None):
+            # Non-empty (reverse direction works) but omits the root — inconsistent.
+            if "TEST:0000002" in list(curies):
+                return iter(["OTHER:0000001"])
+            return iter(())
+
+    monkeypatch.setattr(oak_utils, "get_adapter", lambda s: InconsistentAdapter())
+
+    # RootDescendantsEnum in this schema is reachable_from TEST:0000001; the data
+    # cites TEST:0000002 (a real descendant the corrupted graph can't match by CURIE).
+    data_path = tmp_path / "data.yaml"
+    data_path.write_text("- id: s1\n  term: TEST:0000002\n")
+
+    result = runner.invoke(
+        app,
+        [
+            "validate-data",
+            str(data_path),
+            "--schema",
+            str(tests_data_dir / "dynamic_enum_schema.yaml"),
+            "--target-class",
+            "Sample",
+            "--config",
+            str(tests_data_dir / "test_oak_config.yaml"),
+            "--no-bindings",
+            "--no-cache",
+            "--cache-dir",
+            str(tmp_path / "cache"),
+        ],
+    )
+
+    assert result.exit_code == 3, result.output
+    assert "reachability is unreliable" in result.output
+    # A configuration/ontology-graph problem, not invalid data.
+    assert "not invalid" in result.output
+
+
 def test_offline_flag_in_help(runner):
     """The --offline flag is documented on the validation commands."""
     for command in ["validate-schema", "validate-data", "validate", "validate-text-file"]:

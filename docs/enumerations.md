@@ -204,16 +204,23 @@ corruption (and is covered end-to-end by an OLS integration test).
 node resolves yet the whole `reachable_from` query expands to nothing, the enum
 matches no term and a greedy/materialized expansion would cache an
 *empty-but-complete* closure that poisons later runs. Expansion raises instead
-of persisting it.
+of persisting it. This applies to the **whole query**: a source node whose only
+contribution would be empty is fine as long as the query expands to *something*.
 
-Both checks are deliberately conservative and never flag a legitimate config:
+The **round-trip check (1)** never flags a legitimate config:
 
 - A genuinely out-of-enum term keeps the two directions in agreement (it is
   absent from both), so a correct negative is never flagged.
 - A **childless leaf source** reaches nothing, so nothing round-trips — a
-  correct negative under it stays a quiet `False`.
+  correct negative under it stays a quiet `False` on the progressive path.
 - A **multi-source union** (a leaf branch alongside a populated one) still
-  expands non-empty and round-trips.
+  round-trips through the populated branch.
+
+The **empty-expansion check (2)** fires only when the *entire* query expands to
+nothing — e.g. a single childless-leaf source with no other contribution and no
+`include_self`. Such an enum matches no term regardless, so failing loud (rather
+than silently materializing an empty closure) is the safe outcome; a union with
+any populated branch still expands non-empty and is unaffected.
 
 The fix is to configure a local, deterministic adapter (e.g.
 `sqlite:obo:mondo`) for the affected prefix, or correct the source node.

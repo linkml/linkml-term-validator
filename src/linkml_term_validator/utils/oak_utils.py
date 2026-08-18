@@ -108,19 +108,22 @@ class InconsistentReachabilityError(UnreliableReachabilityError):
     ``sqlite:obo:mondo``) avoids the corrupted identifiers.
     """
 
-    def __init__(self, source_node: str, descendant: str, traverse_up: bool = False):
+    def __init__(self, source_node: str, witness: str, traverse_up: bool = False):
         self.source_node = source_node
-        self.descendant = descendant
+        # The closure member that fails the round trip: a descendant of the source
+        # by default, or an ancestor when traverse_up (hence the direction-neutral
+        # name rather than `descendant`).
+        self.witness = witness
         self.traverse_up = traverse_up
         prefix = get_prefix(source_node) or source_node
         if traverse_up:
             detail = (
-                f"ancestor {descendant!r} of source node {source_node!r} does not report "
+                f"ancestor {witness!r} of source node {source_node!r} does not report "
                 f"it among its descendants"
             )
         else:
             detail = (
-                f"descendant {descendant!r} of source node {source_node!r} does not report "
+                f"descendant {witness!r} of source node {source_node!r} does not report "
                 f"it among its ancestors"
             )
         super().__init__(

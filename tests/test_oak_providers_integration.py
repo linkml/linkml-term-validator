@@ -124,6 +124,19 @@ def test_ols_mondo_ancestor_reachability_regression(tmp_path):
 
     _validate_provider_case(schema_path, data_path, plugin)
 
+    # Positive assertion that the integrity guard is actually wired against the
+    # live adapter (not silently disabled): the reverse direction must resolve the
+    # disease root by CURIE from a real descendant. Without this, the validation
+    # above would pass equally if the guard were a no-op. Uses a small ancestor
+    # closure (fast) rather than crawling the ~31k-descendant root.
+    adapter = plugin._get_adapter("MONDO")
+    assert (
+        plugin._reverse_reaches(
+            adapter, "ancestors", "MONDO:0004992", ["rdfs:subClassOf"], "MONDO:0000001"
+        )
+        == plugin._REVERSE_FOUND
+    )
+
 
 @pytest.mark.integration
 def test_dynamic_enum_with_ubergraph_provider_progressive(tmp_path):
