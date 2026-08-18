@@ -211,6 +211,12 @@ empty is fine as long as *something else* populates the enum. (A `reachable_from
 nested only inside an `include:` branch is not guarded here; it is fail-safe —
 never a false abort — but can still cache an empty closure.)
 
+This also fires when the top-level `reachable_from` closure is **non-empty** but a
+`minus:` (or other set operation) removes every term — the enum still matches
+nothing. In that case the error says so explicitly (a schema/set-arithmetic
+problem, not a misconfigured adapter), so you're pointed at the `minus:`/`include:`
+clauses rather than the source node.
+
 The **round-trip check (1)** never flags a legitimate config:
 
 - A genuinely out-of-enum term keeps the two directions in agreement (it is

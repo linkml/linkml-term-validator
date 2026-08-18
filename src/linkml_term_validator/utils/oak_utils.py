@@ -72,18 +72,35 @@ class EmptyReachableClosureError(UnreliableReachabilityError):
     useful validation configuration, so this exception is raised to fail loud.
     """
 
-    def __init__(self, source_node: str, traverse_up: bool = False):
+    def __init__(
+        self, source_node: str, traverse_up: bool = False, source_closure_empty: bool = True
+    ):
         self.source_node = source_node
         self.traverse_up = traverse_up
+        # Whether the top-level reachable_from clause ITSELF expanded to nothing
+        # (True → likely a bad source node / adapter) versus the closure being
+        # non-empty but a `minus:`/set operation removing every term (False → the
+        # user's set arithmetic, not a misconfigured adapter). The two need
+        # different remedies, so the message is branched accordingly.
+        self.source_closure_empty = source_closure_empty
         direction = "ancestor" if traverse_up else "descendant"
         prefix = get_prefix(source_node) or source_node
-        super().__init__(
-            f"reachable_from source node {source_node!r} resolves to a valid term but "
-            f"the query expands to an empty set (its {direction} closure is empty under "
-            f"the configured adapter), so every {prefix} term would be silently rejected. "
-            f"This usually means the source node or adapter is misconfigured. Verify the "
-            f"source node, or configure a local adapter such as 'sqlite:obo:{prefix.lower()}'."
-        )
+        if source_closure_empty:
+            super().__init__(
+                f"reachable_from source node {source_node!r} resolves to a valid term but "
+                f"the query expands to an empty set (its {direction} closure is empty under "
+                f"the configured adapter), so every {prefix} term would be silently rejected. "
+                f"This usually means the source node or adapter is misconfigured. Verify the "
+                f"source node, or configure a local adapter such as 'sqlite:obo:{prefix.lower()}'."
+            )
+        else:
+            super().__init__(
+                f"reachable_from source node {source_node!r} resolves and its {direction} "
+                f"closure is non-empty, but the enum's minus:/set operations removed every "
+                f"term, so it matches nothing and would be cached as an empty closure. This "
+                f"is a schema (set-arithmetic) problem, not a misconfigured adapter: review "
+                f"the enum's minus:/include: clauses rather than the source node or adapter."
+            )
 
 
 class InconsistentReachabilityError(UnreliableReachabilityError):

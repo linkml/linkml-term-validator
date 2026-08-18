@@ -257,10 +257,11 @@ class _OlsPagedAdapter:
 
     focus_ontology = "mondo"
 
-    def __init__(self, rest_descendants, native="empty", ancestors_map=None):
+    def __init__(self, rest_descendants, native="empty", ancestors_map=None, native_yield=None):
         self._rest = list(rest_descendants)
         self._native = native
         self._anc = ancestors_map or {}
+        self._native_yield = list(native_yield or [])
         outer = self
 
         class _Client:
@@ -280,6 +281,13 @@ class _OlsPagedAdapter:
     def descendants(self, curies, predicates=None):
         if self._native == "raise":
             raise RuntimeError("native descendants unavailable")
+        if self._native == "yield_then_raise":
+
+            def _gen():
+                yield from self._native_yield
+                raise RuntimeError("native descendants failed mid-stream")
+
+            return _gen()
         return iter(())
 
     def ancestors(self, curies, predicates=None):
@@ -416,7 +424,7 @@ def test_progressive_inconsistency_when_native_descendants_raises(tmp_path):
         plugin.is_value_in_enum("MONDO:0004992", enum_def)
 
 
-def test_reverse_reaches_truncation_boundary(tmp_path):
+def test_reverse_reaches_truncation_boundary(tmp_path, monkeypatch):
     """A fallback truncated at the cap must read as UNANSWERABLE, not WITHOUT.
 
     Re-review finding #1: `_ols_descendants` skips the source node during
@@ -430,7 +438,9 @@ def test_reverse_reaches_truncation_boundary(tmp_path):
         cache_enum_expansions=False,
         cache_dir=tmp_path / "cache",
     )
-    plugin._REVERSE_FALLBACK_LIMIT = 3
+    # Patch the class attribute (not the instance) so the test still exercises the
+    # boundary if the production read is ever refactored to type(self)/class access.
+    monkeypatch.setattr(DynamicEnumPlugin, "_REVERSE_FALLBACK_LIMIT", 3)
     # REST page includes the start term plus > cap distinct members, none the target.
     adapter = _OlsPagedAdapter(
         rest_descendants=["MONDO:0000001", "MONDO:1", "MONDO:2", "MONDO:3", "MONDO:4"]
@@ -490,6 +500,44 @@ def test_reverse_reaches_native_error_midstream_is_unanswerable(tmp_path):
             adapter, "ancestors", "MONDO:0004992", ["rdfs:subClassOf"], "MONDO:0000001"
         )
         == plugin._REVERSE_UNANSWERABLE
+    )
+
+
+def test_reverse_reaches_fallback_overrides_truncated_native(tmp_path):
+    """When native descendants() yields then raises, the fallback is authoritative.
+
+    Re-review finding: exercises the `(not saw_any or errored)` gate with
+    saw_any=True — a partial native view (two terms, then a RuntimeError) must not
+    decide the verdict; the bounded REST fallback overrides it. FOUND when the REST
+    page contains the target, WITHOUT when it exhausts without it.
+    """
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+    found = _OlsPagedAdapter(
+        rest_descendants=["MONDO:9999"],
+        native="yield_then_raise",
+        native_yield=["MONDO:1", "MONDO:2"],
+    )
+    assert (
+        plugin._reverse_reaches(
+            found, "descendants", "MONDO:start", ["rdfs:subClassOf"], "MONDO:9999"
+        )
+        == plugin._REVERSE_FOUND
+    )
+    without = _OlsPagedAdapter(
+        rest_descendants=["MONDO:1", "MONDO:2"],
+        native="yield_then_raise",
+        native_yield=["MONDO:1", "MONDO:2"],
+    )
+    assert (
+        plugin._reverse_reaches(
+            without, "descendants", "MONDO:start", ["rdfs:subClassOf"], "MONDO:9999"
+        )
+        == plugin._REVERSE_WITHOUT
     )
 
 
@@ -698,6 +746,41 @@ def test_greedy_minus_reachable_from_leaf_not_flagged(tmp_path):
     )
     values = plugin.expand_enum(enum_def, use_cache=False)
     assert "TEST:0000002" in values  # base survived; no false EmptyReachableClosureError
+
+
+def test_greedy_reachable_from_cancelled_by_minus_reports_set_arithmetic(tmp_path):
+    """A non-empty closure fully removed by ``minus:`` blames set arithmetic, not the adapter.
+
+    Re-review finding: failing loud is still right (the enum matches nothing), but
+    the message must not claim the descendant closure is empty / the adapter is
+    misconfigured when the real cause is the user's own ``minus:`` clause.
+    """
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+    enum_def = EnumDefinition(
+        name="Cancelled",
+        reachable_from=ReachabilityQuery(
+            source_nodes=["TEST:0000001"],  # {0002, 0003, 0004}
+            relationship_types=["rdfs:subClassOf"],
+        ),
+        minus=[
+            AnonymousEnumExpression(
+                reachable_from=ReachabilityQuery(
+                    source_nodes=["TEST:0000001"],  # subtract the same set → empty
+                    relationship_types=["rdfs:subClassOf"],
+                )
+            )
+        ],
+    )
+    with pytest.raises(EmptyReachableClosureError) as excinfo:
+        plugin.expand_enum(enum_def, use_cache=False)
+    # The top-level closure was non-empty, so it is attributed to set arithmetic.
+    assert excinfo.value.source_closure_empty is False
+    assert "minus" in str(excinfo.value)
 
 
 def test_inconsistency_probe_is_cached(tmp_path):

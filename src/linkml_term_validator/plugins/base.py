@@ -874,77 +874,88 @@ class BaseOntologyPlugin(ValidationPlugin):
         predicates: list[str],
         prefix: Optional[str] = None,
     ) -> list[str]:
-        """Return up to a few genuine closure members for ``start_curie``.
+        """Return up to ``_INCONSISTENCY_SAMPLE_SIZE`` genuine closure members.
 
-        Iterates lazily and stops once ``_INCONSISTENCY_SAMPLE_SIZE`` distinct
-        members sharing ``prefix`` have been collected, so probing a huge root
-        stays cheap. When the native ``descendants`` traversal yields nothing —
-        whether it returned empty or raised — it consults a *bounded* OLS REST
-        fallback (first pages only); OAK's OLS adapter answers ``descendants()``
-        with nothing on some versions, so without this the guard would silently
-        never fire on a live ``ols:`` adapter (the exact dismech#7012 shape). This
-        mirrors the reverse probe, keeping the two paths symmetric. Returns an
-        empty list when the source reaches nothing (a legitimate leaf) or cannot be
-        answered.
+        Lazily collects a bounded *pool* of distinct same-``prefix`` members (up to
+        ``_INCONSISTENCY_SAMPLE_SIZE * 8``, so a huge root is never fully walked),
+        then returns the ``_INCONSISTENCY_SAMPLE_SIZE`` smallest by CURIE. Sorting
+        makes the sample **deterministic** on both paths — an adapter generator's
+        order (set/graph-derived, process-randomized in several oaklib backends)
+        and the REST fallback's set order would otherwise make the consensus
+        verdict flip run to run on a mixed graph.
+
+        When the native ``descendants`` traversal yields nothing — whether it
+        returned empty or raised — it consults a *bounded* OLS REST fallback; OAK's
+        OLS adapter answers ``descendants()`` with nothing on some versions, so
+        without this the guard would silently never fire on a live ``ols:`` adapter
+        (the dismech#7012 shape). Returns an empty list when the source reaches
+        nothing (a legitimate leaf) or cannot be answered.
         """
-        members: list[str] = []
+        pool_cap = self._INCONSISTENCY_SAMPLE_SIZE * 8
+        pool: list[str] = []
         seen: set[str] = set()
 
-        def _accept(term: str) -> bool:
+        def _collect(term: str) -> bool:
             if term == start_curie or term in seen:
                 return False
             if prefix is not None and self._get_prefix(term) != prefix:
                 return False
             seen.add(term)
-            members.append(term)
-            return len(members) >= self._INCONSISTENCY_SAMPLE_SIZE
+            pool.append(term)
+            return len(pool) >= pool_cap
 
         method = getattr(adapter, method_name, None)
         if callable(method):
             try:
                 for term in method([start_curie], predicates=predicates):
-                    if _accept(term):
-                        return members
+                    if _collect(term):
+                        break
             except OntologyServiceUnavailableError:
                 raise
             except Exception as e:  # noqa: BLE001 - adapters raise varied errors
                 raise_if_service_unavailable(start_curie, e)
                 # A probe that errored leaves the guard disabled unless the OLS
-                # fallback below can answer; warn (not debug) so that is
-                # discoverable. Do NOT return here — fall through so a raising
-                # native descendants() still gets the fallback (symmetry with
-                # _reverse_reaches). Only the descendants direction has a fallback;
-                # for others (ancestors, under traverse_up) the guard is disabled
-                # for this source node — the message says so without promising one.
-                logger.warning(
-                    "reachable_from integrity probe could not sample %s([%s]) natively "
-                    "(a descendants fallback is attempted; other directions are skipped): %s",
-                    method_name,
-                    start_curie,
-                    e,
-                )
+                # fallback below can answer; warn (not debug) so it is discoverable.
+                # Do NOT return here — fall through so a raising native
+                # descendants() still gets the fallback (symmetry with
+                # _reverse_reaches). Branch on the direction so the log names
+                # exactly what happens, making a silently-disabled guard greppable.
+                if method_name == "descendants":
+                    logger.warning(
+                        "reachable_from integrity probe could not sample descendants([%s]) "
+                        "natively; trying the descendants fallback: %s",
+                        start_curie,
+                        e,
+                    )
+                else:
+                    logger.warning(
+                        "reachable_from integrity probe could not sample %s([%s]) natively; "
+                        "no fallback for this direction, so the consistency guard is disabled "
+                        "for this source node: %s",
+                        method_name,
+                        start_curie,
+                        e,
+                    )
 
         # Only fall back when the native traversal produced no usable members: a
-        # non-empty native sample already suffices for consensus, so avoid the
-        # extra REST call for a healthy adapter that returns a few descendants.
-        if not members and method_name == "descendants":
+        # non-empty native pool already suffices for consensus, so avoid the extra
+        # REST call for a healthy adapter that returns a few descendants.
+        if not pool and method_name == "descendants":
             # Bounded fallback: the ``* 8`` headroom over the sample size lets the
-            # prefix filter in ``_accept`` drop foreign-prefix terms and still leave
+            # prefix filter in ``_collect`` drop foreign-prefix terms and still leave
             # enough usable same-prefix members — never the full root-scale crawl.
-            # Sorted so the sampled members are deterministic (the fallback returns a
-            # set, whose iteration order is process-randomized): a mixed graph must
-            # not yield a different consensus verdict run to run.
             fallback = self._ols_descendants(
                 adapter=adapter,
                 source_node=start_curie,
                 predicates=predicates,
                 reflexive=False,
-                limit=self._INCONSISTENCY_SAMPLE_SIZE * 8,
+                limit=pool_cap,
             )
-            for term in sorted(fallback):
-                if _accept(term):
+            for term in fallback:
+                if _collect(term):
                     break
-        return members
+
+        return sorted(pool)[: self._INCONSISTENCY_SAMPLE_SIZE]
 
     def _reverse_reaches(
         self,
@@ -1120,9 +1131,13 @@ class BaseOntologyPlugin(ValidationPlugin):
         # Expand the enum
         values: set[str] = set()
 
-        # Handle reachable_from
+        # Handle reachable_from. Keep the top-level reachable_from contribution
+        # separate so the empty-enum diagnostic below can distinguish "the source
+        # closure itself was empty" from "a minus:/set operation emptied it".
+        rf_values: set[str] = set()
         if enum_def.reachable_from:
-            values.update(self._expand_reachable_from(enum_def.reachable_from))
+            rf_values = self._expand_reachable_from(enum_def.reachable_from)
+            values.update(rf_values)
 
         # Handle matches
         if enum_def.matches:
@@ -1192,6 +1207,7 @@ class BaseOntologyPlugin(ValidationPlugin):
                     raise EmptyReachableClosureError(
                         resolved,
                         traverse_up=bool(getattr(enum_def.reachable_from, "traverse_up", False)),
+                        source_closure_empty=not rf_values,
                     )
             self._closed_enum_caches.add(enum_name)
             if use_cache:
@@ -1356,17 +1372,24 @@ class BaseOntologyPlugin(ValidationPlugin):
             f"ontologies/{focus_ontology}/terms/{encoded_iri}/descendants",
             key="terms",
         )
+        # Reserve one slot for the reflexive source so a reflexive+limit call never
+        # returns limit+1 (which would void the "len == limit ⇒ possibly truncated"
+        # contract). The source is always skipped during collection and re-added
+        # afterwards when reflexive, so the cap counts only genuine descendants.
+        effective_limit = limit
+        if reflexive and limit is not None:
+            effective_limit = max(0, limit - 1)
         values: set[str] = set()
         for record in records:
             if not isinstance(record, dict) or not isinstance(record.get("obo_id"), str):
                 continue
             obo_id = record["obo_id"]
-            if obo_id == source_node and not reflexive:
-                continue  # never let the source occupy a slot toward the cap
+            if obo_id == source_node:
+                continue  # never let the source occupy a descendant slot
             values.add(obo_id)
             if stop_at is not None and obo_id == stop_at:
                 break  # membership satisfied; no need to page further
-            if limit is not None and len(values) >= limit:
+            if effective_limit is not None and len(values) >= effective_limit:
                 break  # stop paging early; caller only needs a bounded set
         if reflexive:
             values.add(source_node)
