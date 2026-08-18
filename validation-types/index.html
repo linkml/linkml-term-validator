@@ -1193,6 +1193,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#severity-and-exit-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Severity and exit codes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#strict-mode" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1574,6 +1585,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#severity-and-exit-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Severity and exit codes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#strict-mode" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1818,13 +1840,14 @@ linkml-term-validator validate-data data.yaml --schema schema.yaml --no-labels
 <li>Configured prefix with label mismatch</li>
 <li>Missing term from configured ontology</li>
 <li>Dynamic enum constraint violation</li>
+<li>Binding constraint violation</li>
 <li>
-<p>Binding constraint violation</p>
+<p>Binding label mismatch, and a malformed binding label</p>
 </li>
 <li>
 <p><strong>WARN</strong> - Potential issue that may need attention</p>
 </li>
-<li>Label mismatch in non-strict mode</li>
+<li>Permissible value label mismatch in non-strict mode</li>
 <li>
 <p>Unconfigured prefix with label mismatch (when verbose)</p>
 </li>
@@ -1834,6 +1857,43 @@ linkml-term-validator validate-data data.yaml --schema schema.yaml --no-labels
 <li>Unconfigured prefix encountered</li>
 <li>Unknown prefix summary</li>
 </ul>
+<p>These are defaults, not fixed rules. Each problem the plugins report has an
+error mode, and the severity of any mode can be changed — see
+<a href="../plugin-reference/#severity-overrides">Severity Overrides</a>:</p>
+<pre><code class="language-yaml">plugins:
+  &quot;linkml_term_validator.plugins.BindingValidationPlugin&quot;:
+    severity_overrides:
+      binding_label_mismatch: WARN
+</code></pre>
+<h3 id="severity-and-exit-codes">Severity and exit codes</h3>
+<p>Severity only matters if something acts on it, and the two commands differ:</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Exits non-zero when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>linkml-validate</code></td>
+<td>any result is <code>ERROR</code></td>
+</tr>
+<tr>
+<td><code>linkml-term-validator validate-data</code></td>
+<td>any result at all, by default (<code>--fail-on any</code>)</td>
+</tr>
+<tr>
+<td><code>linkml-term-validator validate-schema</code></td>
+<td>any result is <code>ERROR</code></td>
+</tr>
+</tbody>
+</table>
+<p>So under <code>linkml-validate</code> a <code>WARN</code> is printed and the build still passes. To
+make <code>validate-data</code> use the same rule — which is what lets a
+<code>severity_overrides</code> demotion take effect there too — pass <code>--fail-on error</code>.
+All results are printed under every threshold; <code>--fail-on</code> changes only the
+exit code.</p>
 <h3 id="strict-mode">Strict Mode</h3>
 <p>Use <code>--strict</code> to treat all warnings as errors:</p>
 <pre><code class="language-bash">linkml-term-validator validate-schema --strict schema.yaml
