@@ -913,10 +913,12 @@ class BaseOntologyPlugin(ValidationPlugin):
                 # fallback below can answer; warn (not debug) so that is
                 # discoverable. Do NOT return here — fall through so a raising
                 # native descendants() still gets the fallback (symmetry with
-                # _reverse_reaches).
+                # _reverse_reaches). Only the descendants direction has a fallback;
+                # for others (ancestors, under traverse_up) the guard is disabled
+                # for this source node — the message says so without promising one.
                 logger.warning(
-                    "reachable_from integrity probe could not sample %s([%s]) natively; "
-                    "trying fallback: %s",
+                    "reachable_from integrity probe could not sample %s([%s]) natively "
+                    "(a descendants fallback is attempted; other directions are skipped): %s",
                     method_name,
                     start_curie,
                     e,
@@ -926,8 +928,12 @@ class BaseOntologyPlugin(ValidationPlugin):
         # non-empty native sample already suffices for consensus, so avoid the
         # extra REST call for a healthy adapter that returns a few descendants.
         if not members and method_name == "descendants":
-            # Bounded fallback: fetch a few extra to survive prefix filtering, but
-            # never the full root-scale crawl.
+            # Bounded fallback: the ``* 8`` headroom over the sample size lets the
+            # prefix filter in ``_accept`` drop foreign-prefix terms and still leave
+            # enough usable same-prefix members — never the full root-scale crawl.
+            # Sorted so the sampled members are deterministic (the fallback returns a
+            # set, whose iteration order is process-randomized): a mixed graph must
+            # not yield a different consensus verdict run to run.
             fallback = self._ols_descendants(
                 adapter=adapter,
                 source_node=start_curie,
@@ -935,7 +941,7 @@ class BaseOntologyPlugin(ValidationPlugin):
                 reflexive=False,
                 limit=self._INCONSISTENCY_SAMPLE_SIZE * 8,
             )
-            for term in fallback:
+            for term in sorted(fallback):
                 if _accept(term):
                     break
         return members
@@ -963,6 +969,7 @@ class BaseOntologyPlugin(ValidationPlugin):
         root-scale page-through under ``traverse_up``.
         """
         saw_any = False
+        errored = False
         method = getattr(adapter, method_name, None)
         if callable(method):
             try:
@@ -976,20 +983,24 @@ class BaseOntologyPlugin(ValidationPlugin):
                 raise
             except Exception as e:  # noqa: BLE001 - adapters raise varied errors
                 raise_if_service_unavailable(start_curie, e)
+                # The native closure is now truncated: any members seen so far are a
+                # partial view, so `saw_any` must NOT be read as "exhaustively
+                # without the target". Remember it errored and prefer the fallback /
+                # UNANSWERABLE below.
+                errored = True
                 logger.warning(
-                    "reachable_from integrity probe could not verify %s([%s]) natively; "
-                    "trying fallback: %s",
+                    "reachable_from integrity probe could not fully read %s([%s]) natively: %s",
                     method_name,
                     start_curie,
                     e,
                 )
 
-        if not saw_any and method_name == "descendants":
-            # OAK's OLS adapter answers descendants() with nothing (or raises); the
-            # REST fallback self-guards to a no-op on non-OLS adapters. `stop_at`
-            # short-circuits the moment the target appears (membership succeeds even
-            # past the cap); the cap otherwise bounds a near-root reverse closure so
-            # traverse_up never fully pages.
+        # Consult the bounded REST fallback when the native traversal returned
+        # nothing OR errored partway (a partial native view cannot be trusted as
+        # exhaustive). `stop_at` short-circuits the moment the target appears
+        # (membership succeeds even past the cap); the cap otherwise bounds a
+        # near-root reverse closure so traverse_up never fully pages.
+        if (not saw_any or errored) and method_name == "descendants":
             fallback = self._ols_descendants(
                 adapter=adapter,
                 source_node=start_curie,
@@ -1001,11 +1012,11 @@ class BaseOntologyPlugin(ValidationPlugin):
             if target in fallback:
                 return self._REVERSE_FOUND
             # `_ols_descendants` skips the source node during collection, so a set
-            # of exactly the cap reliably means the crawl was truncated; anything
-            # smaller means it was exhausted (demonstrably non-empty, target absent).
+            # of exactly the cap is treated conservatively as (possibly) truncated;
+            # only a smaller, non-empty set is a demonstrably exhausted closure.
             if 0 < len(fallback) < self._REVERSE_FALLBACK_LIMIT:
-                saw_any = True
-            elif len(fallback) >= self._REVERSE_FALLBACK_LIMIT:
+                return self._REVERSE_WITHOUT
+            if len(fallback) >= self._REVERSE_FALLBACK_LIMIT:
                 logger.debug(
                     "reachable_from integrity probe hit the descendant cap (%d) for %s "
                     "without finding %s; consistency not determined for this member",
@@ -1013,8 +1024,15 @@ class BaseOntologyPlugin(ValidationPlugin):
                     start_curie,
                     target,
                 )
+                return self._REVERSE_UNANSWERABLE
+            # fallback empty → fall through to the native-based verdict
 
-        return self._REVERSE_WITHOUT if saw_any else self._REVERSE_UNANSWERABLE
+        # A clean, non-empty native closure without the target is demonstrably
+        # WITHOUT; a native traversal that errored partway is truncated evidence and
+        # must stay UNANSWERABLE rather than falsely claim exhaustion.
+        if saw_any and not errored:
+            return self._REVERSE_WITHOUT
+        return self._REVERSE_UNANSWERABLE
 
     # =========================================================================
     # Dynamic Enum Expansion (for cache_strategy="greedy")
@@ -1305,11 +1323,13 @@ class BaseOntologyPlugin(ValidationPlugin):
         ``limit`` caps how many *genuine* descendants are collected before the paged
         crawl is stopped early (``client.get_paged`` yields lazily). The source node
         is skipped during collection (not discarded afterwards) so it never occupies
-        a slot — a returned set of exactly ``limit`` therefore reliably signals a
-        truncated crawl to callers, and a smaller set signals an exhausted one.
-        ``stop_at`` short-circuits the crawl the moment that CURIE is seen (returned
-        in the set), so a membership check can succeed even past ``limit``. ``None``
-        limit collects all, preserving the greedy-expansion behavior.
+        a slot. Callers should treat the result conservatively: a set of exactly
+        ``limit`` means the crawl *may* have been truncated (it could also have
+        exhausted at precisely the cap) and must NOT be read as exhaustive; only a
+        smaller, non-empty set is a demonstrably exhausted closure. ``stop_at``
+        short-circuits the crawl the moment that CURIE is seen (returned in the
+        set), so a membership check can succeed even past ``limit``. ``None`` limit
+        collects all, preserving the greedy-expansion behavior.
         """
         if predicates != ["rdfs:subClassOf"]:
             logger.debug(

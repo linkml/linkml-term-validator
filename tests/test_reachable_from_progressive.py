@@ -289,6 +289,29 @@ class _OlsPagedAdapter:
         return iter(out)
 
 
+class _YieldsThenRaisesAdapter:
+    """Adapter whose native ``ancestors()`` yields a couple terms, then raises.
+
+    Simulates lazy paging that fails on a later page (or a malformed record
+    mid-stream). The partial closure seen before the error is truncated evidence
+    and must NOT be read as an exhaustive "without the target" answer.
+    """
+
+    def label(self, curie):
+        return f"term {curie}" if str(curie).startswith("MONDO:") else None
+
+    def ancestors(self, curies, predicates=None):
+        def _gen():
+            yield "MONDO:1"
+            yield "MONDO:2"
+            raise RuntimeError("paging failed on page 2")
+
+        return _gen()
+
+    def descendants(self, curies, predicates=None):
+        return iter(())
+
+
 def _island_enum() -> EnumDefinition:
     """Enum whose (leaf) source node resolves but has no descendants."""
     return EnumDefinition(
@@ -433,6 +456,40 @@ def test_reverse_reaches_truncation_boundary(tmp_path):
             adapter3, "descendants", "MONDO:0000001", ["rdfs:subClassOf"], "MONDO:9999"
         )
         == plugin._REVERSE_FOUND
+    )
+    # Exhausted at *exactly* the cap is ambiguous with truncation → conservatively
+    # UNANSWERABLE (never a false WITHOUT).
+    adapter4 = _OlsPagedAdapter(
+        rest_descendants=["MONDO:0000001", "MONDO:1", "MONDO:2", "MONDO:3"]
+    )
+    assert (
+        plugin._reverse_reaches(
+            adapter4, "descendants", "MONDO:0000001", ["rdfs:subClassOf"], "MONDO:9999"
+        )
+        == plugin._REVERSE_UNANSWERABLE
+    )
+
+
+def test_reverse_reaches_native_error_midstream_is_unanswerable(tmp_path):
+    """A native traversal that yields then raises is truncated → UNANSWERABLE.
+
+    Re-review finding #1: partial native evidence must not be reported as
+    `_REVERSE_WITHOUT` (which would feed a false inconsistency verdict). The
+    reverse direction here is `ancestors` (no descendants fallback), so the errored
+    partial closure must resolve to UNANSWERABLE, not WITHOUT.
+    """
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+    adapter = _YieldsThenRaisesAdapter()
+    assert (
+        plugin._reverse_reaches(
+            adapter, "ancestors", "MONDO:0004992", ["rdfs:subClassOf"], "MONDO:0000001"
+        )
+        == plugin._REVERSE_UNANSWERABLE
     )
 
 

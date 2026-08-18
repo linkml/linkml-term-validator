@@ -136,6 +136,12 @@ def test_ols_mondo_ancestor_reachability_regression(tmp_path):
         )
         == plugin._REVERSE_FOUND
     )
+    # And the *forward* sample — the path that actually makes the guard fire on a
+    # live ols: adapter — returns real same-prefix members (native or via the
+    # bounded fallback), so the probe is not silently disabled against the real API.
+    assert plugin._sample_closure(
+        adapter, "descendants", "MONDO:0000001", ["rdfs:subClassOf"], "MONDO"
+    )
 
 
 @pytest.mark.integration
