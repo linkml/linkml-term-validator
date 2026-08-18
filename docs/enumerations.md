@@ -169,6 +169,85 @@ Dynamic enums are appropriate when:
 linkml-term-validator validate-data data.yaml -s schema.yaml -t ClassName
 ```
 
+### Broken-adapter safeguards
+
+`reachable_from` validation fails loudly (CLI exit code `3`) rather than
+silently mislabeling terms when the configured ontology adapter returns a
+broken graph. Two distinct defects are caught:
+
+**1. Reachability inconsistent by CURIE (`InconsistentReachabilityError`).**
+A correct ontology is round-trip consistent: if `D` is a descendant of `S`,
+then `S` is among `D`'s ancestors. The progressive per-value check answers
+"is `S` an ancestor of the value?" by **CURIE**, so an adapter that reports a
+term under a different CURIE than the one used to root the enum returns wrong
+negatives with no error. Before reporting such a negative, the validator samples
+a few of the source node's descendants and checks the round trip; if a genuine
+descendant does not report the source node among its ancestors by CURIE, it
+raises instead.
+
+The motivating case
+([dismech#7012](https://github.com/monarch-initiative/dismech/issues/7012)) is a
+CURIE/identifier merge, **not** a broken hierarchy: OLS4 conflates
+`MONDO:0000001` with a cross-ontology term also labelled "disease" and returns
+the term at IRI `.../MONDO_0000001` under the wrong `obo_id` `AFO_O:0000001`.
+The hierarchy is *correct by IRI* — the root really is an ancestor — but every
+CURIE-matching consumer (oaklib's OLS adapter, and therefore this validator)
+saw the ancestor as `AFO_O:0000001`, so `MONDO:0000001` was unmatchable by CURIE
+and every MONDO term silently failed ancestor-based reachability.
+
+That specific OLS defect was fixed upstream
+([EBISPOT/ols4#1334](https://github.com/EBISPOT/ols4/issues/1334)); the guard is
+retained as a general safety net against this class of adapter identifier
+corruption (and is covered end-to-end by an OLS integration test).
+
+**2. Empty expansion (`EmptyReachableClosureError`).** If the enum's top-level
+`reachable_from` resolves at least one source node yet the **whole enum** expands
+to nothing, the enum matches no term and a greedy/materialized expansion would
+cache an *empty-but-complete* closure that poisons later runs. Expansion raises
+instead of persisting it. The decision is made against the **entire expanded
+enum** — including any `permissible_values`, `concepts`, `include:` and
+`inherits:` contributions — so a source node whose only contribution would be
+empty is fine as long as *something else* populates the enum. (A `reachable_from`
+nested only inside an `include:` branch is not guarded here; it is fail-safe —
+never a false abort — but can still cache an empty closure.)
+
+This also fires when the top-level `reachable_from` closure is **non-empty** but a
+`minus:` (or other set operation) removes every term — the enum still matches
+nothing. In that case the error says so explicitly (a schema/set-arithmetic
+problem, not a misconfigured adapter), so you're pointed at the `minus:`/`include:`
+clauses rather than the source node.
+
+`include_self: true` does not mask the check: when the traversal reaches nothing
+real and the enum's only members are its own `reachable_from` source nodes (and the
+enum declares no other value clause — `concepts`/`permissible_values`/`matches`/
+`include`/`inherits`), the enum is treated as empty and flagged. (A declared
+`matches:` suppresses it fail-safe even though `matches` is a placeholder today.)
+A legitimate union that lists a branch root together with a specific sub-branch
+(`source_nodes: [parent, child]`) still expands normally — the check keys on whether
+any source actually reached a term, not on subtracting source nodes from the result.
+
+The **round-trip check (1)** never flags a legitimate config:
+
+- A genuinely out-of-enum term keeps the two directions in agreement (it is
+  absent from both), so a correct negative is never flagged.
+- A **childless leaf source** reaches nothing, so nothing round-trips — a
+  correct negative under it stays a quiet `False` on the progressive path.
+- A **multi-source union** (a leaf branch alongside a populated one) still
+  round-trips through the populated branch.
+
+The **empty-expansion check (2)** fires when the enum effectively matches nothing
+— either the whole expansion is empty, or (with `include_self: true`) the only
+members are the source nodes themselves because the traversal reached nothing, as
+described above. Such an enum matches no useful term, so failing loud (rather than
+silently materializing an empty closure) is the safe outcome; a union with any
+populated branch still expands non-empty and is unaffected.
+
+For check (1) — a broken/inconsistent adapter graph — the fix is to configure a
+local, deterministic adapter (e.g. `sqlite:obo:mondo`) for the affected prefix.
+For check (2) the enum is usually empty by design: correct the source node id, move
+a single-term enum to `concepts:`/`permissible_values:`, or fix the `minus:`/set
+operation that cancelled it.
+
 ## Static vs Dynamic: Trade-offs
 
 | Aspect | Static Enum | Dynamic Enum |

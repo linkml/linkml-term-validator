@@ -24,7 +24,11 @@ from linkml_term_validator.plugins import (
     BindingValidationPlugin,
     DynamicEnumPlugin,
 )
-from linkml_term_validator.utils import OntologyServiceUnavailableError
+from linkml_term_validator.utils import (
+    EmptyReachableClosureError,
+    OntologyServiceUnavailableError,
+    UnreliableReachabilityError,
+)
 from linkml_term_validator.validator import EnumValidator
 
 app = typer.Typer(
@@ -37,6 +41,13 @@ app = typer.Typer(
 # code 1 used for genuine validation failures so callers/scripts can tell an
 # ontology-service outage apart from invalid data.
 EXIT_SERVICE_UNAVAILABLE = 2
+
+# Exit code for "could not validate" because the ontology graph / adapter config
+# is broken (a reachable_from source node reaches an empty closure, or the
+# adapter's ancestor/descendant directions disagree). Distinct from both invalid
+# data (1) and a transient service outage (2): this one is not fixed by retrying,
+# only by fixing the adapter configuration.
+EXIT_ONTOLOGY_MISCONFIGURED = 3
 
 
 class FailOn(str, Enum):
@@ -115,6 +126,52 @@ def _fail_service_unavailable(exc: OntologyServiceUnavailableError) -> typer.Exi
         err=True,
     )
     return typer.Exit(code=EXIT_SERVICE_UNAVAILABLE)
+
+
+def _fail_unreliable_reachability(exc: UnreliableReachabilityError) -> typer.Exit:
+    """Report a dynamic-enum that could not be validated, with a distinct code.
+
+    Three configuration causes share the distinct exit code (none is invalid data,
+    and none fixes itself on retry), and the banner follows the cause so it never
+    blames the adapter for a schema problem:
+
+    - the enum matched nothing because a ``minus:``/set operation removed every term
+      (``EmptyReachableClosureError`` with ``source_closure_empty=False``);
+    - the enum's source closure is legitimately empty — the source is a leaf/root,
+      a schema issue (``EmptyReachableClosureError`` with ``source_closure_empty=True``);
+    - a broken/misconfigured adapter whose reachability cannot be trusted
+      (``InconsistentReachabilityError``).
+    """
+    if isinstance(exc, EmptyReachableClosureError):
+        if exc.source_closure_empty:
+            typer.echo(
+                "\n🚫 Unable to validate: a dynamic enum matched nothing.\n"
+                f"   {exc}\n"
+                "   The reachable_from closure is empty, so the enum matches no useful "
+                "term. This is a schema problem (a leaf/root source, or a single-term "
+                "enum that belongs in concepts:/permissible_values:), not invalid data "
+                "or a broken adapter.",
+                err=True,
+            )
+        else:
+            typer.echo(
+                "\n🚫 Unable to validate: a dynamic enum matched nothing.\n"
+                f"   {exc}\n"
+                "   The enum's set operations removed every term, so there is nothing "
+                "to validate against. This is a schema problem, not invalid data or a "
+                "broken adapter.",
+                err=True,
+            )
+    else:
+        typer.echo(
+            "\n🚫 Unable to validate: dynamic-enum reachability is unreliable.\n"
+            f"   {exc}\n"
+            "   Reachability could not be computed reliably, so terms were not "
+            "checked. This is a configuration/ontology-graph problem, not invalid "
+            "data.",
+            err=True,
+        )
+    return typer.Exit(code=EXIT_ONTOLOGY_MISCONFIGURED)
 
 
 @app.command()
@@ -434,6 +491,8 @@ def validate_data(
             report = validator.validate_source(loader, target_class=target_class)
         except OntologyServiceUnavailableError as exc:
             raise _fail_service_unavailable(exc) from exc
+        except UnreliableReachabilityError as exc:
+            raise _fail_unreliable_reachability(exc) from exc
 
         if len(report.results) == 0:
             if len(data_paths) > 1:

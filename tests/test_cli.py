@@ -161,6 +161,200 @@ def test_validate_data_service_outage_reports_distinctly(
     assert "Unable to validate at this time" in result.output
 
 
+def test_validate_data_inconsistent_reachability_reports_distinctly(
+    runner, tests_data_dir, tmp_path, monkeypatch
+):
+    """validate-data fails with the distinct exit code 3 when an adapter's
+    ancestor/descendant directions disagree by CURIE (the OLS4 MONDO defect
+    shape), separate from invalid data (1) and a transient outage (2)."""
+    from linkml_term_validator.utils import oak_utils
+
+    class InconsistentAdapter:
+        """descendants(root)=[child] but ancestors(child) omits the root by CURIE."""
+
+        def label(self, curie):
+            return f"term {curie}" if str(curie).startswith("TEST:") else None
+
+        def descendants(self, curies, predicates=None):
+            if "TEST:0000001" in list(curies):
+                return iter(["TEST:0000002"])
+            return iter(())
+
+        def ancestors(self, curies, predicates=None):
+            # Non-empty (reverse direction works) but omits the root — inconsistent.
+            if "TEST:0000002" in list(curies):
+                return iter(["OTHER:0000001"])
+            return iter(())
+
+    monkeypatch.setattr(oak_utils, "get_adapter", lambda s: InconsistentAdapter())
+
+    # RootDescendantsEnum in this schema is reachable_from TEST:0000001; the data
+    # cites TEST:0000002 (a real descendant the corrupted graph can't match by CURIE).
+    data_path = tmp_path / "data.yaml"
+    data_path.write_text("- id: s1\n  term: TEST:0000002\n")
+
+    result = runner.invoke(
+        app,
+        [
+            "validate-data",
+            str(data_path),
+            "--schema",
+            str(tests_data_dir / "dynamic_enum_schema.yaml"),
+            "--target-class",
+            "Sample",
+            "--config",
+            str(tests_data_dir / "test_oak_config.yaml"),
+            "--no-bindings",
+            "--no-cache",
+            "--cache-dir",
+            str(tmp_path / "cache"),
+        ],
+    )
+
+    assert result.exit_code == 3, result.output
+    assert "reachability is unreliable" in result.output
+    # A configuration/ontology-graph problem, not invalid data.
+    assert "not invalid" in result.output
+
+
+def test_validate_data_empty_reachable_closure_reports_distinctly(
+    runner, tests_data_dir, tmp_path, monkeypatch
+):
+    """validate-data (greedy) also exits 3 via EmptyReachableClosureError — the
+    empty-expansion arm shares the unreliable-reachability exit path with the
+    inconsistency arm."""
+    from linkml_term_validator.utils import oak_utils
+
+    class EmptyDescAdapter:
+        """Source nodes resolve, but the whole reachable_from expands to nothing."""
+
+        def label(self, curie):
+            return f"term {curie}" if str(curie).startswith("TEST:") else None
+
+        def descendants(self, curies, predicates=None):
+            return iter(())
+
+        def ancestors(self, curies, predicates=None):
+            return iter(())
+
+    monkeypatch.setattr(oak_utils, "get_adapter", lambda s: EmptyDescAdapter())
+
+    data_path = tmp_path / "data.yaml"
+    data_path.write_text("- id: s1\n")
+
+    result = runner.invoke(
+        app,
+        [
+            "validate-data",
+            str(data_path),
+            "--schema",
+            str(tests_data_dir / "dynamic_enum_schema.yaml"),
+            "--target-class",
+            "Sample",
+            "--config",
+            str(tests_data_dir / "test_oak_config.yaml"),
+            "--no-bindings",
+            "--cache-strategy",
+            "greedy",
+            "--no-cache",
+            "--cache-dir",
+            str(tmp_path / "cache"),
+        ],
+    )
+
+    assert result.exit_code == 3, result.output
+    # Empty source closure (a leaf/root source) is a schema problem, so the banner
+    # and body say so rather than blaming the adapter's reachability.
+    assert "matched nothing" in result.output
+    assert "concepts:/permissible_values:" in result.output
+    assert "reachability is unreliable" not in result.output
+
+
+def test_validate_data_set_arithmetic_empty_enum_reports_distinctly(
+    runner, tmp_path, monkeypatch
+):
+    """When a `minus:` clause cancels a non-empty closure, exit 3 uses the
+    set-arithmetic banner (blames the schema, not the adapter)."""
+    from linkml_term_validator.utils import oak_utils
+
+    class PopulatedAdapter:
+        """The source's closure is non-empty; the schema's minus: removes it all."""
+
+        def label(self, curie):
+            return f"term {curie}" if str(curie).startswith("TEST:") else None
+
+        def descendants(self, curies, predicates=None):
+            if "TEST:0000001" in list(curies):
+                return iter(["TEST:0000002", "TEST:0000003"])
+            return iter(())
+
+        def ancestors(self, curies, predicates=None):
+            return iter(())
+
+    monkeypatch.setattr(oak_utils, "get_adapter", lambda s: PopulatedAdapter())
+
+    schema_path = tmp_path / "schema.yaml"
+    schema_path.write_text("""
+id: https://example.org/cancelled
+name: cancelled
+prefixes:
+  TEST: http://example.org/TEST_
+  linkml: https://w3id.org/linkml/
+default_prefix: cancelled
+default_range: string
+classes:
+  Sample:
+    attributes:
+      id:
+        identifier: true
+      term:
+        range: CancelledEnum
+enums:
+  CancelledEnum:
+    reachable_from:
+      source_ontology: simpleobo:tests/data/test_ontology.obo
+      source_nodes:
+        - TEST:0000001
+      relationship_types:
+        - rdfs:subClassOf
+    minus:
+      - reachable_from:
+          source_ontology: simpleobo:tests/data/test_ontology.obo
+          source_nodes:
+            - TEST:0000001
+          relationship_types:
+            - rdfs:subClassOf
+""")
+    data_path = tmp_path / "data.yaml"
+    data_path.write_text("- id: s1\n")
+
+    result = runner.invoke(
+        app,
+        [
+            "validate-data",
+            str(data_path),
+            "--schema",
+            str(schema_path),
+            "--target-class",
+            "Sample",
+            "--config",
+            str(Path(__file__).parent / "data" / "test_oak_config.yaml"),
+            "--no-bindings",
+            "--cache-strategy",
+            "greedy",
+            "--no-cache",
+            "--cache-dir",
+            str(tmp_path / "cache"),
+        ],
+    )
+
+    assert result.exit_code == 3, result.output
+    assert "matched nothing" in result.output
+    assert "set operations removed every term" in result.output
+    # Must NOT blame the adapter on this branch.
+    assert "reachability is unreliable" not in result.output
+
+
 def test_offline_flag_in_help(runner):
     """The --offline flag is documented on the validation commands."""
     for command in ["validate-schema", "validate-data", "validate", "validate-text-file"]:

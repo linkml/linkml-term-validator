@@ -50,6 +50,129 @@ class OntologyServiceUnavailableError(Exception):
         super().__init__(f"could not reach ontology service to resolve {curie}{detail}")
 
 
+class UnreliableReachabilityError(Exception):
+    """Base for "a reachable_from result cannot be used as-is" failures.
+
+    Distinct from invalid data: a dynamic enum could not be validated — either the
+    configured ontology adapter returned a broken/self-contradictory graph, or the
+    enum expanded to nothing so there is no closure to validate against. Both are
+    configuration problems (not "term not in enum") and do not fix themselves on
+    retry, so callers surface them as "unable to validate" with a distinct exit
+    code. Subclasses carry the specific cause and the right remedy.
+    """
+
+
+class EmptyReachableClosureError(UnreliableReachabilityError):
+    """Raised when a ``reachable_from`` enum expands to nothing.
+
+    Two distinct causes share this exception (disambiguated by
+    ``source_closure_empty``):
+
+    - **Empty source closure** (``source_closure_empty=True``): a source node
+      resolves but its descendant/ancestor closure is empty, so the query reaches
+      nothing. Most often the source is genuinely a leaf (descendants) or root
+      (ancestors) — a schema issue — rather than a broken adapter.
+    - **Cancelled by set operations** (``source_closure_empty=False``): the source
+      closure was non-empty but a ``minus:``/set operation removed every term — a
+      schema problem, not the adapter.
+
+    Either way the enum matches no term, and a greedy expansion would cache an
+    empty-but-``complete`` closure that poisons later runs, so it is raised to fail
+    loud rather than silently persist an empty enum. The message is branched to
+    point at the right remedy.
+    """
+
+    def __init__(
+        self, source_node: str, traverse_up: bool = False, source_closure_empty: bool = True
+    ):
+        self.source_node = source_node
+        self.traverse_up = traverse_up
+        # Whether the top-level reachable_from clause ITSELF expanded to nothing
+        # (True → likely a bad source node / adapter) versus the closure being
+        # non-empty but a `minus:`/set operation removing every term (False → the
+        # user's set arithmetic, not a misconfigured adapter). The two need
+        # different remedies, so the message is branched accordingly.
+        self.source_closure_empty = source_closure_empty
+        direction = "ancestor" if traverse_up else "descendant"
+        boundary = "root" if traverse_up else "leaf"
+        prefix = get_prefix(source_node) or source_node
+        if source_closure_empty:
+            # An empty closure most often means the source node genuinely has no
+            # descendants/ancestors — a leaf (descendants) or a root (ancestors) —
+            # so the enum would match only the term itself. That is a schema issue,
+            # not necessarily a broken adapter, so the remedy leads with the schema
+            # and mentions the adapter only as a secondary possibility.
+            super().__init__(
+                f"reachable_from source node {source_node!r} resolves but its {direction} "
+                f"closure is empty, so the enum would match only the source term (or nothing "
+                f"at all). The source may be a {boundary} term with no {direction}s — a "
+                f"single-term enum should be written as concepts:/permissible_values: instead. "
+                f"If you expected a populated subtree, verify the source node id and that the "
+                f"adapter resolves its {prefix} hierarchy (e.g. a local "
+                f"'sqlite:obo:{prefix.lower()}' adapter)."
+            )
+        else:
+            super().__init__(
+                f"reachable_from source node {source_node!r} resolves and its {direction} "
+                f"closure is non-empty, but the enum's minus:/set operations removed every "
+                f"term, so it matches nothing and would be cached as an empty closure. This "
+                f"is a schema (set-arithmetic) problem, not a misconfigured adapter: review "
+                f"the enum's minus:/include: clauses rather than the source node or adapter."
+            )
+
+
+class InconsistentReachabilityError(UnreliableReachabilityError):
+    """Raised when an adapter's reachability is inconsistent *by CURIE*.
+
+    A correct ontology is round-trip consistent: if ``D`` is a descendant of
+    ``S`` then ``S`` is among ``D``'s ancestors. When a ``reachable_from`` source
+    node ``S`` resolves and *has* descendants, yet those descendants do **not**
+    report ``S`` among their ancestors (matched by CURIE), ancestor-based
+    membership checks (the progressive per-value path) silently return wrong
+    negatives — a failure no "term not found" or "empty closure" check catches.
+
+    The motivating case (dismech#7012) is subtler than a broken hierarchy: OLS4
+    conflates ``MONDO:0000001`` with a cross-ontology term also labelled
+    "disease" and reports the term at IRI ``.../MONDO_0000001`` under the wrong
+    ``obo_id`` ``AFO_O:0000001`` (its ``short_form`` and ``label`` are corrupted
+    too). The *hierarchy is correct by IRI* — the root really is an ancestor —
+    but every CURIE-matching consumer (oaklib's OLS adapter, and therefore this
+    validator) sees the ancestor as ``AFO_O:0000001``, so ``MONDO:0000001``'s own
+    descendants never list it as an ancestor by CURIE and every MONDO term fails
+    CURIE-based reachability. Configuring a local, deterministic adapter (e.g.
+    ``sqlite:obo:mondo``) avoids the corrupted identifiers.
+    """
+
+    def __init__(self, source_node: str, witness: str, traverse_up: bool = False):
+        self.source_node = source_node
+        # The closure member that fails the round trip: a descendant of the source
+        # by default, or an ancestor when traverse_up (hence the direction-neutral
+        # name rather than `descendant`).
+        self.witness = witness
+        self.traverse_up = traverse_up
+        prefix = get_prefix(source_node) or source_node
+        if traverse_up:
+            detail = (
+                f"ancestor {witness!r} of source node {source_node!r} does not report "
+                f"it among its descendants"
+            )
+        else:
+            detail = (
+                f"descendant {witness!r} of source node {source_node!r} does not report "
+                f"it among its ancestors"
+            )
+        super().__init__(
+            f"reachable_from reachability is inconsistent by CURIE: {detail}. This happens "
+            f"when the adapter reports a term under a different CURIE than the one used to "
+            f"root the enum, so ancestor-based checks silently return wrong negatives for "
+            f"{prefix} terms. The motivating case (dismech#7012): OLS4 returns the term at "
+            f"IRI .../MONDO_0000001 with obo_id 'AFO_O:0000001' (a cross-ontology term also "
+            f"labelled 'disease'), so the hierarchy is correct by IRI but MONDO:0000001 is "
+            f"unmatchable by CURIE. Configure a local adapter such as "
+            f"'sqlite:obo:{prefix.lower()}' for the {prefix} prefix."
+        )
+
+
 # Well-defined exception TYPES that mean "the ontology service could not be
 # reached", matched by isinstance (never by class name). OAK's OLS adapter goes
 # label() -> client.get_term() -> requests.get()/raise_for_status(), so a network

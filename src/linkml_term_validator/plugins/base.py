@@ -33,6 +33,8 @@ from linkml_runtime.linkml_model import EnumDefinition
 from linkml_term_validator.cache_utils import atomic_write_csv, locked_cache_file
 from linkml_term_validator.models import CacheStrategy, ErrorMode, ValidationConfig
 from linkml_term_validator.utils import (
+    EmptyReachableClosureError,
+    InconsistentReachabilityError,
     OntologyAccess,
     OntologyServiceUnavailableError,
     get_prefix,
@@ -118,6 +120,10 @@ class BaseOntologyPlugin(ValidationPlugin):
         # Enum-expansion caches (plugin-specific, not shared).
         self._enum_cache: dict[str, set[str]] = {}  # enum_name -> cached values
         self._closed_enum_caches: set[str] = set()  # enum_name -> cache is known complete
+        # (source_node, predicates, traverse_up) -> the closure member proving the
+        # adapter's ancestor/descendant directions disagree, or None if consistent.
+        # A broken graph (e.g. OLS4 MONDO) is probed at most once per source node.
+        self._source_inconsistency_cache: dict[tuple[str, tuple[str, ...], bool], Optional[str]] = {}
 
         # Read plugin-specific extras (cache strategy/flags) from the same
         # oak_config.yaml the ontology service already parsed.
@@ -791,6 +797,30 @@ class BaseOntologyPlugin(ValidationPlugin):
                 )
                 continue
 
+        # No source node reached `value`. `value` itself resolved (checked above),
+        # so before returning a definitive negative, make sure the verdict is
+        # trustworthy. The negative was computed by CURIE from `value`'s ancestor
+        # closure (or the source node's, under traverse_up); if the adapter reports
+        # a same-ontology source node's own descendants without listing that source
+        # among their ancestors *by CURIE*, reachability is broken and the "not
+        # reachable" answer is a silent false negative, not a real out-of-enum
+        # result. The motivating case (dismech#7012): OLS4 returns MONDO:0000001
+        # under the wrong obo_id AFO_O:0000001, so the hierarchy is right by IRI
+        # but MONDO:0000001 is unmatchable by CURIE. Detecting the round-trip
+        # mismatch is false-positive-free: a genuinely out-of-enum term and a
+        # legitimate childless-leaf source both keep the round trip consistent.
+        traverse_up = bool(getattr(query, "traverse_up", False))
+        for source_node in query.source_nodes:
+            if source_node == value or self._get_prefix(source_node) != prefix:
+                continue
+            witness = self._reachability_inconsistency_witness(
+                adapter, source_node, predicates, traverse_up
+            )
+            if witness is not None:
+                raise InconsistentReachabilityError(
+                    source_node, witness, traverse_up=traverse_up
+                )
+
         return False
 
     @staticmethod
@@ -839,6 +869,312 @@ class BaseOntologyPlugin(ValidationPlugin):
         else:
             values.discard(start_curie)
         return values
+
+    # =========================================================================
+    # reachable_from source-node integrity (dismech#7012)
+    # =========================================================================
+
+    # How many same-ontology closure members to sample when probing round-trip
+    # consistency. The OLS4 MONDO defect is universal (every disease descendant is
+    # missing the root from its ancestors), so a small sample reveals it; a sample
+    # larger than one lets us demand *consensus* (see below) instead of trusting a
+    # single edge, which keeps an incidental detached term from aborting a run.
+    _INCONSISTENCY_SAMPLE_SIZE = 8
+
+    # Cap on the bounded OLS descendants fallback used for a reverse-direction
+    # membership check, so a near-root reverse closure (traverse_up) is never fully
+    # paged. Beyond this the result is treated as "could not confirm".
+    _REVERSE_FALLBACK_LIMIT = 1024
+
+    # Result of a reverse-direction membership probe.
+    _REVERSE_FOUND = "found"  # reverse closure contains the source → round trip holds
+    _REVERSE_WITHOUT = "without"  # reverse closure is non-empty but lacks the source
+    _REVERSE_UNANSWERABLE = "unanswerable"  # reverse direction returned nothing / errored
+
+    def _reachability_inconsistency_witness(
+        self, adapter: object, source_node: str, predicates: list[str], traverse_up: bool
+    ) -> Optional[str]:
+        """Return a closure member proving the adapter's reachability is broken.
+
+        A round-trip-consistent ontology satisfies: if ``D`` is a descendant of
+        ``S`` then ``S`` is among ``D``'s ancestors (and symmetrically for
+        ``traverse_up``). This samples a few *same-ontology* members of the source
+        node's closure and checks the reverse direction of each. It returns a
+        witness member only when the round trip is broken *by consensus*, and
+        ``None`` (consistent / undeterminable — never flagged) otherwise. The
+        verdict is cached per (source_node, predicates, direction).
+
+        To keep this false-positive-free against a hard abort, a witness is
+        reported only when ALL of these hold:
+
+        - No sampled member round-trips (any single member that *does* report the
+          source among its reverse closure proves the graph is fine here → return
+          ``None`` immediately). This is the healthy fast path.
+        - At least one sampled member's reverse direction is *demonstrably
+          answerable* — a non-empty reverse closure that simply omits the source.
+          An adapter that returns an empty set for a direction it does not really
+          support (wrong predicate spelling, focus-ontology restriction, no-op)
+          therefore never trips the guard.
+
+        A source node that does not resolve is left to ordinary "term not found"
+        handling and reported here as consistent (``None``).
+        """
+        key = (source_node, tuple(predicates), traverse_up)
+        if key in self._source_inconsistency_cache:
+            return self._source_inconsistency_cache[key]
+
+        witness = self._compute_inconsistency_witness(
+            adapter, source_node, predicates, traverse_up
+        )
+        self._source_inconsistency_cache[key] = witness
+        return witness
+
+    def _compute_inconsistency_witness(
+        self, adapter: object, source_node: str, predicates: list[str], traverse_up: bool
+    ) -> Optional[str]:
+        if self.get_ontology_label(source_node) is None:
+            return None
+
+        # traverse_up checks "value is an ancestor of source", so the source
+        # node's forward closure is its ancestors, verified against descendants;
+        # the default checks "value is a descendant of source", so the forward
+        # closure is its descendants, verified against ancestors.
+        forward = "ancestors" if traverse_up else "descendants"
+        reverse = "descendants" if traverse_up else "ancestors"
+        source_prefix = self._get_prefix(source_node)
+
+        members = self._sample_closure(adapter, forward, source_node, predicates, source_prefix)
+        if not members:
+            # No same-ontology member to round-trip. Most often a legitimate leaf
+            # source that genuinely reaches nothing, so this is logged at debug
+            # rather than warned (a sampling that errored already warned in
+            # _sample_closure). Nothing to check → treat as consistent.
+            logger.debug(
+                "reachable_from integrity probe found no same-prefix %s members for %s; "
+                "round-trip consistency not checked",
+                forward,
+                source_node,
+            )
+            return None
+
+        first_without: Optional[str] = None
+        answerable = False
+        for member in members:
+            status = self._reverse_reaches(adapter, reverse, member, predicates, source_node)
+            if status == self._REVERSE_FOUND:
+                return None  # a member round-trips → the graph is fine here
+            if status == self._REVERSE_WITHOUT:
+                answerable = True
+                if first_without is None:
+                    first_without = member
+
+        # Flag only when the reverse direction demonstrably works for at least one
+        # member yet no member round-trips — the OLS4 CURIE-merge signature.
+        return first_without if answerable else None
+
+    def _sample_closure(
+        self,
+        adapter: object,
+        method_name: str,
+        start_curie: str,
+        predicates: list[str],
+        prefix: Optional[str] = None,
+    ) -> list[str]:
+        """Return up to ``_INCONSISTENCY_SAMPLE_SIZE`` genuine closure members.
+
+        Lazily collects a bounded *pool* of distinct same-``prefix`` members (up to
+        ``_INCONSISTENCY_SAMPLE_SIZE * 8``, so a huge root is never fully walked),
+        then returns an evenly-spaced, sorted sample of it.
+
+        **Determinism is *given the pool*.** Sorting the pool removes the
+        process-randomized ordering of an adapter generator (set/graph-derived in
+        several oaklib backends) and of the REST fallback's set, so the sample is
+        reproducible whenever the closure fits the pool. For a closure *larger* than
+        the pool cap (a MONDO root — the motivating case), *which* members land in
+        the pool is still adapter-ordered, so the sample can differ between runs;
+        full determinism there would require a full walk, which the cap avoids.
+
+        The sample is taken at evenly-spaced indices spanning the sorted pool
+        (endpoints included) rather than as the lowest CURIEs: low OBO ids are the
+        oldest, most root-like terms, and under ``traverse_up`` the reverse
+        direction is ``descendants``, so a lowest-first sample would systematically
+        pick the members with the largest (most expensive) reverse closures.
+
+        When the native ``descendants`` traversal yields nothing — whether it
+        returned empty or raised — it consults a *bounded* OLS REST fallback; OAK's
+        OLS adapter answers ``descendants()`` with nothing on some versions, so
+        without this the guard would silently never fire on a live ``ols:`` adapter
+        (the dismech#7012 shape). Returns an empty list when the source reaches
+        nothing (a legitimate leaf) or cannot be answered.
+        """
+        pool_cap = self._INCONSISTENCY_SAMPLE_SIZE * 8
+        pool: list[str] = []
+        seen: set[str] = set()
+
+        # The native path collects up to pool_cap (not just the sample size) so the
+        # even-stride sample below can spread across the pool; this trades a little
+        # extra iteration on a paging adapter (bounded, once per source, memoized)
+        # for a more representative, deterministic sample.
+        def _collect(term: str) -> bool:
+            if term == start_curie or term in seen:
+                return False
+            if prefix is not None and self._get_prefix(term) != prefix:
+                return False
+            seen.add(term)
+            pool.append(term)
+            return len(pool) >= pool_cap
+
+        method = getattr(adapter, method_name, None)
+        if callable(method):
+            try:
+                for term in method([start_curie], predicates=predicates):
+                    if _collect(term):
+                        break
+            except OntologyServiceUnavailableError:
+                raise
+            except Exception as e:  # noqa: BLE001 - adapters raise varied errors
+                raise_if_service_unavailable(start_curie, e)
+                # A probe that errored leaves the guard disabled unless the OLS
+                # fallback below can answer; warn (not debug) so it is discoverable.
+                # Do NOT return here — fall through so a raising native
+                # descendants() still gets the fallback (symmetry with
+                # _reverse_reaches). Branch on the direction so the log names
+                # exactly what happens, making a silently-disabled guard greppable.
+                if method_name == "descendants":
+                    logger.warning(
+                        "reachable_from integrity probe could not fully sample "
+                        "descendants([%s]) natively; the descendants fallback is tried only "
+                        "if nothing was sampled: %s",
+                        start_curie,
+                        e,
+                    )
+                else:
+                    logger.warning(
+                        "reachable_from integrity probe could not sample %s([%s]) natively; "
+                        "no fallback for this direction, so the consistency guard is disabled "
+                        "for this source node: %s",
+                        method_name,
+                        start_curie,
+                        e,
+                    )
+
+        # Only fall back when the native traversal produced no usable members: a
+        # non-empty native pool already suffices for consensus, so avoid the extra
+        # REST call for a healthy adapter that returns a few descendants.
+        if not pool and method_name == "descendants":
+            # Bounded fallback: the ``* 8`` headroom over the sample size lets the
+            # prefix filter in ``_collect`` drop foreign-prefix terms and still leave
+            # enough usable same-prefix members — never the full root-scale crawl.
+            fallback = self._ols_descendants(
+                adapter=adapter,
+                source_node=start_curie,
+                predicates=predicates,
+                reflexive=False,
+                limit=pool_cap,
+            )
+            for term in fallback:
+                if _collect(term):
+                    break
+
+        # Evenly-spaced sample spanning the sorted pool: deterministic, and spread
+        # across the whole CURIE range (endpoints included) rather than biased to
+        # the lowest (most root-like, most expensive under traverse_up) ids. A plain
+        # stride slice degenerates to "lowest k" for small pools and leaves the top
+        # unsampled for non-multiples, so pick evenly-spaced indices instead.
+        ordered = sorted(pool)
+        k = min(self._INCONSISTENCY_SAMPLE_SIZE, len(ordered))
+        if k <= 1:
+            return ordered[:k]
+        indices = sorted({round(i * (len(ordered) - 1) / (k - 1)) for i in range(k)})
+        return [ordered[i] for i in indices]
+
+    def _reverse_reaches(
+        self,
+        adapter: object,
+        method_name: str,
+        start_curie: str,
+        predicates: list[str],
+        target: str,
+    ) -> str:
+        """Probe whether ``target`` is in ``start_curie``'s reverse closure.
+
+        Iterates lazily and early-exits the moment ``target`` is seen, so the
+        healthy round trip (source found almost immediately) is essentially free
+        even for a large closure. Returns one of ``_REVERSE_FOUND`` (target
+        present), ``_REVERSE_WITHOUT`` (closure demonstrably non-empty but target
+        absent), or ``_REVERSE_UNANSWERABLE`` (empty / errored / could-not-confirm
+        — never treated as evidence of inconsistency). For the descendants
+        direction the OLS REST fallback is consulted whenever the native traversal
+        returned nothing OR errored (mirroring the expansion path), and it is
+        *bounded*: if the target is not seen within the cap the crawl is not
+        exhausted, so we report ``_REVERSE_UNANSWERABLE`` rather than a full
+        root-scale page-through under ``traverse_up``.
+        """
+        saw_any = False
+        errored = False
+        method = getattr(adapter, method_name, None)
+        if callable(method):
+            try:
+                for term in method([start_curie], predicates=predicates):
+                    if term == start_curie:
+                        continue
+                    saw_any = True
+                    if term == target:
+                        return self._REVERSE_FOUND
+            except OntologyServiceUnavailableError:
+                raise
+            except Exception as e:  # noqa: BLE001 - adapters raise varied errors
+                raise_if_service_unavailable(start_curie, e)
+                # The native closure is now truncated: any members seen so far are a
+                # partial view, so `saw_any` must NOT be read as "exhaustively
+                # without the target". Remember it errored and prefer the fallback /
+                # UNANSWERABLE below.
+                errored = True
+                logger.warning(
+                    "reachable_from integrity probe could not fully read %s([%s]) natively: %s",
+                    method_name,
+                    start_curie,
+                    e,
+                )
+
+        # Consult the bounded REST fallback when the native traversal returned
+        # nothing OR errored partway (a partial native view cannot be trusted as
+        # exhaustive). `stop_at` short-circuits the moment the target appears
+        # (membership succeeds even past the cap); the cap otherwise bounds a
+        # near-root reverse closure so traverse_up never fully pages.
+        if (not saw_any or errored) and method_name == "descendants":
+            fallback = self._ols_descendants(
+                adapter=adapter,
+                source_node=start_curie,
+                predicates=predicates,
+                reflexive=False,
+                limit=self._REVERSE_FALLBACK_LIMIT,
+                stop_at=target,
+            )
+            if target in fallback:
+                return self._REVERSE_FOUND
+            # `_ols_descendants` skips the source node during collection, so a set
+            # of exactly the cap is treated conservatively as (possibly) truncated;
+            # only a smaller, non-empty set is a demonstrably exhausted closure.
+            if 0 < len(fallback) < self._REVERSE_FALLBACK_LIMIT:
+                return self._REVERSE_WITHOUT
+            if len(fallback) >= self._REVERSE_FALLBACK_LIMIT:
+                logger.debug(
+                    "reachable_from integrity probe hit the descendant cap (%d) for %s "
+                    "without finding %s; consistency not determined for this member",
+                    self._REVERSE_FALLBACK_LIMIT,
+                    start_curie,
+                    target,
+                )
+                return self._REVERSE_UNANSWERABLE
+            # fallback empty → fall through to the native-based verdict
+
+        # A clean, non-empty native closure without the target is demonstrably
+        # WITHOUT; a native traversal that errored partway is truncated evidence and
+        # must stay UNANSWERABLE rather than falsely claim exhaustion.
+        if saw_any and not errored:
+            return self._REVERSE_WITHOUT
+        return self._REVERSE_UNANSWERABLE
 
     # =========================================================================
     # Dynamic Enum Expansion (for cache_strategy="greedy")
@@ -926,9 +1262,14 @@ class BaseOntologyPlugin(ValidationPlugin):
         # Expand the enum
         values: set[str] = set()
 
-        # Handle reachable_from
+        # Handle reachable_from. `rf_reached` records whether any source actually
+        # reached a term (see _expand_reachable_from_detailed) — the signal the
+        # empty-enum diagnostic below uses to tell "the source closure was empty"
+        # from "a minus:/set operation emptied it".
+        rf_reached = False
         if enum_def.reachable_from:
-            values.update(self._expand_reachable_from(enum_def.reachable_from))
+            rf_expanded, rf_reached = self._expand_reachable_from_detailed(enum_def.reachable_from)
+            values.update(rf_expanded)
 
         # Handle matches
         if enum_def.matches:
@@ -973,6 +1314,64 @@ class BaseOntologyPlugin(ValidationPlugin):
         # empty/partial - never mark it complete or persist it, or we would poison
         # the cache with a bogus ".complete" closure (see issue #51).
         if self.is_dynamic_enum(enum_def) and not self.config.offline:
+            # A reachable_from enum whose source node(s) resolve yet the WHOLE enum
+            # expands to nothing is never useful: every candidate term is rejected,
+            # and a materialized empty set would be cached as a *complete* closure
+            # that poisons later runs. Fail loud rather than persist it. This is
+            # checked per-enum (not per reachable_from clause) so a legitimate
+            # `minus` branch, or a reachable_from combined with permissible_values /
+            # concepts / include / inherits that populate the enum, is unaffected.
+            # The source-resolution lookup runs only on this empty path, so the
+            # healthy path pays nothing. NOTE: this keys on the *top-level*
+            # reachable_from only; an enum whose sole reachable_from lives in an
+            # `include:` branch is intentionally not guarded here (fail-safe — it can
+            # still cache an empty closure, but never false-aborts a valid config).
+            #
+            # The enum is "effectively empty" and worth failing on when either:
+            #   (a) the merged value set is empty (a broken source, or a minus:/set
+            #       operation removed everything); or
+            #   (b) `include_self: true` left only the reflexive source node(s) as
+            #       members because the traversal reached nothing real — but ONLY
+            #       when no other clause could have legitimately produced those
+            #       values. `reached_something` (tracked per source, so a member that
+            #       is itself another source node still counts — e.g. a parent + its
+            #       only child) is the reliable signal; subtracting source nodes from
+            #       the merged set would false-abort that legitimate union.
+            source_nodes_list = (
+                enum_def.reachable_from.source_nodes or [] if enum_def.reachable_from else []
+            )
+            rf_source_nodes = set(source_nodes_list)
+            # NOTE: `_expand_matches` is currently a placeholder that returns an
+            # empty set, so a declared `matches:` clause suppresses the include_self
+            # arm fail-safe (the author clearly intended another populating clause),
+            # not because it contributes values today. It is listed here so the
+            # behavior stays correct once `matches` is implemented.
+            has_other_value_clause = bool(
+                enum_def.concepts
+                or enum_def.permissible_values
+                or enum_def.matches
+                or enum_def.include
+                or enum_def.inherits
+            )
+            effectively_empty = (not values) or (
+                not rf_reached and values <= rf_source_nodes and not has_other_value_clause
+            )
+            if effectively_empty and enum_def.reachable_from:
+                # Name a resolvable source deterministically (iterate the declared
+                # list, not the set, so the message is stable across runs).
+                resolved = next(
+                    (sn for sn in source_nodes_list if self.get_ontology_label(sn) is not None),
+                    None,
+                )
+                if resolved is not None:
+                    # The reachable_from reached nothing real → bad source/adapter;
+                    # it reached something but a minus:/set operation cancelled it →
+                    # set arithmetic.
+                    raise EmptyReachableClosureError(
+                        resolved,
+                        traverse_up=bool(getattr(enum_def.reachable_from, "traverse_up", False)),
+                        source_closure_empty=not rf_reached,
+                    )
             self._closed_enum_caches.add(enum_name)
             if use_cache:
                 self._save_enum_cache(enum_def, values)
@@ -1008,16 +1407,30 @@ class BaseOntologyPlugin(ValidationPlugin):
         return values
 
     def _expand_reachable_from(self, query: Any) -> set[str]:
-        """Expand reachable_from query using OAK.
+        """Expand reachable_from query using OAK; return the set of reachable CURIEs.
 
-        Uses OAK's ancestors/descendants methods to traverse the ontology
-        graph and collect reachable terms.
+        Thin wrapper over :meth:`_expand_reachable_from_detailed` for callers that
+        only need the value set (include/minus branches, tests).
+        """
+        return self._expand_reachable_from_detailed(query)[0]
+
+    def _expand_reachable_from_detailed(self, query: Any) -> tuple[set[str], bool]:
+        """Expand reachable_from query, also reporting whether it reached anything.
+
+        Uses OAK's ancestors/descendants methods to traverse the ontology graph and
+        collect reachable terms.
 
         Args:
             query: ReachabilityQuery object with source_nodes, relationship_types, etc.
 
         Returns:
-            Set of reachable CURIEs
+            ``(values, reached_something)`` — the set of reachable CURIEs, and whether
+            any source node's traversal yielded at least one term *other than the
+            source node itself* (i.e. a genuine descendant/ancestor). ``reached_something``
+            is the signal the empty-enum guard needs: a term that happens to be
+            another source node still counts as reached (e.g. listing a parent and
+            its only child), so it is tracked here rather than inferred by subtracting
+            source nodes from the merged set.
 
         Example:
             Given a simple ontology with:
@@ -1028,19 +1441,20 @@ class BaseOntologyPlugin(ValidationPlugin):
             its descendants (TEST:0000002) and optionally itself if include_self=True.
         """
         values: set[str] = set()
+        reached_something = False
 
         # Get adapter for source ontology
         if not query.source_nodes:
-            return values
+            return values, reached_something
 
         first_node = query.source_nodes[0]
         prefix = self._get_prefix(first_node)
         if not prefix:
-            return values
+            return values, reached_something
 
         adapter = self._get_adapter(prefix)
         if not adapter:
-            return values
+            return values, reached_something
 
         # Get relationship types (predicates)
         predicates = query.relationship_types if query.relationship_types else ["rdfs:subClassOf"]
@@ -1052,36 +1466,53 @@ class BaseOntologyPlugin(ValidationPlugin):
         include_self = self._reachable_from_include_self(query)
         for source_node in query.source_nodes:
             if query.traverse_up:
-                # Get ancestors
-                ancestors_result = self._call_graph_traversal(
+                result = self._call_graph_traversal(
                     adapter=adapter,
                     method_name="ancestors",
                     start_curie=source_node,
                     predicates=predicates,
                     reflexive=include_self,
                 )
-                if ancestors_result:
-                    values.update(ancestors_result)
             else:
-                # Get descendants (default)
-                descendants_result = self._call_graph_traversal(
+                result = self._call_graph_traversal(
                     adapter=adapter,
                     method_name="descendants",
                     start_curie=source_node,
                     predicates=predicates,
                     reflexive=include_self,
                 )
-                if not descendants_result:
-                    descendants_result = self._ols_descendants(
+                # Gate the OLS REST fallback on reaching something REAL, not on
+                # truthiness: under include_self the reflexive source keeps `result`
+                # truthy ({source_node}) even when OAK's OLS descendants() returned
+                # nothing, which would skip the fallback and false-abort a healthy
+                # adapter. Subtracting the source makes the gate honest for both
+                # include_self and the reached_something signal below. Only adopt the
+                # fallback when it actually returns members, so a non-OLS adapter
+                # (whose fallback is a no-op) keeps the reflexive source it already
+                # has instead of losing it to an empty replacement.
+                if not (result - {source_node}):
+                    fallback = self._ols_descendants(
                         adapter=adapter,
                         source_node=source_node,
                         predicates=predicates,
                         reflexive=include_self,
                     )
-                if descendants_result:
-                    values.update(descendants_result)
+                    if fallback:
+                        result = fallback
+            if result:
+                values.update(result)
+                # A term other than the source itself means this source genuinely
+                # reached into the graph (even if that term is another source node).
+                if result - {source_node}:
+                    reached_something = True
 
-        return values
+        # NOTE: the "resolved source but empty" check is deliberately NOT made here.
+        # This method also expands `include`/`minus` branches, where an empty
+        # reachable_from is legitimate (a minus clause that subtracts nothing). The
+        # decision is made once per *enum* in expand_enum(), against the whole
+        # merged value set, matching the documented "entire query expands to
+        # nothing" contract.
+        return values, reached_something
 
     @staticmethod
     def _ols_descendants(
@@ -1089,8 +1520,22 @@ class BaseOntologyPlugin(ValidationPlugin):
         source_node: str,
         predicates: list[str],
         reflexive: bool,
+        limit: Optional[int] = None,
+        stop_at: Optional[str] = None,
     ) -> set[str]:
-        """Fallback descendant expansion for OAK OLS adapters without descendants()."""
+        """Fallback descendant expansion for OAK OLS adapters without descendants().
+
+        ``limit`` caps how many *genuine* descendants are collected before the paged
+        crawl is stopped early (``client.get_paged`` yields lazily). The source node
+        is skipped during collection (not discarded afterwards) so it never occupies
+        a slot. Callers should treat the result conservatively: a set of exactly
+        ``limit`` means the crawl *may* have been truncated (it could also have
+        exhausted at precisely the cap) and must NOT be read as exhaustive; only a
+        smaller, non-empty set is a demonstrably exhausted closure. ``stop_at``
+        short-circuits the crawl the moment that CURIE is seen (returned in the
+        set), so a membership check can succeed even past ``limit``. ``None`` limit
+        collects all, preserving the greedy-expansion behavior.
+        """
         if predicates != ["rdfs:subClassOf"]:
             logger.debug(
                 "Skipping OLS descendant fallback for %s because only rdfs:subClassOf "
@@ -1116,15 +1561,34 @@ class BaseOntologyPlugin(ValidationPlugin):
             f"ontologies/{focus_ontology}/terms/{encoded_iri}/descendants",
             key="terms",
         )
-        values = {
-            record["obo_id"]
-            for record in records
-            if isinstance(record, dict) and isinstance(record.get("obo_id"), str)
-        }
+        # Reserve one slot for the reflexive source so a reflexive+limit call never
+        # returns limit+1 (which would void the "len == limit ⇒ possibly truncated"
+        # contract). The source is always skipped during collection and re-added
+        # afterwards when reflexive, so the cap counts only genuine descendants.
+        effective_limit = limit
+        if reflexive and limit is not None:
+            effective_limit = max(0, limit - 1)
+        values: set[str] = set()
+        for record in records:
+            if not isinstance(record, dict) or not isinstance(record.get("obo_id"), str):
+                continue
+            obo_id = record["obo_id"]
+            if obo_id == source_node:
+                continue  # never let the source occupy a descendant slot
+            # Check the cap BEFORE adding so a limit of N yields at most N genuine
+            # descendants (with effective_limit==0 for reflexive+limit==1, none),
+            # keeping the total ≤ limit even after the reflexive source is added.
+            # NOTE: this drops the record sitting at the cap slot before its
+            # `stop_at` check, so a target found only at that exact boundary reads as
+            # "not found" (→ fail-safe UNANSWERABLE). Do not restore the
+            # add-then-check order — that reintroduces the reflexive+limit off-by-one.
+            if effective_limit is not None and len(values) >= effective_limit:
+                break
+            values.add(obo_id)
+            if stop_at is not None and obo_id == stop_at:
+                break  # membership satisfied; no need to page further
         if reflexive:
             values.add(source_node)
-        else:
-            values.discard(source_node)
         return values
 
     def _expand_matches(self, query: Any) -> set[str]:
