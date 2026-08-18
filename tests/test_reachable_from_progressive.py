@@ -854,6 +854,89 @@ def test_greedy_multi_source_parent_and_child_union_not_flagged(tmp_path):
     assert "TEST:0000004" in values  # the child, reached from the parent
 
 
+def test_greedy_include_self_reaches_via_ols_fallback_not_flagged(tmp_path):
+    """include_self:true on an OLS adapter must reach the REST fallback, not abort.
+
+    Re-review finding: OAK's OLS descendants() returns nothing, so with include_self
+    the native result is a truthy {source}; gating the fallback on truthiness skipped
+    it and hard-aborted a healthy adapter. The fallback is now gated on reaching
+    something real, so the closure expands from REST.
+    """
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+    plugin.ontology._adapter_cache["MONDO"] = _OlsPagedAdapter(
+        rest_descendants=["MONDO:0004992"], native="empty"
+    )
+    enum_def = EnumDefinition(
+        name="IncludeSelfOls",
+        reachable_from=ReachabilityQuery(
+            source_nodes=["MONDO:0000001"],
+            relationship_types=["rdfs:subClassOf"],
+            include_self=True,
+        ),
+    )
+    values = plugin.expand_enum(enum_def, use_cache=False)  # must not raise
+    assert "MONDO:0004992" in values  # reached via the bounded REST fallback
+    assert "MONDO:0000001" in values  # reflexive source kept
+
+
+def test_greedy_include_self_with_matches_clause_not_flagged(tmp_path):
+    """A declared `matches:` clause suppresses the include_self empty-arm.
+
+    Re-review finding: `matches` was missing from the "other value clause" list, so
+    an enum that pairs include_self over a childless source with a matches: clause
+    (which resolves to nothing today) would abort blaming the adapter.
+    """
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+    enum_def = EnumDefinition(
+        name="IncludeSelfMatches",
+        reachable_from=ReachabilityQuery(
+            source_nodes=["TEST:0000004"],  # childless leaf
+            relationship_types=["rdfs:subClassOf"],
+            include_self=True,
+        ),
+        matches=MatchQuery(identifier_pattern="TEST:.*"),
+    )
+    values = plugin.expand_enum(enum_def, use_cache=False)  # must not raise
+    assert "TEST:0000004" in values
+
+
+def test_greedy_traverse_up_include_self_root_is_flagged(tmp_path):
+    """traverse_up + include_self over a root (no ancestors) is flagged as empty.
+
+    Pins the intended behavior for the traverse_up arm so a future change to the
+    condition can't flip it unnoticed: ancestors(root, reflexive) == {root}, nothing
+    real reached → empty.
+    """
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+    enum_def = EnumDefinition(
+        name="TUIncludeSelf",
+        reachable_from=ReachabilityQuery(
+            source_nodes=["TEST:0000001"],  # root, no ancestors
+            relationship_types=["rdfs:subClassOf"],
+            traverse_up=True,
+            include_self=True,
+        ),
+    )
+    with pytest.raises(EmptyReachableClosureError) as excinfo:
+        plugin.expand_enum(enum_def, use_cache=False)
+    assert excinfo.value.source_closure_empty is True
+
+
 def test_greedy_include_self_over_populated_source_expands_normally(tmp_path):
     """Positive control: include_self:true over a populated source is not flagged.
 

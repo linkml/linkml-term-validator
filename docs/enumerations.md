@@ -218,12 +218,12 @@ problem, not a misconfigured adapter), so you're pointed at the `minus:`/`includ
 clauses rather than the source node.
 
 `include_self: true` does not mask the check: when the traversal reaches nothing
-real and the enum's only members are its own `reachable_from` source nodes (and no
-`concepts`/`permissible_values`/`include`/`inherits` clause contributed anything),
-the enum is treated as empty and flagged. A legitimate union that lists a branch
-root together with a specific sub-branch (`source_nodes: [parent, child]`) still
-expands normally — the check keys on whether any source actually reached a term,
-not on subtracting source nodes from the result.
+real and the enum's only members are its own `reachable_from` source nodes (and the
+enum declares no `concepts`/`permissible_values`/`matches`/`include`/`inherits`
+clause that could have contributed them), the enum is treated as empty and flagged.
+A legitimate union that lists a branch root together with a specific sub-branch
+(`source_nodes: [parent, child]`) still expands normally — the check keys on whether
+any source actually reached a term, not on subtracting source nodes from the result.
 
 The **round-trip check (1)** never flags a legitimate config:
 
@@ -234,11 +234,12 @@ The **round-trip check (1)** never flags a legitimate config:
 - A **multi-source union** (a leaf branch alongside a populated one) still
   round-trips through the populated branch.
 
-The **empty-expansion check (2)** fires only when the *entire* query expands to
-nothing — e.g. a single childless-leaf source with no other contribution and no
-`include_self`. Such an enum matches no term regardless, so failing loud (rather
-than silently materializing an empty closure) is the safe outcome; a union with
-any populated branch still expands non-empty and is unaffected.
+The **empty-expansion check (2)** fires when the enum effectively matches nothing
+— either the whole expansion is empty, or (with `include_self: true`) the only
+members are the source nodes themselves because the traversal reached nothing, as
+described above. Such an enum matches no useful term, so failing loud (rather than
+silently materializing an empty closure) is the safe outcome; a union with any
+populated branch still expands non-empty and is unaffected.
 
 The fix is to configure a local, deterministic adapter (e.g.
 `sqlite:obo:mondo`) for the affected prefix, or correct the source node.

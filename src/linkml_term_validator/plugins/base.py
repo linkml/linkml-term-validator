@@ -1156,14 +1156,14 @@ class BaseOntologyPlugin(ValidationPlugin):
         # Expand the enum
         values: set[str] = set()
 
-        # Handle reachable_from. Keep the top-level reachable_from contribution
-        # separate so the empty-enum diagnostic below can distinguish "the source
-        # closure itself was empty" from "a minus:/set operation emptied it".
-        rf_values: set[str] = set()
+        # Handle reachable_from. `rf_reached` records whether any source actually
+        # reached a term (see _expand_reachable_from_detailed) — the signal the
+        # empty-enum diagnostic below uses to tell "the source closure was empty"
+        # from "a minus:/set operation emptied it".
         rf_reached = False
         if enum_def.reachable_from:
-            rf_values, rf_reached = self._expand_reachable_from_detailed(enum_def.reachable_from)
-            values.update(rf_values)
+            rf_expanded, rf_reached = self._expand_reachable_from_detailed(enum_def.reachable_from)
+            values.update(rf_expanded)
 
         # Handle matches
         if enum_def.matches:
@@ -1238,6 +1238,7 @@ class BaseOntologyPlugin(ValidationPlugin):
             has_other_value_clause = bool(
                 enum_def.concepts
                 or enum_def.permissible_values
+                or enum_def.matches
                 or enum_def.include
                 or enum_def.inherits
             )
@@ -1369,13 +1370,24 @@ class BaseOntologyPlugin(ValidationPlugin):
                     predicates=predicates,
                     reflexive=include_self,
                 )
-                if not result:
-                    result = self._ols_descendants(
+                # Gate the OLS REST fallback on reaching something REAL, not on
+                # truthiness: under include_self the reflexive source keeps `result`
+                # truthy ({source_node}) even when OAK's OLS descendants() returned
+                # nothing, which would skip the fallback and false-abort a healthy
+                # adapter. Subtracting the source makes the gate honest for both
+                # include_self and the reached_something signal below. Only adopt the
+                # fallback when it actually returns members, so a non-OLS adapter
+                # (whose fallback is a no-op) keeps the reflexive source it already
+                # has instead of losing it to an empty replacement.
+                if not (result - {source_node}):
+                    fallback = self._ols_descendants(
                         adapter=adapter,
                         source_node=source_node,
                         predicates=predicates,
                         reflexive=include_self,
                     )
+                    if fallback:
+                        result = fallback
             if result:
                 values.update(result)
                 # A term other than the source itself means this source genuinely
