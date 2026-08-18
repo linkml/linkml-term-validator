@@ -878,11 +878,21 @@ class BaseOntologyPlugin(ValidationPlugin):
 
         Lazily collects a bounded *pool* of distinct same-``prefix`` members (up to
         ``_INCONSISTENCY_SAMPLE_SIZE * 8``, so a huge root is never fully walked),
-        then returns the ``_INCONSISTENCY_SAMPLE_SIZE`` smallest by CURIE. Sorting
-        makes the sample **deterministic** on both paths — an adapter generator's
-        order (set/graph-derived, process-randomized in several oaklib backends)
-        and the REST fallback's set order would otherwise make the consensus
-        verdict flip run to run on a mixed graph.
+        then returns an evenly-spaced, sorted sample of it.
+
+        **Determinism is *given the pool*.** Sorting the pool removes the
+        process-randomized ordering of an adapter generator (set/graph-derived in
+        several oaklib backends) and of the REST fallback's set, so the sample is
+        reproducible whenever the closure fits the pool. For a closure *larger* than
+        the pool cap (a MONDO root — the motivating case), *which* members land in
+        the pool is still adapter-ordered, so the sample can differ between runs;
+        full determinism there would require a full walk, which the cap avoids.
+
+        The sample is spread with an even stride over the sorted pool rather than
+        taken as the lowest CURIEs: low OBO ids are the oldest, most root-like
+        terms, and under ``traverse_up`` the reverse direction is ``descendants``,
+        so a lowest-first sample would systematically pick the members with the
+        largest (most expensive) reverse closures.
 
         When the native ``descendants`` traversal yields nothing — whether it
         returned empty or raised — it consults a *bounded* OLS REST fallback; OAK's
@@ -895,6 +905,10 @@ class BaseOntologyPlugin(ValidationPlugin):
         pool: list[str] = []
         seen: set[str] = set()
 
+        # The native path collects up to pool_cap (not just the sample size) so the
+        # even-stride sample below can spread across the pool; this trades a little
+        # extra iteration on a paging adapter (bounded, once per source, memoized)
+        # for a more representative, deterministic sample.
         def _collect(term: str) -> bool:
             if term == start_curie or term in seen:
                 return False
@@ -922,8 +936,9 @@ class BaseOntologyPlugin(ValidationPlugin):
                 # exactly what happens, making a silently-disabled guard greppable.
                 if method_name == "descendants":
                     logger.warning(
-                        "reachable_from integrity probe could not sample descendants([%s]) "
-                        "natively; trying the descendants fallback: %s",
+                        "reachable_from integrity probe could not fully sample "
+                        "descendants([%s]) natively; the descendants fallback is tried only "
+                        "if nothing was sampled: %s",
                         start_curie,
                         e,
                     )
@@ -955,7 +970,12 @@ class BaseOntologyPlugin(ValidationPlugin):
                 if _collect(term):
                     break
 
-        return sorted(pool)[: self._INCONSISTENCY_SAMPLE_SIZE]
+        # Even-stride sample over the sorted pool: deterministic, and spread across
+        # the CURIE range rather than biased to the lowest (most root-like, most
+        # expensive under traverse_up) ids.
+        ordered = sorted(pool)
+        stride = max(1, len(ordered) // self._INCONSISTENCY_SAMPLE_SIZE)
+        return ordered[::stride][: self._INCONSISTENCY_SAMPLE_SIZE]
 
     def _reverse_reaches(
         self,
@@ -1194,20 +1214,30 @@ class BaseOntologyPlugin(ValidationPlugin):
             # reachable_from only; an enum whose sole reachable_from lives in an
             # `include:` branch is intentionally not guarded here (fail-safe — it can
             # still cache an empty closure, but never false-aborts a valid config).
-            if not values and enum_def.reachable_from:
+            #
+            # `include_self: true` keeps the reflexive source node(s) in `values`
+            # even when the closure reaches nothing real, so subtract them: an enum
+            # whose only members are its own reachable_from source nodes is
+            # effectively empty (a reachable_from used to name a single fixed term
+            # would be written as permissible_values/concepts instead).
+            rf_source_nodes = (
+                set(enum_def.reachable_from.source_nodes or []) if enum_def.reachable_from else set()
+            )
+            effective_values = values - rf_source_nodes
+            if not effective_values and enum_def.reachable_from:
                 resolved = next(
-                    (
-                        sn
-                        for sn in (enum_def.reachable_from.source_nodes or [])
-                        if self.get_ontology_label(sn) is not None
-                    ),
+                    (sn for sn in rf_source_nodes if self.get_ontology_label(sn) is not None),
                     None,
                 )
                 if resolved is not None:
+                    # rf_values minus the reflexive sources is the real closure
+                    # contribution: empty → bad source/adapter; non-empty but
+                    # cancelled → set arithmetic.
+                    rf_real = rf_values - rf_source_nodes
                     raise EmptyReachableClosureError(
                         resolved,
                         traverse_up=bool(getattr(enum_def.reachable_from, "traverse_up", False)),
-                        source_closure_empty=not rf_values,
+                        source_closure_empty=not rf_real,
                     )
             self._closed_enum_caches.add(enum_name)
             if use_cache:
@@ -1386,11 +1416,14 @@ class BaseOntologyPlugin(ValidationPlugin):
             obo_id = record["obo_id"]
             if obo_id == source_node:
                 continue  # never let the source occupy a descendant slot
+            # Check the cap BEFORE adding so a limit of N yields at most N genuine
+            # descendants (with effective_limit==0 for reflexive+limit==1, none),
+            # keeping the total ≤ limit even after the reflexive source is added.
+            if effective_limit is not None and len(values) >= effective_limit:
+                break
             values.add(obo_id)
             if stop_at is not None and obo_id == stop_at:
                 break  # membership satisfied; no need to page further
-            if effective_limit is not None and len(values) >= effective_limit:
-                break  # stop paging early; caller only needs a bounded set
         if reflexive:
             values.add(source_node)
         return values

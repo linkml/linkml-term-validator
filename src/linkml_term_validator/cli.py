@@ -66,22 +66,35 @@ def _fail_service_unavailable(exc: OntologyServiceUnavailableError) -> typer.Exi
 
 
 def _fail_unreliable_reachability(exc: UnreliableReachabilityError) -> typer.Exit:
-    """Report a dynamic-enum reachability that could not be trusted, distinct code.
+    """Report a dynamic-enum that could not be validated, with a distinct code.
 
-    A ``reachable_from`` source node that reaches nothing, or an adapter whose
-    ancestor and descendant directions disagree, makes same-ontology terms
-    silently invalid, so reachability could not be computed reliably. That is a
-    configuration/ontology-graph problem, not invalid data, and unlike a
-    transient outage it will not fix itself on retry.
+    Two configuration causes share the distinct exit code (neither is invalid data,
+    and neither fixes itself on retry): a broken/misconfigured adapter whose
+    reachability cannot be trusted, or an enum that expands to nothing because a
+    ``minus:``/set operation removed every term. The banner follows the cause so it
+    never blames the adapter for the user's set arithmetic.
     """
-    typer.echo(
-        "\n🚫 Unable to validate: dynamic-enum reachability is unreliable.\n"
-        f"   {exc}\n"
-        "   Reachability could not be computed reliably, so terms were not "
-        "checked. This is a configuration/ontology-graph problem, not invalid "
-        "data.",
-        err=True,
-    )
+    # source_closure_empty is False only for the "set operations emptied the enum"
+    # branch of EmptyReachableClosureError; every other case is an adapter/graph
+    # reachability problem.
+    if getattr(exc, "source_closure_empty", None) is False:
+        typer.echo(
+            "\n🚫 Unable to validate: a dynamic enum matched nothing.\n"
+            f"   {exc}\n"
+            "   The enum's set operations removed every term, so there is nothing "
+            "to validate against. This is a schema problem, not invalid data or a "
+            "broken adapter.",
+            err=True,
+        )
+    else:
+        typer.echo(
+            "\n🚫 Unable to validate: dynamic-enum reachability is unreliable.\n"
+            f"   {exc}\n"
+            "   Reachability could not be computed reliably, so terms were not "
+            "checked. This is a configuration/ontology-graph problem, not invalid "
+            "data.",
+            err=True,
+        )
     return typer.Exit(code=EXIT_ONTOLOGY_MISCONFIGURED)
 
 

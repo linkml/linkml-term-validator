@@ -297,6 +297,24 @@ class _OlsPagedAdapter:
         return iter(out)
 
 
+class _ManyDescAdapter:
+    """Adapter yielding many same-prefix descendants in descending order.
+
+    Lets the sample's sort + even-stride behavior be asserted deterministically:
+    the returned sample must be ascending-sorted and evenly spaced regardless of
+    the generator's (here reversed) order.
+    """
+
+    def label(self, curie):
+        return f"term {curie}"
+
+    def descendants(self, curies, predicates=None):
+        return iter([f"MONDO:{i:07d}" for i in range(20, 0, -1)])
+
+    def ancestors(self, curies, predicates=None):
+        return iter(())
+
+
 class _YieldsThenRaisesAdapter:
     """Adapter whose native ``ancestors()`` yields a couple terms, then raises.
 
@@ -781,6 +799,54 @@ def test_greedy_reachable_from_cancelled_by_minus_reports_set_arithmetic(tmp_pat
     # The top-level closure was non-empty, so it is attributed to set arithmetic.
     assert excinfo.value.source_closure_empty is False
     assert "minus" in str(excinfo.value)
+
+
+def test_greedy_include_self_over_childless_source_still_flagged(tmp_path):
+    """include_self:true must not mask an empty closure.
+
+    Re-review finding: with include_self the reflexive source keeps `values`
+    non-empty, so a childless/broken source used to slip past the guard and cache a
+    one-term empty-but-complete closure. An enum whose only member is its own
+    reachable_from source node is treated as empty and flagged.
+    """
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=True,  # so we can confirm no complete marker is written
+        cache_dir=tmp_path / "cache",
+    )
+    enum_def = EnumDefinition(
+        name="IncludeSelfLeaf",
+        reachable_from=ReachabilityQuery(
+            source_nodes=["TEST:0000004"],  # childless leaf
+            relationship_types=["rdfs:subClassOf"],
+            include_self=True,
+        ),
+    )
+    with pytest.raises(EmptyReachableClosureError) as excinfo:
+        plugin.expand_enum(enum_def, use_cache=True)
+    assert excinfo.value.source_closure_empty is True  # the closure itself was empty
+    assert plugin._is_enum_cache_complete(enum_def) is False
+
+
+def test_sample_closure_is_sorted_and_evenly_spaced(tmp_path):
+    """The forward sample is deterministic: ascending-sorted, even-stride subset.
+
+    Re-review finding: locks the round-5/6 pool→sort→stride behavior so a
+    regression back to "first N in adapter stream order" is caught.
+    """
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+    sample = plugin._sample_closure(
+        _ManyDescAdapter(), "descendants", "MONDO:0000000", ["rdfs:subClassOf"], "MONDO"
+    )
+    ordered = [f"MONDO:{i:07d}" for i in range(1, 21)]
+    stride = max(1, len(ordered) // plugin._INCONSISTENCY_SAMPLE_SIZE)
+    assert sample == ordered[::stride][: plugin._INCONSISTENCY_SAMPLE_SIZE]
 
 
 def test_inconsistency_probe_is_cached(tmp_path):

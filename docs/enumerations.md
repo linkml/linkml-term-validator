@@ -217,6 +217,11 @@ nothing. In that case the error says so explicitly (a schema/set-arithmetic
 problem, not a misconfigured adapter), so you're pointed at the `minus:`/`include:`
 clauses rather than the source node.
 
+`include_self: true` does not mask the check: an enum whose only member would be
+its own reflexive source node (a broken/childless source) is treated as empty and
+flagged, since a reachable_from naming a single fixed term is a misconfiguration
+(use `permissible_values` for that).
+
 The **round-trip check (1)** never flags a legitimate config:
 
 - A genuinely out-of-enum term keeps the two directions in agreement (it is

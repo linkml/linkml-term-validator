@@ -51,25 +51,34 @@ class OntologyServiceUnavailableError(Exception):
 
 
 class UnreliableReachabilityError(Exception):
-    """Base for "a reachable_from verdict could not be trusted" failures.
+    """Base for "a reachable_from result cannot be used as-is" failures.
 
-    Distinct from invalid data: the term's membership could not be reliably
-    computed because the configured ontology adapter returned a broken or
-    self-contradictory graph. Callers surface this as "unable to validate"
-    (a configuration/ontology-graph problem) rather than "term not in enum".
+    Distinct from invalid data: a dynamic enum could not be validated — either the
+    configured ontology adapter returned a broken/self-contradictory graph, or the
+    enum expanded to nothing so there is no closure to validate against. Both are
+    configuration problems (not "term not in enum") and do not fix themselves on
+    retry, so callers surface them as "unable to validate" with a distinct exit
+    code. Subclasses carry the specific cause and the right remedy.
     """
 
 
 class EmptyReachableClosureError(UnreliableReachabilityError):
-    """Raised when a ``reachable_from`` source node resolves but reaches nothing.
+    """Raised when a ``reachable_from`` enum expands to nothing.
 
-    A ``reachable_from`` source node is meant to root a subtree — its descendants
-    (or, for ``traverse_up``, its ancestors). When at least one source node
-    resolves to a real ontology term yet the whole query expands to an *empty*
-    set, two silent failures follow: every candidate term is rejected as "not in
-    enum" (a wrong ``False``, not an error), and any greedy expansion is cached as
-    an empty-but-``complete`` closure that poisons later runs. That is never a
-    useful validation configuration, so this exception is raised to fail loud.
+    Two distinct causes share this exception (disambiguated by
+    ``source_closure_empty``):
+
+    - **Empty source closure** (``source_closure_empty=True``): a source node
+      resolves but its descendant/ancestor closure is empty, so the query itself
+      reaches nothing — usually a bad source node or a misconfigured adapter.
+    - **Cancelled by set operations** (``source_closure_empty=False``): the source
+      closure was non-empty but a ``minus:``/set operation removed every term — a
+      schema problem, not the adapter.
+
+    Either way the enum matches no term, and a greedy expansion would cache an
+    empty-but-``complete`` closure that poisons later runs, so it is raised to fail
+    loud rather than silently persist an empty enum. The message is branched to
+    point at the right remedy.
     """
 
     def __init__(
