@@ -23,6 +23,7 @@ from linkml_term_validator.plugins import (
     DynamicEnumPlugin,
 )
 from linkml_term_validator.utils import (
+    EmptyReachableClosureError,
     OntologyServiceUnavailableError,
     UnreliableReachabilityError,
 )
@@ -68,24 +69,37 @@ def _fail_service_unavailable(exc: OntologyServiceUnavailableError) -> typer.Exi
 def _fail_unreliable_reachability(exc: UnreliableReachabilityError) -> typer.Exit:
     """Report a dynamic-enum that could not be validated, with a distinct code.
 
-    Two configuration causes share the distinct exit code (neither is invalid data,
-    and neither fixes itself on retry): a broken/misconfigured adapter whose
-    reachability cannot be trusted, or an enum that expands to nothing because a
-    ``minus:``/set operation removed every term. The banner follows the cause so it
-    never blames the adapter for the user's set arithmetic.
+    Three configuration causes share the distinct exit code (none is invalid data,
+    and none fixes itself on retry), and the banner follows the cause so it never
+    blames the adapter for a schema problem:
+
+    - the enum matched nothing because a ``minus:``/set operation removed every term
+      (``EmptyReachableClosureError`` with ``source_closure_empty=False``);
+    - the enum's source closure is legitimately empty — the source is a leaf/root,
+      a schema issue (``EmptyReachableClosureError`` with ``source_closure_empty=True``);
+    - a broken/misconfigured adapter whose reachability cannot be trusted
+      (``InconsistentReachabilityError``).
     """
-    # source_closure_empty is False only for the "set operations emptied the enum"
-    # branch of EmptyReachableClosureError; every other case is an adapter/graph
-    # reachability problem.
-    if getattr(exc, "source_closure_empty", None) is False:
-        typer.echo(
-            "\n🚫 Unable to validate: a dynamic enum matched nothing.\n"
-            f"   {exc}\n"
-            "   The enum's set operations removed every term, so there is nothing "
-            "to validate against. This is a schema problem, not invalid data or a "
-            "broken adapter.",
-            err=True,
-        )
+    if isinstance(exc, EmptyReachableClosureError):
+        if exc.source_closure_empty:
+            typer.echo(
+                "\n🚫 Unable to validate: a dynamic enum matched nothing.\n"
+                f"   {exc}\n"
+                "   The reachable_from closure is empty, so the enum matches no useful "
+                "term. This is a schema problem (a leaf/root source, or a single-term "
+                "enum that belongs in concepts:/permissible_values:), not invalid data "
+                "or a broken adapter.",
+                err=True,
+            )
+        else:
+            typer.echo(
+                "\n🚫 Unable to validate: a dynamic enum matched nothing.\n"
+                f"   {exc}\n"
+                "   The enum's set operations removed every term, so there is nothing "
+                "to validate against. This is a schema problem, not invalid data or a "
+                "broken adapter.",
+                err=True,
+            )
     else:
         typer.echo(
             "\n🚫 Unable to validate: dynamic-enum reachability is unreliable.\n"

@@ -242,8 +242,11 @@ described above. Such an enum matches no useful term, so failing loud (rather th
 silently materializing an empty closure) is the safe outcome; a union with any
 populated branch still expands non-empty and is unaffected.
 
-The fix is to configure a local, deterministic adapter (e.g.
-`sqlite:obo:mondo`) for the affected prefix, or correct the source node.
+For check (1) — a broken/inconsistent adapter graph — the fix is to configure a
+local, deterministic adapter (e.g. `sqlite:obo:mondo`) for the affected prefix.
+For check (2) the enum is usually empty by design: correct the source node id, move
+a single-term enum to `concepts:`/`permissible_values:`, or fix the `minus:`/set
+operation that cancelled it.
 
 ## Static vs Dynamic: Trade-offs
 

@@ -69,8 +69,9 @@ class EmptyReachableClosureError(UnreliableReachabilityError):
     ``source_closure_empty``):
 
     - **Empty source closure** (``source_closure_empty=True``): a source node
-      resolves but its descendant/ancestor closure is empty, so the query itself
-      reaches nothing — usually a bad source node or a misconfigured adapter.
+      resolves but its descendant/ancestor closure is empty, so the query reaches
+      nothing. Most often the source is genuinely a leaf (descendants) or root
+      (ancestors) — a schema issue — rather than a broken adapter.
     - **Cancelled by set operations** (``source_closure_empty=False``): the source
       closure was non-empty but a ``minus:``/set operation removed every term — a
       schema problem, not the adapter.
@@ -103,11 +104,12 @@ class EmptyReachableClosureError(UnreliableReachabilityError):
             # and mentions the adapter only as a secondary possibility.
             super().__init__(
                 f"reachable_from source node {source_node!r} resolves but its {direction} "
-                f"closure is empty, so the enum matches no useful term. The source may be a "
-                f"{boundary} term with no {direction}s — an enum whose only member is the term "
-                f"itself should be written as concepts:/permissible_values:. If you expected a "
-                f"populated subtree, verify the source node id and that the adapter resolves "
-                f"its {prefix} hierarchy (e.g. a local 'sqlite:obo:{prefix.lower()}' adapter)."
+                f"closure is empty, so the enum would match only the source term (or nothing "
+                f"at all). The source may be a {boundary} term with no {direction}s — a "
+                f"single-term enum should be written as concepts:/permissible_values: instead. "
+                f"If you expected a populated subtree, verify the source node id and that the "
+                f"adapter resolves its {prefix} hierarchy (e.g. a local "
+                f"'sqlite:obo:{prefix.lower()}' adapter)."
             )
         else:
             super().__init__(

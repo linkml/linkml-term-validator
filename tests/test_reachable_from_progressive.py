@@ -826,6 +826,7 @@ def test_greedy_include_self_over_childless_source_still_flagged(tmp_path):
     with pytest.raises(EmptyReachableClosureError) as excinfo:
         plugin.expand_enum(enum_def, use_cache=True)
     assert excinfo.value.source_closure_empty is True  # the closure itself was empty
+    assert "leaf" in str(excinfo.value)  # descendants arm names the leaf boundary
     assert plugin._is_enum_cache_complete(enum_def) is False
 
 

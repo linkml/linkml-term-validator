@@ -263,7 +263,11 @@ def test_validate_data_empty_reachable_closure_reports_distinctly(
     )
 
     assert result.exit_code == 3, result.output
-    assert "reachability is unreliable" in result.output
+    # Empty source closure (a leaf/root source) is a schema problem, so the banner
+    # and body say so rather than blaming the adapter's reachability.
+    assert "matched nothing" in result.output
+    assert "concepts:/permissible_values:" in result.output
+    assert "reachability is unreliable" not in result.output
 
 
 def test_validate_data_set_arithmetic_empty_enum_reports_distinctly(
