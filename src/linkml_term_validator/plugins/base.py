@@ -888,11 +888,11 @@ class BaseOntologyPlugin(ValidationPlugin):
         the pool is still adapter-ordered, so the sample can differ between runs;
         full determinism there would require a full walk, which the cap avoids.
 
-        The sample is spread with an even stride over the sorted pool rather than
-        taken as the lowest CURIEs: low OBO ids are the oldest, most root-like
-        terms, and under ``traverse_up`` the reverse direction is ``descendants``,
-        so a lowest-first sample would systematically pick the members with the
-        largest (most expensive) reverse closures.
+        The sample is taken at evenly-spaced indices spanning the sorted pool
+        (endpoints included) rather than as the lowest CURIEs: low OBO ids are the
+        oldest, most root-like terms, and under ``traverse_up`` the reverse
+        direction is ``descendants``, so a lowest-first sample would systematically
+        pick the members with the largest (most expensive) reverse closures.
 
         When the native ``descendants`` traversal yields nothing — whether it
         returned empty or raised — it consults a *bounded* OLS REST fallback; OAK's
@@ -970,12 +970,17 @@ class BaseOntologyPlugin(ValidationPlugin):
                 if _collect(term):
                     break
 
-        # Even-stride sample over the sorted pool: deterministic, and spread across
-        # the CURIE range rather than biased to the lowest (most root-like, most
-        # expensive under traverse_up) ids.
+        # Evenly-spaced sample spanning the sorted pool: deterministic, and spread
+        # across the whole CURIE range (endpoints included) rather than biased to
+        # the lowest (most root-like, most expensive under traverse_up) ids. A plain
+        # stride slice degenerates to "lowest k" for small pools and leaves the top
+        # unsampled for non-multiples, so pick evenly-spaced indices instead.
         ordered = sorted(pool)
-        stride = max(1, len(ordered) // self._INCONSISTENCY_SAMPLE_SIZE)
-        return ordered[::stride][: self._INCONSISTENCY_SAMPLE_SIZE]
+        k = min(self._INCONSISTENCY_SAMPLE_SIZE, len(ordered))
+        if k <= 1:
+            return ordered[:k]
+        indices = sorted({round(i * (len(ordered) - 1) / (k - 1)) for i in range(k)})
+        return [ordered[i] for i in indices]
 
     def _reverse_reaches(
         self,
@@ -1155,8 +1160,9 @@ class BaseOntologyPlugin(ValidationPlugin):
         # separate so the empty-enum diagnostic below can distinguish "the source
         # closure itself was empty" from "a minus:/set operation emptied it".
         rf_values: set[str] = set()
+        rf_reached = False
         if enum_def.reachable_from:
-            rf_values = self._expand_reachable_from(enum_def.reachable_from)
+            rf_values, rf_reached = self._expand_reachable_from_detailed(enum_def.reachable_from)
             values.update(rf_values)
 
         # Handle matches
@@ -1215,29 +1221,44 @@ class BaseOntologyPlugin(ValidationPlugin):
             # `include:` branch is intentionally not guarded here (fail-safe — it can
             # still cache an empty closure, but never false-aborts a valid config).
             #
-            # `include_self: true` keeps the reflexive source node(s) in `values`
-            # even when the closure reaches nothing real, so subtract them: an enum
-            # whose only members are its own reachable_from source nodes is
-            # effectively empty (a reachable_from used to name a single fixed term
-            # would be written as permissible_values/concepts instead).
-            rf_source_nodes = (
-                set(enum_def.reachable_from.source_nodes or []) if enum_def.reachable_from else set()
+            # The enum is "effectively empty" and worth failing on when either:
+            #   (a) the merged value set is empty (a broken source, or a minus:/set
+            #       operation removed everything); or
+            #   (b) `include_self: true` left only the reflexive source node(s) as
+            #       members because the traversal reached nothing real — but ONLY
+            #       when no other clause could have legitimately produced those
+            #       values. `reached_something` (tracked per source, so a member that
+            #       is itself another source node still counts — e.g. a parent + its
+            #       only child) is the reliable signal; subtracting source nodes from
+            #       the merged set would false-abort that legitimate union.
+            source_nodes_list = (
+                enum_def.reachable_from.source_nodes or [] if enum_def.reachable_from else []
             )
-            effective_values = values - rf_source_nodes
-            if not effective_values and enum_def.reachable_from:
+            rf_source_nodes = set(source_nodes_list)
+            has_other_value_clause = bool(
+                enum_def.concepts
+                or enum_def.permissible_values
+                or enum_def.include
+                or enum_def.inherits
+            )
+            effectively_empty = (not values) or (
+                not rf_reached and values <= rf_source_nodes and not has_other_value_clause
+            )
+            if effectively_empty and enum_def.reachable_from:
+                # Name a resolvable source deterministically (iterate the declared
+                # list, not the set, so the message is stable across runs).
                 resolved = next(
-                    (sn for sn in rf_source_nodes if self.get_ontology_label(sn) is not None),
+                    (sn for sn in source_nodes_list if self.get_ontology_label(sn) is not None),
                     None,
                 )
                 if resolved is not None:
-                    # rf_values minus the reflexive sources is the real closure
-                    # contribution: empty → bad source/adapter; non-empty but
-                    # cancelled → set arithmetic.
-                    rf_real = rf_values - rf_source_nodes
+                    # The reachable_from reached nothing real → bad source/adapter;
+                    # it reached something but a minus:/set operation cancelled it →
+                    # set arithmetic.
                     raise EmptyReachableClosureError(
                         resolved,
                         traverse_up=bool(getattr(enum_def.reachable_from, "traverse_up", False)),
-                        source_closure_empty=not rf_real,
+                        source_closure_empty=not rf_reached,
                     )
             self._closed_enum_caches.add(enum_name)
             if use_cache:
@@ -1274,16 +1295,30 @@ class BaseOntologyPlugin(ValidationPlugin):
         return values
 
     def _expand_reachable_from(self, query: Any) -> set[str]:
-        """Expand reachable_from query using OAK.
+        """Expand reachable_from query using OAK; return the set of reachable CURIEs.
 
-        Uses OAK's ancestors/descendants methods to traverse the ontology
-        graph and collect reachable terms.
+        Thin wrapper over :meth:`_expand_reachable_from_detailed` for callers that
+        only need the value set (include/minus branches, tests).
+        """
+        return self._expand_reachable_from_detailed(query)[0]
+
+    def _expand_reachable_from_detailed(self, query: Any) -> tuple[set[str], bool]:
+        """Expand reachable_from query, also reporting whether it reached anything.
+
+        Uses OAK's ancestors/descendants methods to traverse the ontology graph and
+        collect reachable terms.
 
         Args:
             query: ReachabilityQuery object with source_nodes, relationship_types, etc.
 
         Returns:
-            Set of reachable CURIEs
+            ``(values, reached_something)`` — the set of reachable CURIEs, and whether
+            any source node's traversal yielded at least one term *other than the
+            source node itself* (i.e. a genuine descendant/ancestor). ``reached_something``
+            is the signal the empty-enum guard needs: a term that happens to be
+            another source node still counts as reached (e.g. listing a parent and
+            its only child), so it is tracked here rather than inferred by subtracting
+            source nodes from the merged set.
 
         Example:
             Given a simple ontology with:
@@ -1294,19 +1329,20 @@ class BaseOntologyPlugin(ValidationPlugin):
             its descendants (TEST:0000002) and optionally itself if include_self=True.
         """
         values: set[str] = set()
+        reached_something = False
 
         # Get adapter for source ontology
         if not query.source_nodes:
-            return values
+            return values, reached_something
 
         first_node = query.source_nodes[0]
         prefix = self._get_prefix(first_node)
         if not prefix:
-            return values
+            return values, reached_something
 
         adapter = self._get_adapter(prefix)
         if not adapter:
-            return values
+            return values, reached_something
 
         # Get relationship types (predicates)
         predicates = query.relationship_types if query.relationship_types else ["rdfs:subClassOf"]
@@ -1318,34 +1354,34 @@ class BaseOntologyPlugin(ValidationPlugin):
         include_self = self._reachable_from_include_self(query)
         for source_node in query.source_nodes:
             if query.traverse_up:
-                # Get ancestors
-                ancestors_result = self._call_graph_traversal(
+                result = self._call_graph_traversal(
                     adapter=adapter,
                     method_name="ancestors",
                     start_curie=source_node,
                     predicates=predicates,
                     reflexive=include_self,
                 )
-                if ancestors_result:
-                    values.update(ancestors_result)
             else:
-                # Get descendants (default)
-                descendants_result = self._call_graph_traversal(
+                result = self._call_graph_traversal(
                     adapter=adapter,
                     method_name="descendants",
                     start_curie=source_node,
                     predicates=predicates,
                     reflexive=include_self,
                 )
-                if not descendants_result:
-                    descendants_result = self._ols_descendants(
+                if not result:
+                    result = self._ols_descendants(
                         adapter=adapter,
                         source_node=source_node,
                         predicates=predicates,
                         reflexive=include_self,
                     )
-                if descendants_result:
-                    values.update(descendants_result)
+            if result:
+                values.update(result)
+                # A term other than the source itself means this source genuinely
+                # reached into the graph (even if that term is another source node).
+                if result - {source_node}:
+                    reached_something = True
 
         # NOTE: the "resolved source but empty" check is deliberately NOT made here.
         # This method also expands `include`/`minus` branches, where an empty
@@ -1353,7 +1389,7 @@ class BaseOntologyPlugin(ValidationPlugin):
         # decision is made once per *enum* in expand_enum(), against the whole
         # merged value set, matching the documented "entire query expands to
         # nothing" contract.
-        return values
+        return values, reached_something
 
     @staticmethod
     def _ols_descendants(
@@ -1419,6 +1455,10 @@ class BaseOntologyPlugin(ValidationPlugin):
             # Check the cap BEFORE adding so a limit of N yields at most N genuine
             # descendants (with effective_limit==0 for reflexive+limit==1, none),
             # keeping the total ≤ limit even after the reflexive source is added.
+            # NOTE: this drops the record sitting at the cap slot before its
+            # `stop_at` check, so a target found only at that exact boundary reads as
+            # "not found" (→ fail-safe UNANSWERABLE). Do not restore the
+            # add-then-check order — that reintroduces the reflexive+limit off-by-one.
             if effective_limit is not None and len(values) >= effective_limit:
                 break
             values.add(obo_id)

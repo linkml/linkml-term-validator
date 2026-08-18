@@ -217,10 +217,13 @@ nothing. In that case the error says so explicitly (a schema/set-arithmetic
 problem, not a misconfigured adapter), so you're pointed at the `minus:`/`include:`
 clauses rather than the source node.
 
-`include_self: true` does not mask the check: an enum whose only member would be
-its own reflexive source node (a broken/childless source) is treated as empty and
-flagged, since a reachable_from naming a single fixed term is a misconfiguration
-(use `permissible_values` for that).
+`include_self: true` does not mask the check: when the traversal reaches nothing
+real and the enum's only members are its own `reachable_from` source nodes (and no
+`concepts`/`permissible_values`/`include`/`inherits` clause contributed anything),
+the enum is treated as empty and flagged. A legitimate union that lists a branch
+root together with a specific sub-branch (`source_nodes: [parent, child]`) still
+expands normally — the check keys on whether any source actually reached a term,
+not on subtracting source nodes from the result.
 
 The **round-trip check (1)** never flags a legitimate config:
 

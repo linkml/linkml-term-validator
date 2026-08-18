@@ -829,6 +829,78 @@ def test_greedy_include_self_over_childless_source_still_flagged(tmp_path):
     assert plugin._is_enum_cache_complete(enum_def) is False
 
 
+def test_greedy_multi_source_parent_and_child_union_not_flagged(tmp_path):
+    """A union of a branch root and a specific sub-branch must not be flagged.
+
+    Re-review finding: subtracting the source nodes from the merged set false-aborts
+    `source_nodes: [parent, child]` (the child is the parent's only descendant, so
+    the closure equals {child} ⊆ the source set). The guard now keys on whether any
+    source actually reached a term, so this legitimate union expands normally.
+    """
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+    enum_def = EnumDefinition(
+        name="ParentChildUnion",
+        reachable_from=ReachabilityQuery(
+            source_nodes=["TEST:0000002", "TEST:0000004"],  # parent + its only child
+            relationship_types=["rdfs:subClassOf"],
+        ),
+    )
+    values = plugin.expand_enum(enum_def, use_cache=False)  # must not raise
+    assert "TEST:0000004" in values  # the child, reached from the parent
+
+
+def test_greedy_include_self_over_populated_source_expands_normally(tmp_path):
+    """Positive control: include_self:true over a populated source is not flagged.
+
+    Guards against the emptiness check over-firing — the reflexive source plus real
+    descendants must expand and cache like any healthy enum.
+    """
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=True,
+        cache_dir=tmp_path / "cache",
+    )
+    enum_def = EnumDefinition(
+        name="IncludeSelfPopulated",
+        reachable_from=ReachabilityQuery(
+            source_nodes=["TEST:0000001"],  # root, has descendants
+            relationship_types=["rdfs:subClassOf"],
+            include_self=True,
+        ),
+    )
+    values = plugin.expand_enum(enum_def, use_cache=True)  # must not raise
+    assert "TEST:0000001" in values  # reflexive source kept
+    assert "TEST:0000002" in values  # a real descendant
+    assert plugin._is_enum_cache_complete(enum_def) is True
+
+
+def test_greedy_empty_enum_names_a_stable_source_node(tmp_path):
+    """The flagged source node is deterministic across runs (declared-list order)."""
+    plugin = DynamicEnumPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_dir=tmp_path / "cache",
+    )
+    enum_def = EnumDefinition(
+        name="TwoLeafSources",
+        reachable_from=ReachabilityQuery(
+            source_nodes=["TEST:0000004", "TEST:0000006"],  # two childless leaves
+            relationship_types=["rdfs:subClassOf"],
+        ),
+    )
+    with pytest.raises(EmptyReachableClosureError) as excinfo:
+        plugin.expand_enum(enum_def, use_cache=False)
+    # First resolvable node in the declared order, stable across runs.
+    assert excinfo.value.source_node == "TEST:0000004"
+
+
 def test_sample_closure_is_sorted_and_evenly_spaced(tmp_path):
     """The forward sample is deterministic: ascending-sorted, even-stride subset.
 
@@ -844,9 +916,26 @@ def test_sample_closure_is_sorted_and_evenly_spaced(tmp_path):
     sample = plugin._sample_closure(
         _ManyDescAdapter(), "descendants", "MONDO:0000000", ["rdfs:subClassOf"], "MONDO"
     )
-    ordered = [f"MONDO:{i:07d}" for i in range(1, 21)]
-    stride = max(1, len(ordered) // plugin._INCONSISTENCY_SAMPLE_SIZE)
-    assert sample == ordered[::stride][: plugin._INCONSISTENCY_SAMPLE_SIZE]
+    # 20 members, sample size 8 → evenly-spaced indices {0,3,5,8,11,14,16,19}
+    # spanning the sorted range (both endpoints included). Literal so a wrong stride
+    # formula (e.g. the degenerate "lowest 8") would be caught.
+    expected = [
+        "MONDO:0000001",
+        "MONDO:0000004",
+        "MONDO:0000006",
+        "MONDO:0000009",
+        "MONDO:0000012",
+        "MONDO:0000015",
+        "MONDO:0000017",
+        "MONDO:0000020",
+    ]
+    assert sample == expected
+    assert sample[0] == "MONDO:0000001" and sample[-1] == "MONDO:0000020"  # spans the range
+    # Deterministic across invocations (independent of set/generator ordering).
+    again = plugin._sample_closure(
+        _ManyDescAdapter(), "descendants", "MONDO:0000000", ["rdfs:subClassOf"], "MONDO"
+    )
+    assert again == sample
 
 
 def test_inconsistency_probe_is_cached(tmp_path):
