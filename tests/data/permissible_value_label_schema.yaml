@@ -1,0 +1,34 @@
+id: https://example.org/pv-label-schema
+name: pv-label-schema
+title: Schema with a deliberately mislabeled permissible value
+description: |
+  Used to test severity_overrides end-to-end for PermissibleValueMeaningPlugin.
+  TEST:0000006 is 'cell_cycle' in tests/data/test_ontology.obo, so the title
+  below disagrees and produces a `permissible_value_label_mismatch` result.
+
+prefixes:
+  TEST: https://example.org/test/
+  linkml: https://w3id.org/linkml/
+
+default_prefix: pv-label-schema
+default_range: string
+
+classes:
+  Sample:
+    tree_root: true
+    attributes:
+      sample_id:
+        identifier: true
+      process:
+        range: ProcessEnum
+
+enums:
+  ProcessEnum:
+    description: Enum whose permissible value title disagrees with the ontology
+    permissible_values:
+      # Deliberately NOT named CELL_CYCLE: the permissible value name is itself
+      # treated as an alias, so a matching name would satisfy the label check
+      # before the (wrong) title is ever compared.
+      PV_ONE:
+        title: definitely not the ontology label
+        meaning: TEST:0000006

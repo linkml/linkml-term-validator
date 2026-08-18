@@ -38,6 +38,16 @@ plugins:
     cache_dir: cache
     # Optional: oak_config_path: oak_config.yaml
 
+    # Optional: raise or lower the severity of specific problems.
+    #
+    # This matters for CI: `linkml-validate` exits non-zero only when a result
+    # has severity ERROR, so anything reported at WARN is printed but still
+    # exits 0. Label mismatches are ERROR by default; uncomment to make them
+    # advisory instead of a hard failure.
+    # severity_overrides:
+    #   binding_label_mismatch: WARN
+    #   binding_label_invalid: WARN
+
 # Note: For schema validation (permissible values), use linkml-term-validator CLI:
 #   linkml-term-validator validate-schema schema.yaml
 #

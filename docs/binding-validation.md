@@ -356,6 +356,7 @@ for result in report.results:
 | `cache_strategy` | `str \| CacheStrategy` | `progressive` | Dynamic enum cache strategy |
 | `offline` | `bool` | `False` | Resolve only from existing cache files |
 | `cache_dir` | `str` | `"cache"` | Cache directory |
+| `severity_overrides` | `dict \| None` | `None` | Map an error mode to the severity it is reported at |
 
 ## Error Messages
 
@@ -400,6 +401,47 @@ ERROR: Label mismatch for GO:0007049
   Found (from ontology): "cell cycle"
   path: process.label
 ```
+
+Label mismatches are reported at `ERROR`, so they fail CI. This matters because
+`linkml-validate` exits non-zero only when a result has severity `ERROR` — a
+mismatch reported at `WARN` would be printed while the process still exited 0.
+
+A label field is treated as *no label supplied* — and skipped, not failed — when
+it is any of the values a serializer produces for an absent slot:
+
+| Value | Treated as |
+|-------|-----------|
+| `label: null` | absent (skipped) |
+| `label: []` | absent (skipped) — an absent multivalued slot |
+| `label: [null]` | absent (skipped) |
+| `label: ""` | **error** — a mismatch against the ontology label |
+| `label: 42`, `label: {…}` | **error** — malformed |
+
+The empty string is a deliberate exception: nothing produces it mechanically the
+way a round-trip produces `null` or `[]`, so it reads as a real label defect
+rather than a missing value.
+
+!!! note "Changed default"
+
+    Label mismatches were reported at `WARN` in earlier releases. If a project
+    is not ready to enforce label agreement, restore the previous behavior
+    per-mode rather than disabling label validation entirely:
+
+    ```yaml
+    plugins:
+      "linkml_term_validator.plugins.BindingValidationPlugin":
+        validate_labels: true
+        severity_overrides:
+          binding_label_mismatch: WARN
+          binding_label_invalid: WARN
+    ```
+
+    Under `linkml-term-validator validate-data`, also pass `--fail-on error`:
+    that command exits 1 on any result by default, so a demotion to `WARN`
+    alone will not turn the build green there.
+
+See [Severity Overrides](plugin-reference.md#severity-overrides) for the full
+list of error modes and their defaults.
 
 ### Nested Path Example
 

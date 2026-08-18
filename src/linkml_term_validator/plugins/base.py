@@ -20,16 +20,18 @@ import inspect
 import json
 import logging
 import re
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Union
 from urllib.parse import quote
 
 from linkml.validator.plugins import ValidationPlugin  # type: ignore[import-untyped]
+from linkml.validator.report import Severity  # type: ignore[import-untyped]
 from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]
 from linkml_runtime.linkml_model import EnumDefinition
 
 from linkml_term_validator.cache_utils import atomic_write_csv, locked_cache_file
-from linkml_term_validator.models import CacheStrategy, ValidationConfig
+from linkml_term_validator.models import CacheStrategy, ErrorMode, ValidationConfig
 from linkml_term_validator.utils import (
     OntologyAccess,
     OntologyServiceUnavailableError,
@@ -39,6 +41,10 @@ from linkml_term_validator.utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Accepted shape for severity_overrides: keys and values may each arrive as a
+# plain string (the YAML case) or as their enum member.
+SeverityOverrides = Mapping[Union[str, ErrorMode], Union[str, Severity]]
 
 
 class BaseOntologyPlugin(ValidationPlugin):
@@ -61,6 +67,7 @@ class BaseOntologyPlugin(ValidationPlugin):
         oak_config_path: Optional[Path | str] = None,
         cache_strategy: Literal["progressive", "greedy"] | CacheStrategy = CacheStrategy.PROGRESSIVE,
         offline: bool = False,
+        severity_overrides: Optional[SeverityOverrides] = None,
     ):
         """Initialize base ontology plugin.
 
@@ -74,10 +81,17 @@ class BaseOntologyPlugin(ValidationPlugin):
             cache_strategy: Caching strategy for dynamic enums - "progressive" (default) or "greedy"
             offline: If True, force offline validation: never build OAK adapters
                 and resolve everything exclusively from the file cache
+            severity_overrides: Mapping of :class:`~linkml_term_validator.models.ErrorMode`
+                (or its string value) to the severity that problem should be
+                reported at, e.g. ``{"binding_label_mismatch": "ERROR"}``.
+                Use this to make a normally-advisory problem a hard failure --
+                ``linkml-validate`` exits non-zero only on ``ERROR``.
         """
         # Convert string to enum if needed
         if isinstance(cache_strategy, str):
             cache_strategy = CacheStrategy(cache_strategy)
+
+        self.severity_overrides = self._normalize_severity_overrides(severity_overrides)
 
         self.config = ValidationConfig(
             oak_adapter_string=oak_adapter_string,
@@ -115,6 +129,92 @@ class BaseOntologyPlugin(ValidationPlugin):
         """Get the cache strategy for dynamic enums."""
         return self.config.cache_strategy
 
+    @staticmethod
+    def _normalize_severity_overrides(
+        overrides: Optional[SeverityOverrides],
+    ) -> dict[str, Severity]:
+        """Validate and normalize an ErrorMode -> Severity mapping.
+
+        Both keys and values are accepted as strings (as they arrive from YAML)
+        or as enum members. Unknown names raise rather than being ignored, so a
+        typo in a config file surfaces immediately instead of silently leaving a
+        problem at its default severity.
+
+        Args:
+            overrides: Raw mapping from config, or None
+
+        Returns:
+            Mapping of ErrorMode value -> Severity
+
+        Raises:
+            ValueError: If the input is not a mapping, a key is not an
+                ErrorMode, or a value is not a Severity
+        """
+        if not overrides:
+            return {}
+        if not isinstance(overrides, Mapping):
+            raise ValueError(
+                f"severity_overrides must be a mapping of error mode to severity, "
+                f"got {type(overrides).__name__}: {overrides!r}"
+            )
+
+        normalized: dict[str, Severity] = {}
+        for raw_mode, raw_severity in overrides.items():
+            # getattr(..., "value") unwraps any enum member uniformly. str() alone
+            # is not enough: on a (str, Enum) subclass it yields "Class.MEMBER".
+            mode_value = str(getattr(raw_mode, "value", raw_mode)).strip().lower()
+            try:
+                mode = ErrorMode(mode_value)
+            except ValueError:
+                valid = ", ".join(sorted(m.value for m in ErrorMode))
+                raise ValueError(
+                    f"Unknown severity_overrides key: {raw_mode!r}. Valid keys are: {valid}"
+                ) from None
+
+            severity_value = str(getattr(raw_severity, "value", raw_severity)).strip().upper()
+            # "WARNING" is accepted as an alias for "WARN" because this project's
+            # own SeverityLevel enum spells it that way.
+            if severity_value == "WARNING":
+                severity_value = "WARN"
+            try:
+                severity = Severity(severity_value)
+            except ValueError:
+                valid = ", ".join(s.value for s in Severity)
+                raise ValueError(
+                    f"Unknown severity for '{mode.value}': {raw_severity!r}. "
+                    f"Valid severities are: {valid}"
+                ) from None
+
+            normalized[mode.value] = severity
+        return normalized
+
+    def severity_for(self, error_mode: ErrorMode, default: Optional[Severity] = None) -> Severity:
+        """Resolve the severity to report a problem at.
+
+        Args:
+            error_mode: The category of problem being reported
+            default: Severity to fall back to instead of the mode's own default.
+                Only for modes whose baseline depends on other configuration,
+                such as ``PermissibleValueMeaningPlugin.strict_mode``.
+
+        Returns:
+            The configured override, else ``default``, else the mode's default
+
+        Examples:
+            >>> from linkml_term_validator.plugins import BindingValidationPlugin
+            >>> from linkml_term_validator.models import ErrorMode
+            >>> plugin = BindingValidationPlugin(
+            ...     severity_overrides={"binding_label_mismatch": "WARN"}
+            ... )
+            >>> plugin.severity_for(ErrorMode.BINDING_LABEL_MISMATCH)
+            <Severity.WARN: 'WARN'>
+            >>> plugin.severity_for(ErrorMode.BINDING_LABEL_INVALID)
+            <Severity.ERROR: 'ERROR'>
+        """
+        if error_mode.value in self.severity_overrides:
+            return self.severity_overrides[error_mode.value]
+        return default if default is not None else error_mode.default_severity
+
     def _load_oak_config_extras(self, config: dict[str, Any]) -> None:
         """Apply plugin-specific overrides from the parsed oak_config.yaml.
 
@@ -135,6 +235,12 @@ class BaseOntologyPlugin(ValidationPlugin):
             self.config.saturate_enum_caches = self._parse_bool_config_value(
                 config["saturate_enum_caches"], "saturate_enum_caches"
             )
+        if "severity_overrides" in config:
+            # Explicit constructor arguments win over the shared config file.
+            self.severity_overrides = {
+                **self._normalize_severity_overrides(config["severity_overrides"]),
+                **self.severity_overrides,
+            }
 
     @staticmethod
     def _parse_bool_config_value(value: Any, field_name: str) -> bool:

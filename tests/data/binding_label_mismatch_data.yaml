@@ -1,0 +1,6 @@
+# TEST:0000006 is 'cell_cycle' in tests/data/test_ontology.obo, so the label
+# below is deliberately wrong and yields a binding_label_mismatch result.
+annotation_id: ann:1
+process:
+  id: TEST:0000006
+  label: TOTALLY WRONG LABEL

@@ -13,6 +13,7 @@ The ontology-backed plugins share these constructor options:
 | `cache_dir` | `cache` | Directory for label and enum caches |
 | `oak_config_path` | `None` | Path to `oak_config.yaml` |
 | `offline` | `False` | Read only from cache; never build OAK adapters |
+| `severity_overrides` | `None` | Map an error mode to the severity it is reported at |
 
 Dynamic enum capable plugins also accept:
 
@@ -21,6 +22,68 @@ Dynamic enum capable plugins also accept:
 | `cache_enum_expansions` | `True` | Write dynamic enum expansion caches |
 | `saturate_enum_caches` | `False` | Materialize full closures during progressive validation |
 | `cache_strategy` | `progressive` | `progressive` or `greedy` |
+
+### Severity Overrides
+
+Every result the plugins emit carries an error mode (the result's `type`) and a
+default severity. `severity_overrides` remaps any of them:
+
+```python
+from linkml_term_validator.plugins import BindingValidationPlugin
+
+plugin = BindingValidationPlugin(
+    severity_overrides={"binding_label_mismatch": "WARN"},
+)
+```
+
+This matters most in CI. `linkml-validate` exits non-zero **only** when a result
+has severity `ERROR`, so anything reported at `WARN` is printed while the
+process still exits 0. Remapping a single mode lets a project tighten or relax
+one specific check without touching the severity of everything else.
+
+The available error modes, and the severity each is reported at by default:
+
+| Error mode | Default | Emitted by |
+|------------|---------|------------|
+| `binding_validation` | `ERROR` | `BindingValidationPlugin` |
+| `binding_label_invalid` | `ERROR` | `BindingValidationPlugin` |
+| `binding_label_mismatch` | `ERROR` | `BindingValidationPlugin` |
+| `term_not_found` | `ERROR` | `BindingValidationPlugin` |
+| `dynamic_enum_validation` | `ERROR` | `DynamicEnumPlugin` |
+| `permissible_value_meaning` | `ERROR` | `PermissibleValueMeaningPlugin` |
+| `permissible_value_obsolete` | `ERROR` | `PermissibleValueMeaningPlugin` |
+| `permissible_value_label_mismatch` | `WARN` (`ERROR` under `strict_mode`) | `PermissibleValueMeaningPlugin` |
+
+Keys and values accept either strings or the `ErrorMode` / `Severity` enum
+members; severities are case-insensitive and `WARNING` is accepted as an alias
+for `WARN`. An unrecognized key or severity raises `ValueError` rather than
+being ignored, so a typo cannot silently leave a problem at its default
+severity.
+
+The mapping may also live in `oak_config.yaml`, alongside the adapter map:
+
+```yaml
+ontology_adapters:
+  GO: sqlite:obo:go
+
+severity_overrides:
+  binding_label_mismatch: WARN
+```
+
+Constructor arguments win over the config file. For
+`permissible_value_label_mismatch`, an explicit override wins over `strict_mode`.
+
+#### Which commands honor it
+
+`severity_overrides` changes the severity a *plugin* reports at, so it takes
+effect wherever that plugin runs — but whether the severity changes an exit code
+depends on the command:
+
+| Command | Effect |
+|---------|--------|
+| `linkml-validate` | Full effect: exits non-zero only on `ERROR` |
+| `linkml-term-validator validate-data` | Results are reported at the new severity, but the default `--fail-on any` exits 1 on any result regardless. Pass `--fail-on error` to make the severity decide. There is no `severity_overrides` CLI flag — set it in `oak_config.yaml` and pass that with `-c`, as with other plugin config |
+| `linkml-term-validator validate-schema` | **No effect.** This command uses `EnumValidator`, a separate implementation that does not run `PermissibleValueMeaningPlugin`. Use `strict_mode` there |
 
 ## PermissibleValueMeaningPlugin
 

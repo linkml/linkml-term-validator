@@ -1,0 +1,50 @@
+id: https://example.org/binding-label-schema
+name: binding-label-schema
+title: Schema with a bound term and a validated label field
+description: |
+  Used to test severity_overrides. The `process` slot binds `Term.id` to a
+  dynamic enum, and `Term.label` is declared as a label field via `implements`,
+  so a wrong label produces a `binding_label_mismatch` result.
+
+prefixes:
+  TEST: https://example.org/test/
+  linkml: https://w3id.org/linkml/
+  rdfs: http://www.w3.org/2000/01/rdf-schema#
+
+default_prefix: binding-label-schema
+default_range: string
+
+classes:
+  Annotation:
+    tree_root: true
+    attributes:
+      annotation_id:
+        identifier: true
+      process:
+        description: Biological process annotation
+        range: Term
+        inlined: true
+        bindings:
+          - binds_value_of: id
+            range: BiologicalProcessEnum
+
+  Term:
+    description: Reusable ontology term class
+    attributes:
+      id:
+        description: CURIE (e.g., TEST:0000006)
+      label:
+        description: Human-readable label
+        implements:
+          - rdfs:label
+
+enums:
+  BiologicalProcessEnum:
+    description: Test biological processes
+    reachable_from:
+      source_ontology: simpleobo:tests/data/test_ontology.obo
+      source_nodes:
+        - TEST:0000005
+      relationship_types:
+        - rdfs:subClassOf
+      include_self: true

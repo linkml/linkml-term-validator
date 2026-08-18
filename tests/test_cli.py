@@ -652,3 +652,106 @@ def test_validate_schema_strict_unresolvable_unconfigured(runner, tmp_path, test
 
     # With --strict, unresolvable unconfigured CURIE → exit 1
     assert result.exit_code == 1
+
+
+# =============================================================================
+# --fail-on: severity-aware exit codes
+#
+# `linkml-validate` exits non-zero only on ERROR. `validate-data` has always
+# exited 1 on any result, so a severity_overrides demotion had no effect here.
+# --fail-on lets the two commands agree without silently weakening the default.
+# =============================================================================
+
+
+@pytest.fixture
+def fail_on_fixtures(tmp_path):
+    """Schema + data with one wrong label, plus an oak config demoting it to WARN."""
+    schema = Path(__file__).parent / "data" / "binding_label_schema.yaml"
+    data_path = tmp_path / "data.yaml"
+    data_path.write_text(
+        "annotation_id: ann:1\nprocess:\n  id: TEST:0000006\n  label: TOTALLY WRONG LABEL\n"
+    )
+    warn_config = tmp_path / "oak_warn.yaml"
+    warn_config.write_text(
+        "ontology_adapters:\n"
+        "  TEST: simpleobo:tests/data/test_ontology.obo\n"
+        "severity_overrides:\n"
+        "  binding_label_mismatch: WARN\n"
+    )
+    return schema, data_path, warn_config
+
+
+def _fail_on_args(schema, data_path, config, *extra):
+    return [
+        "validate-data",
+        str(data_path),
+        "-s",
+        str(schema),
+        "-t",
+        "Annotation",
+        "--bindings",
+        "--no-dynamic-enums",
+        "--labels",
+        "-a",
+        "simpleobo:tests/data/test_ontology.obo",
+        "-c",
+        str(config),
+        "--no-cache",
+        *extra,
+    ]
+
+
+def test_validate_data_help_shows_fail_on(runner):
+    """The option must be discoverable, since it changes CI outcomes."""
+    result = runner.invoke(app, ["validate-data", "--help"])
+    assert result.exit_code == 0
+    assert "--fail-on" in result.output
+
+
+def test_fail_on_defaults_to_any(runner, fail_on_fixtures):
+    """Default is unchanged: a demoted WARN still exits 1."""
+    schema, data_path, config = fail_on_fixtures
+    result = runner.invoke(app, _fail_on_args(schema, data_path, config))
+    assert result.exit_code == 1
+    assert "WARN" in result.output
+
+
+def test_fail_on_error_ignores_warnings(runner, fail_on_fixtures):
+    """--fail-on error makes a demotion take effect, matching linkml-validate."""
+    schema, data_path, config = fail_on_fixtures
+    result = runner.invoke(app, _fail_on_args(schema, data_path, config, "--fail-on", "error"))
+    assert result.exit_code == 0
+
+
+def test_fail_on_error_still_reports_the_warning(runner, fail_on_fixtures):
+    """Lowering the threshold must never hide a result, only change the exit code."""
+    schema, data_path, config = fail_on_fixtures
+    result = runner.invoke(app, _fail_on_args(schema, data_path, config, "--fail-on", "error"))
+    assert "Label mismatch" in result.output
+    assert "none at or above the --fail-on error threshold" in result.output
+
+
+def test_fail_on_warn_fails_on_a_warning(runner, fail_on_fixtures):
+    """--fail-on warn sits between the two: WARN fails, INFO would not."""
+    schema, data_path, config = fail_on_fixtures
+    result = runner.invoke(app, _fail_on_args(schema, data_path, config, "--fail-on", "warn"))
+    assert result.exit_code == 1
+
+
+def test_fail_on_error_fails_on_an_error(runner, fail_on_fixtures):
+    """Without the demotion the mismatch is an ERROR, so --fail-on error exits 1."""
+    schema, data_path, _ = fail_on_fixtures
+    plain_config = data_path.parent / "oak_plain.yaml"
+    plain_config.write_text(
+        "ontology_adapters:\n  TEST: simpleobo:tests/data/test_ontology.obo\n"
+    )
+    result = runner.invoke(app, _fail_on_args(schema, data_path, plain_config, "--fail-on", "error"))
+    assert result.exit_code == 1
+    assert "ERROR" in result.output
+
+
+def test_fail_on_rejects_unknown_value(runner, fail_on_fixtures):
+    """A typo'd threshold must not silently fall back to a laxer setting."""
+    schema, data_path, config = fail_on_fixtures
+    result = runner.invoke(app, _fail_on_args(schema, data_path, config, "--fail-on", "nonsense"))
+    assert result.exit_code != 0

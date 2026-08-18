@@ -246,14 +246,42 @@ Validation results are reported with different severity levels:
   - Missing term from configured ontology
   - Dynamic enum constraint violation
   - Binding constraint violation
+  - Binding label mismatch, and a malformed binding label
 
 - **WARN** - Potential issue that may need attention
-  - Label mismatch in non-strict mode
+  - Permissible value label mismatch in non-strict mode
   - Unconfigured prefix with label mismatch (when verbose)
 
 - **INFO** - Informational message
   - Unconfigured prefix encountered
   - Unknown prefix summary
+
+These are defaults, not fixed rules. Each problem the plugins report has an
+error mode, and the severity of any mode can be changed — see
+[Severity Overrides](plugin-reference.md#severity-overrides):
+
+```yaml
+plugins:
+  "linkml_term_validator.plugins.BindingValidationPlugin":
+    severity_overrides:
+      binding_label_mismatch: WARN
+```
+
+### Severity and exit codes
+
+Severity only matters if something acts on it, and the two commands differ:
+
+| Command | Exits non-zero when |
+|---------|---------------------|
+| `linkml-validate` | any result is `ERROR` |
+| `linkml-term-validator validate-data` | any result at all, by default (`--fail-on any`) |
+| `linkml-term-validator validate-schema` | any result is `ERROR` |
+
+So under `linkml-validate` a `WARN` is printed and the build still passes. To
+make `validate-data` use the same rule — which is what lets a
+`severity_overrides` demotion take effect there too — pass `--fail-on error`.
+All results are printed under every threshold; `--fail-on` changes only the
+exit code.
 
 ### Strict Mode
 
