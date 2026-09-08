@@ -356,12 +356,14 @@ class ValidationConfig(BaseModel):
             "no external access"
         ),
     )
-    check_not4curation: bool = Field(
-        default=True,
+    check_not4curation: Optional[bool] = Field(
+        default=None,
         description=(
-            "If True (default), flag terms whose ontology marks them as not for "
+            "Whether to flag terms whose ontology marks them as not for "
             "annotation via a synonym such as 'Not4Curation' or "
-            "'not_recommended_for_annotation'"
+            "'not_recommended_for_annotation'. An explicit True/False wins over "
+            "oak_config.yaml; None takes the config file's check_not4curation if "
+            "present, else True. Consumers resolve it to a concrete bool"
         ),
     )
     not4curation_markers: Optional[list[str]] = Field(

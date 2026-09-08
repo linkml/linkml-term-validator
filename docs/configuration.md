@@ -281,7 +281,8 @@ Terms their ontology marks as not for annotation (a `Not4Curation` or
 `not_recommended_for_annotation` synonym) are reported at `ERROR` by default
 in every command. Disable with `--no-check-not4curation`, or in
 `oak_config.yaml` with `check_not4curation: false`; demote instead of
-disabling with `severity_overrides`. See
+disabling with `severity_overrides`. An explicit CLI flag wins over the config
+file; the file wins over the default. See
 [Not4Curation check](plugin-reference.md#not4curation-check).
 
 **Label validation (data validation only):**

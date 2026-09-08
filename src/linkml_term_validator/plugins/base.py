@@ -36,8 +36,8 @@ from linkml_term_validator.utils import (
     OntologyAccess,
     OntologyServiceUnavailableError,
     get_prefix,
-    normalize_not4curation_markers,
     normalize_string,
+    parse_not4curation_config,
     raise_if_service_unavailable,
 )
 
@@ -69,7 +69,7 @@ class BaseOntologyPlugin(ValidationPlugin):
         cache_strategy: Literal["progressive", "greedy"] | CacheStrategy = CacheStrategy.PROGRESSIVE,
         offline: bool = False,
         severity_overrides: Optional[SeverityOverrides] = None,
-        check_not4curation: bool = True,
+        check_not4curation: Optional[bool] = None,
         not4curation_markers: Optional[Iterable[str]] = None,
     ):
         """Initialize base ontology plugin.
@@ -89,14 +89,19 @@ class BaseOntologyPlugin(ValidationPlugin):
                 reported at, e.g. ``{"binding_label_mismatch": "ERROR"}``.
                 Use this to make a normally-advisory problem a hard failure --
                 ``linkml-validate`` exits non-zero only on ``ERROR``.
-            check_not4curation: If True (default), flag terms whose ontology
-                marks them as not for annotation via a synonym such as
+            check_not4curation: Whether to flag terms whose ontology marks
+                them as not for annotation via a synonym such as
                 ``Not4Curation`` or ``not_recommended_for_annotation`` (#70).
-                Reported at ERROR unless ``severity_overrides`` demotes the
+                An explicit ``True``/``False`` wins over ``oak_config.yaml``;
+                ``None`` (default) takes the config file's
+                ``check_not4curation`` if present, else ``True``. Reported at
+                ERROR unless ``severity_overrides`` demotes the
                 ``*_not4curation`` modes.
             not4curation_markers: Substrings identifying such a synonym,
                 matched after folding aliases to lowercase alphanumerics.
-                ``None`` uses the built-in defaults.
+                An explicit list wins over the config file; ``None`` takes
+                the config file's ``not4curation_markers`` if present, else
+                the built-in defaults.
         """
         # Convert string to enum if needed
         if isinstance(cache_strategy, str):
@@ -120,6 +125,9 @@ class BaseOntologyPlugin(ValidationPlugin):
                 list(not4curation_markers) if not4curation_markers is not None else None
             ),
         )
+        # Remember what was passed explicitly, so _load_oak_config_extras can
+        # let the config file fill only the unset values.
+        self._not4curation_explicit = (check_not4curation is not None, not4curation_markers is not None)
 
         # Shared ontology access (adapter management + label caching).
         self.ontology = OntologyAccess(
@@ -139,6 +147,10 @@ class BaseOntologyPlugin(ValidationPlugin):
         # oak_config.yaml the ontology service already parsed.
         if self.ontology.loaded_config:
             self._load_oak_config_extras(self.ontology.loaded_config)
+        # Resolve the Not4Curation switch to a concrete bool once the config
+        # file has had its say; nothing was set means the check is on.
+        if self.config.check_not4curation is None:
+            self.config.check_not4curation = True
 
     @property
     def cache_strategy(self) -> CacheStrategy:
@@ -257,24 +269,17 @@ class BaseOntologyPlugin(ValidationPlugin):
                 **self._normalize_severity_overrides(config["severity_overrides"]),
                 **self.severity_overrides,
             }
-        # Like cache_strategy, the Not4Curation keys in the config file win over
-        # the constructor: the file is the adoption knob for a knowledge base
-        # that needs to switch the check off (or narrow its markers) uniformly.
-        if "check_not4curation" in config:
-            self.config.check_not4curation = self._parse_bool_config_value(
-                config["check_not4curation"], "check_not4curation"
-            )
-        if "not4curation_markers" in config:
-            raw_markers = config["not4curation_markers"]
-            if isinstance(raw_markers, str):
-                raw_markers = [raw_markers]
-            if not isinstance(raw_markers, list):
-                raise ValueError(
-                    "not4curation_markers must be a list of strings, "
-                    f"got {type(raw_markers).__name__}: {raw_markers!r}"
-                )
-            self.ontology.not4curation_markers = normalize_not4curation_markers(raw_markers)
-            self.config.not4curation_markers = list(self.ontology.not4curation_markers)
+        # Not4Curation keys: unlike cache_strategy, an explicit constructor
+        # argument (which is also how the CLI flag arrives) wins over the
+        # config file. The file only fills in what was left unset, so
+        # ``--no-check-not4curation`` is never silently ignored.
+        check, markers = parse_not4curation_config(config)
+        explicit_check, explicit_markers = self._not4curation_explicit
+        if check is not None and not explicit_check:
+            self.config.check_not4curation = check
+        if markers is not None and not explicit_markers:
+            self.ontology.not4curation_markers = markers
+            self.config.not4curation_markers = list(markers)
 
     @staticmethod
     def _parse_bool_config_value(value: Any, field_name: str) -> bool:
@@ -362,7 +367,7 @@ class BaseOntologyPlugin(ValidationPlugin):
         """CURIEs the Not4Curation check could not vet (no synonym data).
 
         These are not clean. They are unknown, and callers should say so rather
-        than count them as passed.
+        than count them as passed. Returns a copy.
         """
         return self.ontology.get_not4curation_unchecked()
 

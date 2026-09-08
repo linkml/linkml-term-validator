@@ -19,7 +19,7 @@ import csv
 import logging
 import re
 import socket
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -205,6 +205,68 @@ def normalize_not4curation_markers(markers: Optional[Iterable[str]]) -> tuple[st
             "(use check_not4curation=False to disable the check)"
         )
     return normalized
+
+
+def parse_not4curation_config(
+    config: Optional[Mapping[str, Any]],
+) -> tuple[Optional[bool], Optional[tuple[str, ...]]]:
+    """Read the Not4Curation keys from a parsed ``oak_config.yaml``.
+
+    Shared by the plugin base class and :class:`EnumValidator` so the two
+    cannot drift in how they coerce the values.
+
+    Args:
+        config: The parsed config mapping (or None)
+
+    Returns:
+        ``(check_not4curation, not4curation_markers)``; each is ``None`` when
+        its key is absent.
+
+    Raises:
+        ValueError: If ``check_not4curation`` is not a boolean (or the strings
+            ``"true"``/``"false"``), or ``not4curation_markers`` is not a
+            string or list of strings.
+
+    Examples:
+        >>> parse_not4curation_config(None)
+        (None, None)
+        >>> parse_not4curation_config({"check_not4curation": "false"})
+        (False, None)
+        >>> parse_not4curation_config({"not4curation_markers": ["Do Not Annotate"]})
+        (None, ('donotannotate',))
+        >>> parse_not4curation_config({"check_not4curation": "yes"})
+        Traceback (most recent call last):
+        ...
+        ValueError: check_not4curation must be a boolean or 'true'/'false', got: 'yes'
+    """
+    if not config:
+        return None, None
+
+    check: Optional[bool] = None
+    if "check_not4curation" in config:
+        raw = config["check_not4curation"]
+        if isinstance(raw, bool):
+            check = raw
+        elif isinstance(raw, str) and raw.strip().lower() in {"true", "false"}:
+            check = raw.strip().lower() == "true"
+        else:
+            raise ValueError(
+                f"check_not4curation must be a boolean or 'true'/'false', got: {raw!r}"
+            )
+
+    markers: Optional[tuple[str, ...]] = None
+    if "not4curation_markers" in config:
+        raw_markers = config["not4curation_markers"]
+        if isinstance(raw_markers, str):
+            raw_markers = [raw_markers]
+        if not isinstance(raw_markers, list) or not all(isinstance(m, str) for m in raw_markers):
+            raise ValueError(
+                "not4curation_markers must be a string or a list of strings, "
+                f"got {type(raw_markers).__name__}: {raw_markers!r}"
+            )
+        markers = normalize_not4curation_markers(raw_markers)
+
+    return check, markers
 
 
 def not4curation_message(curie: str, markers: Iterable[str]) -> str:
@@ -816,9 +878,19 @@ class OntologyAccess:
         return [str(a) for a in (result or []) if a is not None]
 
     def _ols_entity_aliases(self, adapter: object, curie: str) -> Optional[list[str]]:
-        """Read aliases from the cached OLS term payload (None if unresolvable)."""
+        """Read aliases from the cached OLS term payload.
+
+        Returns ``None`` when the term is unresolvable *or* when the payload
+        carries neither a ``synonyms`` nor an ``obo_synonym`` key. A label is
+        always present, so without that rule a payload shape this code does
+        not understand (an older OLS, a client that drops the key) would make
+        every term look vetted and clean. A term with no synonyms normally
+        still carries ``"synonyms": []`` or ``null``, and stays clean.
+        """
         term = self._ols_term_dict(adapter, curie)
         if term is None:
+            return None
+        if "synonyms" not in term and "obo_synonym" not in term:
             return None
         aliases: list[str] = []
         label = term.get("label")
@@ -871,15 +943,17 @@ class OntologyAccess:
             return None
         self._not4curation_checked.add(curie)
         self._not4curation_unchecked.discard(curie)
+        # Order-preserving dedupe: OLS can list the same synonym under both
+        # ``synonyms`` and ``obo_synonym``, and the message should name it once.
         return [
             alias
-            for alias in aliases
+            for alias in dict.fromkeys(aliases)
             if any(marker in normalize_marker_text(alias) for marker in self.not4curation_markers)
         ]
 
     def get_not4curation_checked(self) -> set[str]:
-        """CURIEs whose aliases were read and tested for a marker."""
-        return self._not4curation_checked
+        """CURIEs whose aliases were read and tested for a marker (a copy)."""
+        return set(self._not4curation_checked)
 
     def get_not4curation_unchecked(self) -> set[str]:
         """CURIEs the Not4Curation check was asked about but could not check.
@@ -887,7 +961,8 @@ class OntologyAccess:
         A term lands here when its aliases could not be read (no adapter,
         offline, unsupported adapter, or an empty alias list). It is not
         clean; it is unknown. Callers should report the count rather than fold
-        it into a pass.
+        it into a pass. A copy is returned, so mutating it cannot change the
+        validator's own bookkeeping.
         """
-        return self._not4curation_unchecked
+        return set(self._not4curation_unchecked)
 

@@ -11,6 +11,7 @@ from linkml_term_validator.utils.oak_utils import (
     normalize_string,
     not4curation_message,
     obsolete_term_message,
+    parse_not4curation_config,
     raise_if_service_unavailable,
 )
 
@@ -25,5 +26,6 @@ __all__ = [
     "normalize_string",
     "not4curation_message",
     "obsolete_term_message",
+    "parse_not4curation_config",
     "raise_if_service_unavailable",
 ]

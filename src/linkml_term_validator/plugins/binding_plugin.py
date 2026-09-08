@@ -103,7 +103,7 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         cache_strategy: Literal["progressive", "greedy"] | CacheStrategy = CacheStrategy.PROGRESSIVE,
         offline: bool = False,
         severity_overrides: Optional[SeverityOverrides] = None,
-        check_not4curation: bool = True,
+        check_not4curation: Optional[bool] = None,
         not4curation_markers: Optional[Iterable[str]] = None,
     ):
         """Initialize binding validation plugin.
@@ -123,11 +123,13 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             severity_overrides: Mapping of ErrorMode to severity, e.g.
                 ``{"binding_label_mismatch": "WARN"}`` to make label
                 disagreements advisory rather than the default hard failure
-            check_not4curation: If True (default), flag a bound term whose
-                ontology marks it as not for annotation, e.g. with a
-                ``Not4Curation`` synonym (#70). ``binding_not4curation``
+            check_not4curation: Flag a bound term whose ontology marks it as
+                not for annotation, e.g. with a ``Not4Curation`` synonym
+                (#70). Explicit value wins over ``oak_config.yaml``; None
+                takes the config file's, else True. ``binding_not4curation``
                 defaults to ERROR; demote it via ``severity_overrides``
-            not4curation_markers: Custom marker substrings; None uses defaults
+            not4curation_markers: Custom marker substrings; explicit wins over
+                the config file; None takes the config file's, else defaults
         """
         super().__init__(
             oak_adapter_string=oak_adapter_string,
@@ -371,10 +373,15 @@ class BindingValidationPlugin(BaseOntologyPlugin):
 
         # A term the enum accepted may still be one its ontology says not to
         # annotate with (a Not4Curation synonym; see #70). This is checked only
-        # when the enum check passed: a value already rejected as out-of-enum
-        # needs no second result telling the user not to use it.
+        # when membership passed: a value already rejected as out-of-enum needs
+        # no second result telling the user not to use it. The gate names the
+        # membership result type so an unrelated advisory result added to
+        # _validate_against_enum later cannot silently suppress the flag.
+        rejected = any(
+            r.type == ErrorMode.BINDING_VALIDATION.value for r in enum_results
+        )
         if (
-            not enum_results
+            not rejected
             and isinstance(field_value, str)
             and self._not4curation_in_scope(field_value, binding.range)
         ):

@@ -15,10 +15,10 @@ from linkml_term_validator.models import (
 from linkml_term_validator.utils import (
     OntologyAccess,
     get_prefix,
-    normalize_not4curation_markers,
     normalize_string,
     not4curation_message,
     obsolete_term_message,
+    parse_not4curation_config,
 )
 
 
@@ -60,29 +60,20 @@ class EnumValidator:
             config.get_cache_dir()
 
     def _load_not4curation_config(self, loaded: dict) -> None:
-        """Apply ``check_not4curation`` / ``not4curation_markers`` from oak_config."""
-        if not loaded:
-            return
-        if "check_not4curation" in loaded:
-            value = loaded["check_not4curation"]
-            if isinstance(value, str) and value.strip().lower() in {"true", "false"}:
-                value = value.strip().lower() == "true"
-            if not isinstance(value, bool):
-                raise ValueError(
-                    f"check_not4curation must be a boolean or 'true'/'false', got: {value!r}"
-                )
-            self.config.check_not4curation = value
-        if "not4curation_markers" in loaded:
-            raw = loaded["not4curation_markers"]
-            if isinstance(raw, str):
-                raw = [raw]
-            if not isinstance(raw, list):
-                raise ValueError(
-                    "not4curation_markers must be a list of strings, "
-                    f"got {type(raw).__name__}: {raw!r}"
-                )
-            self.ontology.not4curation_markers = normalize_not4curation_markers(raw)
-            self.config.not4curation_markers = list(self.ontology.not4curation_markers)
+        """Fill unset Not4Curation settings from oak_config, then resolve.
+
+        An explicit value on the :class:`ValidationConfig` (which is how a CLI
+        flag arrives) wins over the config file; the file fills only what was
+        left as ``None``. Afterwards ``check_not4curation`` is a concrete bool.
+        """
+        check, markers = parse_not4curation_config(loaded)
+        if check is not None and self.config.check_not4curation is None:
+            self.config.check_not4curation = check
+        if markers is not None and self.config.not4curation_markers is None:
+            self.ontology.not4curation_markers = markers
+            self.config.not4curation_markers = list(markers)
+        if self.config.check_not4curation is None:
+            self.config.check_not4curation = True
 
     def _not4curation_issue(
         self,
@@ -114,7 +105,7 @@ class EnumValidator:
         )
 
     def get_not4curation_unchecked(self) -> set[str]:
-        """CURIEs the Not4Curation check was asked about but could not vet."""
+        """CURIEs the Not4Curation check was asked about but could not vet (a copy)."""
         return self.ontology.get_not4curation_unchecked()
 
     # =========================================================================

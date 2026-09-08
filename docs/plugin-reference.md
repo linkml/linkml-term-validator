@@ -135,8 +135,18 @@ not4curation_markers:              # or replace the marker list
 ```
 
 or per plugin with `check_not4curation=False` / `not4curation_markers=[...]`,
-or on the CLI with `--no-check-not4curation`. Like `cache_strategy`, the
-config-file keys win over the constructor argument.
+or on the CLI with `--no-check-not4curation`. Precedence: an explicit
+constructor argument or CLI flag wins over the config file, and the config
+file wins over the built-in default (on, with the default markers). The file
+only fills in what was left unset, so `--no-check-not4curation` is never
+silently overridden. Setting `not4curation_markers` replaces the default list
+rather than extending it, and the label counts as an alias, so choose custom
+markers with real labels in mind.
+
+`EnumValidator` (behind `validate-schema` and `validate-text-file`) has no
+`severity_overrides`, so there the check is all-or-nothing: it reports at
+`ERROR` or is switched off. Demotion to `WARN` applies to the plugins, and so
+to `validate-data` and `linkml-validate`.
 
 **Terms that could not be checked.** A marker *is* a synonym, so a term whose
 synonyms could not be read has not been vetted. That happens offline (synonyms
@@ -152,13 +162,18 @@ return them, and the CLI prints them as a non-gating note:
   Run once online to check these terms.
 ```
 
-**Existing caches.** The enum cache is the offline positive-hit set for
-`reachable_from`. A flagged CURIE cached before this check existed still
+**Existing caches and cost.** The enum cache is the offline positive-hit set
+for `reachable_from`. A flagged CURIE cached before this check existed still
 validates offline, and offline there is no way to read the marker. The check
 runs on the accepted value on every online run, so one online pass surfaces
 every flagged term already in the cache; you do not need to rebuild the cache
-to adopt it, but an offline-only pipeline will keep reporting those terms as
-unchecked until it runs online once.
+to adopt it. The trade is that a warm-cache online run, which used to touch
+no ontology at all, now opens the adapter and reads aliases once per unique
+accepted term (for a `sqlite:obo:` adapter that is one local query; the first
+run may download the database). Aliases are held in memory only, not in the
+file cache, so an offline-only pipeline keeps reporting those terms as
+unchecked until it runs online once. Persisting the verdict alongside the
+cached label is a possible follow-up.
 
 #### Which commands honor it
 

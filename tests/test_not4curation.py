@@ -182,7 +182,11 @@ class _CountingOlsAdapter:
 
 
 def test_ols_markers_read_from_cached_term_payload():
-    """OLS adds no round trip: label, obsolescence and synonyms share one fetch."""
+    """OLS adds no round trip: label, obsolescence and synonyms share one fetch.
+
+    The same synonym listed under both ``synonyms`` and ``obo_synonym`` is
+    named once in the result.
+    """
     access = OntologyAccess(cache_labels=False)
     adapter = _CountingOlsAdapter(
         {
@@ -194,16 +198,71 @@ def test_ols_markers_read_from_cached_term_payload():
     )
     access._adapter_cache["XCO"] = adapter
     assert access.is_obsolete("XCO:0000294") is False
-    assert access.find_not4curation_markers("XCO:0000294") == ["Not4Curation", "Not4Curation"]
+    assert access.find_not4curation_markers("XCO:0000294") == ["Not4Curation"]
     assert adapter.get_term_calls == 1
 
 
-def test_ols_payload_without_synonyms_is_clean_not_unchecked():
-    # The payload still carries the label, so the alias list is non-empty and
-    # the term was genuinely vetted.
+def test_ols_real_payload_shape_is_flagged():
+    """The shape OLS4 actually returns for XCO:0000294 (synonyms list, obo_synonym null)."""
     access = OntologyAccess(cache_labels=False)
-    access._adapter_cache["XCO"] = _CountingOlsAdapter({"label": "experimental condition"})
+    access._adapter_cache["XCO"] = _CountingOlsAdapter(
+        {
+            "label": "estrogen/estrogen analog",
+            "synonyms": ["Not4Curation"],
+            "obo_synonym": None,
+            "is_obsolete": False,
+        }
+    )
+    assert access.find_not4curation_markers("XCO:0000294") == ["Not4Curation"]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"label": "experimental condition", "synonyms": []},
+        {"label": "experimental condition", "synonyms": None},
+        {"label": "experimental condition", "synonyms": None, "obo_synonym": None},
+    ],
+)
+def test_ols_payload_with_empty_synonyms_is_clean(payload):
+    # The synonym field is present and empty: the term really has none.
+    access = OntologyAccess(cache_labels=False)
+    access._adapter_cache["XCO"] = _CountingOlsAdapter(payload)
     assert access.find_not4curation_markers("XCO:0000000") == []
+    assert "XCO:0000000" in access.get_not4curation_checked()
+
+
+def test_ols_payload_without_synonym_fields_is_unchecked():
+    """A payload shape with no synonym key at all is not understood.
+
+    The label alone would make the alias list non-empty and the term look
+    vetted, so a client or OLS version that drops the synonym fields would
+    silently pass every term. Require positive evidence instead.
+    """
+    access = OntologyAccess(cache_labels=False)
+    access._adapter_cache["XCO"] = _CountingOlsAdapter({"label": "estrogen/estrogen analog"})
+    assert access.find_not4curation_markers("XCO:0000294") is None
+    assert "XCO:0000294" in access.get_not4curation_unchecked()
+
+
+def test_unchecked_accessor_returns_a_copy():
+    access = _access(offline=True)
+    access.find_not4curation_markers(RGD_FLAGGED)
+    snapshot = access.get_not4curation_unchecked()
+    snapshot.add("TEST:9999999")
+    assert access.get_not4curation_unchecked() == {RGD_FLAGGED}
+
+
+def test_label_counts_as_an_alias():
+    """Aliases include rdfs:label, so a marker in the label itself hits.
+
+    That is intended: an ontology writing the marker into the label is still
+    saying "do not annotate". It also means a custom marker must be chosen
+    with real labels in mind.
+    """
+    access = _access(not4curation_markers=["flagged"])
+    assert access.find_not4curation_markers(RGD_FLAGGED) == ["flagged process"]
+    assert access.find_not4curation_markers(CLEAN_TERM) == []
 
 
 def test_message_quotes_the_ontology_wording():
@@ -373,6 +432,50 @@ def test_binding_check_switched_off_via_oak_config(tmp_path):
     assert plugin.config.check_not4curation is False
 
 
+def test_explicit_constructor_value_beats_oak_config(tmp_path):
+    """The config file fills only what was left unset; an explicit argument wins."""
+    config = tmp_path / "oak.yaml"
+    config.write_text(
+        "ontology_adapters:\n"
+        f"  TEST: {TEST_ONTOLOGY}\n"
+        "check_not4curation: false\n"
+        "not4curation_markers:\n"
+        "  - discouraged\n"
+    )
+    plugin, results = _validate_binding(
+        RGD_FLAGGED, tmp_path, oak_config_path=config, check_not4curation=True
+    )
+    assert plugin.config.check_not4curation is True
+    # The file's marker list still applies: it was not set explicitly, and it
+    # does not match the RGD term.
+    assert results == []
+    assert plugin.ontology.not4curation_markers == ("discouraged",)
+
+    plugin, results = _validate_binding(
+        RGD_FLAGGED,
+        tmp_path,
+        oak_config_path=config,
+        check_not4curation=True,
+        not4curation_markers=["not4curation"],
+    )
+    assert [r.type for r in results] == ["binding_not4curation"]
+
+
+def test_unset_constructor_value_defaults_on(tmp_path):
+    plugin = BindingValidationPlugin(oak_adapter_string=TEST_ONTOLOGY, cache_labels=False)
+    assert plugin.config.check_not4curation is True
+
+
+def test_invalid_oak_config_values_raise(tmp_path):
+    config = tmp_path / "oak.yaml"
+    config.write_text(f"ontology_adapters:\n  TEST: {TEST_ONTOLOGY}\ncheck_not4curation: maybe\n")
+    with pytest.raises(ValueError, match="check_not4curation"):
+        BindingValidationPlugin(oak_config_path=config, cache_labels=False)
+    config.write_text(f"ontology_adapters:\n  TEST: {TEST_ONTOLOGY}\nnot4curation_markers: 3\n")
+    with pytest.raises(ValueError, match="not4curation_markers"):
+        EnumValidator(ValidationConfig(oak_config_path=config, cache_labels=False))
+
+
 def test_binding_custom_markers_via_oak_config(tmp_path):
     config = tmp_path / "oak.yaml"
     config.write_text(
@@ -529,6 +632,13 @@ def test_enum_validator_reads_switch_from_oak_config(tmp_path):
     assert validator.config.check_not4curation is False
     assert validator.validate_schema(schema_path).issues == []
 
+    # An explicit config value beats the file.
+    validator = EnumValidator(
+        ValidationConfig(oak_config_path=config, cache_labels=False, check_not4curation=True)
+    )
+    assert validator.config.check_not4curation is True
+    assert len(validator.validate_schema(schema_path).issues) == 1
+
 
 def test_curie_label_pairs_flag_marked_term():
     validator = EnumValidator(ValidationConfig(oak_adapter_string=TEST_ONTOLOGY, cache_labels=False))
@@ -573,6 +683,23 @@ def test_cli_validate_data_fails_on_flagged_term(runner, tmp_path):
     assert result.exit_code == 0, result.output
 
 
+def test_cli_explicit_flag_beats_oak_config(runner, tmp_path):
+    """--no-check-not4curation must not be silently ignored by a config file."""
+    config = tmp_path / "oak.yaml"
+    config.write_text(f"ontology_adapters:\n  TEST: {TEST_ONTOLOGY}\ncheck_not4curation: true\n")
+    data = tmp_path / "data.yaml"
+    data.write_text(f"- id: s1\n  process_type: {RGD_FLAGGED}\n")
+    args = ["validate-data", str(data), "-s", str(DYNAMIC_ENUM_SCHEMA), "-t", "Sample",
+            "-c", str(config), "--no-cache"]
+    assert runner.invoke(app, args).exit_code == 1
+    assert runner.invoke(app, [*args, "--no-check-not4curation"]).exit_code == 0
+
+    # And the other way: the file turns it off, the flag turns it back on.
+    config.write_text(f"ontology_adapters:\n  TEST: {TEST_ONTOLOGY}\ncheck_not4curation: false\n")
+    assert runner.invoke(app, args).exit_code == 0
+    assert runner.invoke(app, [*args, "--check-not4curation"]).exit_code == 1
+
+
 def test_cli_validate_data_offline_reports_unchecked(runner, tmp_path):
     cache_dir = tmp_path / "cache"
     data = tmp_path / "data.yaml"
@@ -614,3 +741,92 @@ def test_cli_validate_text_file_fails_on_flagged_term(runner, tmp_path):
 
     result = runner.invoke(app, [*args, "--no-check-not4curation"])
     assert result.exit_code == 0, result.output
+
+
+# ---------------------------------------------------------------------------
+# Integration: the real XCO terms from the issue, through a local SQLite
+# adapter and through OLS. Skipped by default (network / ontology download).
+# ---------------------------------------------------------------------------
+
+XCO_FLAGGED = ["XCO:0000294", "XCO:0000950", "XCO:0000561"]
+XCO_ROOT = "XCO:0000000"  # experimental condition, not flagged
+
+
+def _xco_binding_case(tmp_path: Path, adapter_string: str):
+    schema = tmp_path / "schema.yaml"
+    schema.write_text(
+        f"""
+id: https://example.org/xco
+name: xco-check
+prefixes:
+  XCO: http://purl.obolibrary.org/obo/XCO_
+  linkml: https://w3id.org/linkml/
+default_prefix: xco-check
+default_range: string
+classes:
+  Exposure:
+    tree_root: true
+    attributes:
+      id:
+        identifier: true
+      term:
+        range: Term
+        inlined: true
+        bindings:
+          - binds_value_of: id
+            range: ExposureEnum
+  Term:
+    attributes:
+      id:
+enums:
+  ExposureEnum:
+    reachable_from:
+      source_ontology: {adapter_string}
+      source_nodes:
+        - {XCO_ROOT}
+      relationship_types:
+        - rdfs:subClassOf
+"""
+    )
+    config = tmp_path / "oak.yaml"
+    config.write_text(f"ontology_adapters:\n  XCO: {adapter_string}\n")
+    return schema, config
+
+
+def _run_xco(tmp_path: Path, adapter_string: str, term: str):
+    schema, config = _xco_binding_case(tmp_path, adapter_string)
+    plugin = BindingValidationPlugin(
+        oak_config_path=config, cache_labels=False, cache_enum_expansions=False, validate_labels=False
+    )
+    data = tmp_path / "data.yaml"
+    data.write_text(f"id: e1\nterm:\n  id: {term}\n")
+    validator = Validator(schema=str(schema), validation_plugins=[plugin])
+    report = validator.validate_source(YamlLoader(data), target_class="Exposure")
+    return plugin, report.results
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("term", XCO_FLAGGED)
+def test_xco_flagged_terms_via_sqlite(tmp_path, term):
+    plugin, results = _run_xco(tmp_path, "sqlite:obo:xco", term)
+    assert [r.type for r in results] == ["binding_not4curation"], results
+    assert "Not4Curation" in results[0].message
+    assert plugin.get_not4curation_unchecked() == set()
+
+
+@pytest.mark.integration
+def test_xco_clean_term_via_sqlite(tmp_path):
+    # The root is excluded from the closure, so bind a real child instead.
+    plugin, results = _run_xco(tmp_path, "sqlite:obo:xco", "XCO:0000004")
+    assert results == [], results
+    assert plugin.get_not4curation_unchecked() == set()
+
+
+@pytest.mark.integration
+def test_xco_flagged_term_via_ols(tmp_path):
+    """Pins the OLS4 payload shape (``synonyms`` list, ``obo_synonym`` null)."""
+    plugin, results = _run_xco(tmp_path, "ols:xco", "XCO:0000294")
+    assert [r.type for r in results] == ["binding_not4curation"], results
+    assert results[0].message.startswith("Ontology term XCO:0000294 is marked 'Not4Curation'")
+    assert plugin.get_not4curation_unchecked() == set()
+

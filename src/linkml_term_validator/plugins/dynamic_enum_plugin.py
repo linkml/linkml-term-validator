@@ -58,7 +58,7 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
         cache_strategy: Literal["progressive", "greedy"] | CacheStrategy = CacheStrategy.PROGRESSIVE,
         offline: bool = False,
         severity_overrides: Optional[SeverityOverrides] = None,
-        check_not4curation: bool = True,
+        check_not4curation: Optional[bool] = None,
         not4curation_markers: Optional[Iterable[str]] = None,
     ):
         """Initialize dynamic enum plugin.
@@ -75,9 +75,11 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
                 and resolve everything exclusively from the file cache
             severity_overrides: Mapping of ErrorMode to severity, e.g.
                 ``{"dynamic_enum_validation": "WARN"}``
-            check_not4curation: If True (default), flag an enum member whose
-                ontology marks it as not for annotation (#70)
-            not4curation_markers: Custom marker substrings; None uses defaults
+            check_not4curation: Flag an enum member whose ontology marks it as
+                not for annotation (#70). Explicit value wins over
+                ``oak_config.yaml``; None takes the config file's, else True
+            not4curation_markers: Custom marker substrings; explicit wins over
+                the config file; None takes the config file's, else defaults
         """
         super().__init__(
             oak_adapter_string=oak_adapter_string,

@@ -216,4 +216,10 @@ carries `TEST:0000008` (Not4Curation) and `TEST:0000009`
 (not_recommended_for_annotation) for offline tests. In the binding plugin the
 check only consults an adapter where the pipeline already would (dynamic enum,
 configured prefix, or offline), so a static-enum binding under an unconfigured
-prefix never triggers an ontology download.
+prefix never triggers an ontology download. Precedence for
+`check_not4curation` / `not4curation_markers`: explicit constructor argument or
+CLI flag > `oak_config.yaml` > default (on, default markers); `None` means
+"unset". Both the plugins and `EnumValidator` read the config keys through
+`parse_not4curation_config()` so they cannot drift. For OLS, aliases come from
+the term payload; a payload with no `synonyms`/`obo_synonym` key at all is
+treated as unchecked, not clean.

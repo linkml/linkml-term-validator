@@ -226,16 +226,17 @@ def validate_schema(
         ),
     ] = False,
     check_not4curation: Annotated[
-        bool,
+        Optional[bool],
         typer.Option(
             "--check-not4curation/--no-check-not4curation",
             help=(
                 "Flag terms whose ontology marks them as not for annotation "
                 "(a 'Not4Curation' or 'not_recommended_for_annotation' synonym). "
-                "Default: enabled"
+                "Default: enabled, unless oak_config.yaml sets check_not4curation; "
+                "an explicit flag wins over the file"
             ),
         ),
-    ] = True,
+    ] = None,
     verbose: Annotated[
         bool,
         typer.Option(
@@ -430,17 +431,18 @@ def validate_data(
         ),
     ] = False,
     check_not4curation: Annotated[
-        bool,
+        Optional[bool],
         typer.Option(
             "--check-not4curation/--no-check-not4curation",
             help=(
                 "Flag terms whose ontology marks them as not for annotation "
                 "(a 'Not4Curation' or 'not_recommended_for_annotation' synonym). "
-                "Default: enabled; reported at ERROR unless severity_overrides "
-                "demotes it"
+                "Default: enabled, unless oak_config.yaml sets check_not4curation; "
+                "an explicit flag wins over the file. Reported at ERROR unless "
+                "severity_overrides demotes it"
             ),
         ),
-    ] = True,
+    ] = None,
 ):
     """Validate data against dynamic enums and binding constraints.
 
@@ -719,16 +721,17 @@ def validate_all(
         ),
     ] = FailOn.ANY,
     check_not4curation: Annotated[
-        bool,
+        Optional[bool],
         typer.Option(
             "--check-not4curation/--no-check-not4curation",
             help=(
                 "Flag terms whose ontology marks them as not for annotation "
                 "(a 'Not4Curation' or 'not_recommended_for_annotation' synonym). "
-                "Default: enabled"
+                "Default: enabled, unless oak_config.yaml sets check_not4curation; "
+                "an explicit flag wins over the file"
             ),
         ),
-    ] = True,
+    ] = None,
 ):
     """Validate schemas or data (auto-detect mode).
 
@@ -1059,16 +1062,17 @@ def validate_text_file(
         ),
     ] = False,
     check_not4curation: Annotated[
-        bool,
+        Optional[bool],
         typer.Option(
             "--check-not4curation/--no-check-not4curation",
             help=(
                 "Flag terms whose ontology marks them as not for annotation "
                 "(a 'Not4Curation' or 'not_recommended_for_annotation' synonym). "
-                "Default: enabled"
+                "Default: enabled, unless oak_config.yaml sets check_not4curation; "
+                "an explicit flag wins over the file"
             ),
         ),
-    ] = True,
+    ] = None,
     verbose: Annotated[
         bool,
         typer.Option(
