@@ -371,33 +371,41 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             )
             yield from enum_results
 
+        # Check term existence for configured prefixes (strict mode). Offline mode
+        # always checks existence so an uncached term can't pass silently (#51).
+        exists_results: list[ValidationResult] = []
+        if (self.strict or self.config.offline) and isinstance(field_value, str):
+            exists_results = list(
+                self._validate_term_exists(
+                    field_value=field_value,
+                    field_path=field_path,
+                    slot_name=slot_name,
+                    instance=instance,
+                    target_class=target_class,
+                    path=path,
+                )
+            )
+            yield from exists_results
+
         # A term the enum accepted may still be one its ontology says not to
-        # annotate with (a Not4Curation synonym; see #70). This is checked only
-        # when membership passed: a value already rejected as out-of-enum needs
-        # no second result telling the user not to use it. The gate names the
-        # membership result type so an unrelated advisory result added to
-        # _validate_against_enum later cannot silently suppress the flag.
-        rejected = any(
-            r.type == ErrorMode.BINDING_VALIDATION.value for r in enum_results
-        )
+        # annotate with (a Not4Curation synonym; see #70). It is checked only
+        # when membership passed and the term was not just reported absent: a
+        # value already rejected as out-of-enum or not-found needs no second
+        # result, and an absent term must not land in the "could not be
+        # checked" note. Both gates name the result type they mean, so an
+        # unrelated advisory result added later cannot silently suppress the
+        # flag. When existence is not checked at all (lenient, online) the term
+        # is not known to be absent, so an unresolvable one is reported as
+        # unchecked, which is the truth.
+        rejected = any(r.type == ErrorMode.BINDING_VALIDATION.value for r in enum_results)
+        not_found = any(r.type == ErrorMode.TERM_NOT_FOUND.value for r in exists_results)
         if (
             not rejected
+            and not not_found
             and isinstance(field_value, str)
             and self._not4curation_in_scope(field_value, binding.range)
         ):
             yield from self._validate_not4curation(
-                field_value=field_value,
-                field_path=field_path,
-                slot_name=slot_name,
-                instance=instance,
-                target_class=target_class,
-                path=path,
-            )
-
-        # Check term existence for configured prefixes (strict mode). Offline mode
-        # always checks existence so an uncached term can't pass silently (#51).
-        if (self.strict or self.config.offline) and isinstance(field_value, str):
-            yield from self._validate_term_exists(
                 field_value=field_value,
                 field_path=field_path,
                 slot_name=slot_name,
@@ -715,11 +723,6 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         Yields:
             One ``binding_not4curation`` result if the term is flagged
         """
-        # A term that does not resolve has no synonyms to read. It is absent,
-        # not unchecked, and _validate_term_exists is the one to say so; do not
-        # let it land in the "could not be checked" note as well.
-        if self.get_ontology_label(field_value) is None:
-            return
         markers = self.not4curation_markers_for(field_value)
         if not markers:
             return

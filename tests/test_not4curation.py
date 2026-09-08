@@ -411,14 +411,142 @@ def test_binding_non_member_not_double_reported(tmp_path):
     assert [r.type for r in results] == ["binding_validation"]
 
 
+_STATIC_BINDING_SCHEMA = f"""
+id: https://example.org/static-binding
+name: static-binding
+prefixes:
+  TEST: http://example.org/TEST_
+  linkml: https://w3id.org/linkml/
+default_prefix: static-binding
+default_range: string
+classes:
+  Annotation:
+    tree_root: true
+    attributes:
+      annotation_id:
+        identifier: true
+      process:
+        range: Term
+        inlined: true
+        bindings:
+          - binds_value_of: id
+            range: StaticProcessEnum
+  Term:
+    attributes:
+      id:
+enums:
+  StaticProcessEnum:
+    permissible_values:
+      FAKE:
+        meaning: {FAKE_TERM}
+      FLAGGED:
+        meaning: {RGD_FLAGGED}
+"""
+
+
+def _validate_static_binding(term: str, tmp_path: Path, **plugin_kwargs):
+    """Bind ``term`` through a static enum that lists it, under the configured
+    TEST prefix, so membership passes and only existence and the marker check
+    are left to decide."""
+    schema = tmp_path / "static_schema.yaml"
+    schema.write_text(_STATIC_BINDING_SCHEMA)
+    plugin = BindingValidationPlugin(
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=False,
+        validate_labels=False,
+        **plugin_kwargs,
+    )
+    data = tmp_path / "static_data.yaml"
+    data.write_text(f"annotation_id: ann:1\nprocess:\n  id: {term}\n")
+    validator = Validator(schema=str(schema), validation_plugins=[plugin])
+    report = validator.validate_source(YamlLoader(data), target_class="Annotation")
+    return plugin, report.results
+
+
 def test_binding_nonexistent_term_is_not_found_not_unchecked(tmp_path):
-    """A bogus CURIE has no synonyms to read. It is reported as not found and
-    must not also appear in the "could not be checked" note."""
-    plugin, results = _validate_binding(FAKE_TERM, tmp_path)
-    types = [r.type for r in results]
-    assert "term_not_found" in types or "binding_validation" in types
-    assert "binding_not4curation" not in types
+    """Strict: a bogus CURIE that passes a static enum is reported as not found
+    and must not also appear in the "could not be checked" note."""
+    plugin, results = _validate_static_binding(FAKE_TERM, tmp_path, strict=True)
+    assert [r.type for r in results] == ["term_not_found"]
     assert plugin.get_not4curation_unchecked() == set()
+
+
+def test_binding_nonexistent_term_lenient_is_unchecked(tmp_path):
+    """Lenient: existence is not checked, so the term is not known to be absent.
+    Its synonyms could not be read, and saying so is the truth."""
+    plugin, results = _validate_static_binding(FAKE_TERM, tmp_path, strict=False)
+    assert results == []
+    assert plugin.get_not4curation_unchecked() == {FAKE_TERM}
+
+
+def test_binding_static_enum_flagged_term_still_reported(tmp_path):
+    plugin, results = _validate_static_binding(RGD_FLAGGED, tmp_path, strict=True)
+    assert [r.type for r in results] == ["binding_not4curation"]
+    assert plugin.get_not4curation_unchecked() == set()
+
+
+class _LabelBoomAdapter:
+    """Adapter that fails at label() and entity_aliases() with a non-service error."""
+
+    def label(self, curie):
+        raise RuntimeError("label lookup broke")
+
+    def entity_aliases(self, curie):
+        raise RuntimeError("alias lookup broke")
+
+
+def test_binding_adapter_failure_leaves_term_unchecked(tmp_path):
+    """A degraded adapter must not look like a clean run in the binding path.
+
+    Lenient: nothing checks existence, the marker check runs, the adapter
+    fails, and the term is recorded as unchecked. Strict: the failure surfaces
+    as term_not_found (existing behavior), which is an ERROR, not a pass.
+    """
+    schema = tmp_path / "static_schema.yaml"
+    schema.write_text(_STATIC_BINDING_SCHEMA)
+    data = tmp_path / "static_data.yaml"
+    data.write_text(f"annotation_id: ann:1\nprocess:\n  id: {RGD_FLAGGED}\n")
+
+    for strict, expected_types, expected_unchecked in (
+        (False, [], {RGD_FLAGGED}),
+        (True, ["term_not_found"], set()),
+    ):
+        plugin = BindingValidationPlugin(
+            oak_config_path=OAK_CONFIG, cache_labels=False, validate_labels=False, strict=strict
+        )
+        plugin.ontology._adapter_cache["TEST"] = _LabelBoomAdapter()
+        validator = Validator(schema=str(schema), validation_plugins=[plugin])
+        report = validator.validate_source(YamlLoader(data), target_class="Annotation")
+        assert [r.type for r in report.results] == expected_types, (strict, report.results)
+        assert plugin.get_not4curation_unchecked() == expected_unchecked, strict
+
+
+def test_binding_offline_warm_cache_accepts_but_reports_unchecked(tmp_path):
+    """Offline with warm label and enum caches: the flagged term is accepted
+    (no adapter can read its synonyms) and listed as unchecked. This is the
+    binding-path twin of the dynamic-enum offline test."""
+    cache_dir = tmp_path / "cache"
+    data = tmp_path / "data.yaml"
+    data.write_text(f"annotation_id: ann:1\nprocess:\n  id: {RGD_FLAGGED}\n")
+
+    online = BindingValidationPlugin(
+        oak_config_path=OAK_CONFIG, cache_dir=cache_dir, cache_strategy="greedy", validate_labels=False
+    )
+    report = Validator(schema=str(BINDING_SCHEMA), validation_plugins=[online]).validate_source(
+        YamlLoader(data), target_class="Annotation"
+    )
+    assert [r.type for r in report.results] == ["binding_not4curation"]
+    assert online.get_not4curation_unchecked() == set()
+
+    offline = BindingValidationPlugin(
+        oak_config_path=OAK_CONFIG, cache_dir=cache_dir, offline=True, validate_labels=False
+    )
+    report = Validator(schema=str(BINDING_SCHEMA), validation_plugins=[offline]).validate_source(
+        YamlLoader(data), target_class="Annotation"
+    )
+    assert report.results == [], report.results
+    assert offline.get_not4curation_unchecked() == {RGD_FLAGGED}
 
 
 def test_binding_severity_is_overridable_via_oak_config(tmp_path):
