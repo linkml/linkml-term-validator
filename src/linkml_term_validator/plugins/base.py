@@ -127,7 +127,8 @@ class BaseOntologyPlugin(ValidationPlugin):
         )
         # Remember what was passed explicitly, so _load_oak_config_extras can
         # let the config file fill only the unset values.
-        self._not4curation_explicit = (check_not4curation is not None, not4curation_markers is not None)
+        self._check_not4curation_explicit = check_not4curation is not None
+        self._not4curation_markers_explicit = not4curation_markers is not None
 
         # Shared ontology access (adapter management + label caching).
         self.ontology = OntologyAccess(
@@ -274,10 +275,9 @@ class BaseOntologyPlugin(ValidationPlugin):
         # config file. The file only fills in what was left unset, so
         # ``--no-check-not4curation`` is never silently ignored.
         check, markers = parse_not4curation_config(config)
-        explicit_check, explicit_markers = self._not4curation_explicit
-        if check is not None and not explicit_check:
+        if check is not None and not self._check_not4curation_explicit:
             self.config.check_not4curation = check
-        if markers is not None and not explicit_markers:
+        if markers is not None and not self._not4curation_markers_explicit:
             self.ontology.not4curation_markers = markers
             self.config.not4curation_markers = list(markers)
 

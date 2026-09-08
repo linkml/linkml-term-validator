@@ -932,10 +932,11 @@ class OntologyAccess:
         Returns:
             The matching aliases as written in the ontology (empty when the
             term is clean), or ``None`` when the term could not be checked:
-            no adapter, offline, an adapter without alias support, or an alias
-            list that came back empty. An OAK alias map always carries the
-            ``rdfs:label``, so an empty list for a resolvable term means the
-            adapter surfaced nothing, not that the term has no synonyms.
+            no adapter, offline, an adapter without alias support, an OLS
+            payload with no synonym field at all, or an alias list that came
+            back empty. An OAK alias map always carries the ``rdfs:label``, so
+            an empty list for a resolvable term means the adapter surfaced
+            nothing, not that the term has no synonyms.
         """
         aliases = self.entity_aliases(curie)
         if not aliases:

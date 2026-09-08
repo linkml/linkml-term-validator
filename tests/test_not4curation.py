@@ -411,6 +411,16 @@ def test_binding_non_member_not_double_reported(tmp_path):
     assert [r.type for r in results] == ["binding_validation"]
 
 
+def test_binding_nonexistent_term_is_not_found_not_unchecked(tmp_path):
+    """A bogus CURIE has no synonyms to read. It is reported as not found and
+    must not also appear in the "could not be checked" note."""
+    plugin, results = _validate_binding(FAKE_TERM, tmp_path)
+    types = [r.type for r in results]
+    assert "term_not_found" in types or "binding_validation" in types
+    assert "binding_not4curation" not in types
+    assert plugin.get_not4curation_unchecked() == set()
+
+
 def test_binding_severity_is_overridable_via_oak_config(tmp_path):
     config = tmp_path / "oak.yaml"
     config.write_text(
@@ -461,7 +471,7 @@ def test_explicit_constructor_value_beats_oak_config(tmp_path):
     assert [r.type for r in results] == ["binding_not4curation"]
 
 
-def test_unset_constructor_value_defaults_on(tmp_path):
+def test_unset_constructor_value_defaults_on():
     plugin = BindingValidationPlugin(oak_adapter_string=TEST_ONTOLOGY, cache_labels=False)
     assert plugin.config.check_not4curation is True
 
@@ -823,10 +833,15 @@ def test_xco_clean_term_via_sqlite(tmp_path):
 
 
 @pytest.mark.integration
-def test_xco_flagged_term_via_ols(tmp_path):
-    """Pins the OLS4 payload shape (``synonyms`` list, ``obo_synonym`` null)."""
-    plugin, results = _run_xco(tmp_path, "ols:xco", "XCO:0000294")
-    assert [r.type for r in results] == ["binding_not4curation"], results
-    assert results[0].message.startswith("Ontology term XCO:0000294 is marked 'Not4Curation'")
-    assert plugin.get_not4curation_unchecked() == set()
+def test_xco_flagged_term_via_ols():
+    """Pins the OLS4 payload shape (``synonyms`` list, ``obo_synonym`` null).
+
+    Asserted directly on OntologyAccess rather than through a reachable_from
+    closure, so OAK's thin OLS graph support cannot turn a payload-shape
+    regression into an unrelated membership failure.
+    """
+    access = OntologyAccess(oak_adapter_string="ols:xco", cache_labels=False)
+    assert access.find_not4curation_markers("XCO:0000294") == ["Not4Curation"]
+    assert access.find_not4curation_markers(XCO_ROOT) == []
+    assert access.get_not4curation_unchecked() == set()
 

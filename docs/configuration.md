@@ -28,6 +28,15 @@ ontology_adapters:
   UBERON: sqlite:obo:uberon
 ```
 
+Two of these keys resolve differently against a plugin constructor argument
+or CLI flag. `cache_strategy` (and `cache_enum_expansions`,
+`saturate_enum_caches`) in the file **override** the constructor, so the file
+is the single place a project pins its cache behavior. `check_not4curation`
+and `not4curation_markers` do the reverse: an explicit constructor argument or
+CLI flag wins, and the file fills in only what was left unset, so a flag typed
+on the command line is never silently ignored. `severity_overrides` follows
+the same rule as the Not4Curation keys.
+
 ### Using the Config File
 
 **CLI:**

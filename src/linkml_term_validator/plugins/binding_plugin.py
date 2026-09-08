@@ -715,6 +715,11 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         Yields:
             One ``binding_not4curation`` result if the term is flagged
         """
+        # A term that does not resolve has no synonyms to read. It is absent,
+        # not unchecked, and _validate_term_exists is the one to say so; do not
+        # let it land in the "could not be checked" note as well.
+        if self.get_ontology_label(field_value) is None:
+            return
         markers = self.not4curation_markers_for(field_value)
         if not markers:
             return
