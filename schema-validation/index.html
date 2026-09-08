@@ -927,6 +927,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#term-is-marked-not4curation-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        "Term is marked Not4Curation" Error
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#label-mismatch-warning" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1620,6 +1631,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#term-is-marked-not4curation-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        "Term is marked Not4Curation" Error
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#label-mismatch-warning" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1966,6 +1988,21 @@ HTTP 404, and an obsolete term's ancestors query returns an empty payload.
 LTV handles both so a single bad value is reported as an ordinary validation
 result instead of aborting the whole run.</p>
 </blockquote>
+<h3 id="term-is-marked-not4curation-error">"Term is marked Not4Curation" Error</h3>
+<pre><code>ERROR: Ontology term XCO:0000294 is marked 'Not4Curation' by its ontology (not recommended for annotation)
+</code></pre>
+<p><strong>Cause:</strong> the term is real and current, but its ontology keeps it only for
+hierarchy completeness and flags it with a "do not annotate" synonym
+(<code>Not4Curation</code> in RGD's ontologies, <code>not_recommended_for_annotation</code> in some
+other OBO ontologies). The label check still runs afterwards, since the label
+itself is legitimate.</p>
+<p><strong>Solution:</strong> point the permissible value at the term the ontology intends.
+Pass <code>--no-check-not4curation</code> or set <code>check_not4curation: false</code> in
+<code>oak_config.yaml</code> to disable the check. See
+<a href="../plugin-reference/#not4curation-check">Not4Curation check</a>.</p>
+<p>If synonyms could not be read for some terms (offline, or a prefix without an
+adapter), the command prints a <code>Not4Curation check skipped</code> note listing them.
+Those terms were not vetted; the note never changes the exit code.</p>
 <h3 id="label-mismatch-warning">"Label mismatch" Warning</h3>
 <pre><code>WARN: Label mismatch for GO:0007049
   Expected: &quot;Cell Cycle&quot;

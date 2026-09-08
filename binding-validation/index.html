@@ -1077,6 +1077,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#term-marked-not4curation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Term Marked Not4Curation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#label-mismatch" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1858,6 +1869,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#term-marked-not4curation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Term Marked Not4Curation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#label-mismatch" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2443,6 +2465,21 @@ for result in report.results:
   field: id
   prefix: GO (configured in oak_config)
 </code></pre>
+<h3 id="term-marked-not4curation">Term Marked Not4Curation</h3>
+<p>When the term exists, is current, and is inside the enum, but its ontology
+says not to annotate with it (a <code>Not4Curation</code> or
+<code>not_recommended_for_annotation</code> synonym):</p>
+<pre><code>ERROR: Ontology term XCO:0000294 is marked 'Not4Curation' by its ontology (not recommended for annotation)
+  path: exposure_term
+  slot: exposure_term
+  field: id
+  markers: Not4Curation
+</code></pre>
+<p><strong>Solution:</strong> use the term the ontology intends instead. Such terms usually
+have a proper equivalent elsewhere (<code>XCO:0000294</code> → <code>ECTO:9000010</code>, exposure
+to estrogens). Demote <code>binding_not4curation</code> to <code>WARN</code> while working through
+a backlog, or pass <code>--no-check-not4curation</code>. See
+<a href="../plugin-reference/#not4curation-check">Not4Curation check</a>.</p>
 <h3 id="label-mismatch">Label Mismatch</h3>
 <pre><code>ERROR: Label mismatch for GO:0007049
   Expected (from data): &quot;Cell Cycle&quot;

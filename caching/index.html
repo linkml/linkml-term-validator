@@ -2063,6 +2063,18 @@ ontology_adapters:
 <li><strong>You suspect stale or incorrect labels</strong> in cached data</li>
 <li><strong>You're testing validation behavior</strong> and want to force fresh lookups</li>
 </ul>
+<p>You do <strong>not</strong> need to clear the enum cache to adopt the
+<a href="../plugin-reference/#not4curation-check">Not4Curation check</a>. The cache only
+records membership; the check runs on every accepted value during an online
+run, so one online pass surfaces every flagged term already cached. Offline,
+synonyms are not available and such terms are reported as <em>unchecked</em> (a
+non-gating note), never as clean.</p>
+<p>Note the cost this adds to a warm cache: an online <code>validate-data</code> run that
+previously answered every value from the enum cache without touching an
+ontology now opens the adapter and reads aliases once per unique accepted term.
+For a local <code>sqlite:obo:</code> adapter that is one query per term after the
+database is present; the first such run may download it. Pass
+<code>--no-check-not4curation</code> if a run must stay free of ontology I/O.</p>
 <pre><code class="language-bash"># Clear cache for specific ontology
 rm -rf cache/go/
 

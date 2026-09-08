@@ -1364,6 +1364,11 @@
 <td>Resolve only from the cache; never build OAK adapters</td>
 </tr>
 <tr>
+<td><code>--check-not4curation / --no-check-not4curation</code></td>
+<td><code>--check-not4curation</code></td>
+<td>Flag terms their ontology marks as not for annotation (see <a href="../plugin-reference/#not4curation-check">Not4Curation check</a>)</td>
+</tr>
+<tr>
 <td><code>--verbose</code>, <code>-v</code></td>
 <td><code>false</code></td>
 <td>Print validation summary details</td>
@@ -1460,6 +1465,11 @@ linkml-term-validator validate-schema schema.yaml --offline --cache-dir cache
 <td>Resolve only from the cache; never build OAK adapters</td>
 </tr>
 <tr>
+<td><code>--check-not4curation / --no-check-not4curation</code></td>
+<td><code>--check-not4curation</code></td>
+<td>Flag terms their ontology marks as not for annotation (see <a href="../plugin-reference/#not4curation-check">Not4Curation check</a>)</td>
+</tr>
+<tr>
 <td><code>--fail-on</code></td>
 <td><code>any</code></td>
 <td>Which results exit non-zero: <code>any</code>, <code>error</code> (matches <code>linkml-validate</code>), or <code>warn</code></td>
@@ -1468,6 +1478,11 @@ linkml-term-validator validate-schema schema.yaml --offline --cache-dir cache
 <td><code>--strict</code></td>
 <td><code>false</code></td>
 <td>Exit non-zero on warnings, overriding <code>--fail-on error</code>. Exit code only; results still print as <code>WARN</code>. Does not re-enable checks <code>--lenient</code> turned off</td>
+</tr>
+<tr>
+<td><code>--check-not4curation / --no-check-not4curation</code></td>
+<td><code>--check-not4curation</code></td>
+<td>Flag terms their ontology marks as not for annotation (<code>Not4Curation</code>, <code>not_recommended_for_annotation</code>). Reported at <code>ERROR</code> unless <code>severity_overrides</code> demotes it. Terms whose synonyms could not be read are listed in a non-gating note</td>
 </tr>
 </tbody>
 </table>
@@ -1613,6 +1628,11 @@ linkml-term-validator migrate-cache --refresh-labels --config oak_config.yaml
 <td><code>--offline</code></td>
 <td><code>false</code></td>
 <td>Resolve only from the cache; never build OAK adapters</td>
+</tr>
+<tr>
+<td><code>--check-not4curation / --no-check-not4curation</code></td>
+<td><code>--check-not4curation</code></td>
+<td>Flag terms their ontology marks as not for annotation (see <a href="../plugin-reference/#not4curation-check">Not4Curation check</a>)</td>
 </tr>
 <tr>
 <td><code>--verbose</code>, <code>-v</code></td>

@@ -1886,6 +1886,12 @@ cache_strategy: progressive  # or &quot;greedy&quot;
 cache_enum_expansions: true
 saturate_enum_caches: false
 
+# Not4Curation check (optional; both default as shown)
+check_not4curation: true
+# not4curation_markers:
+#   - not4curation
+#   - not_recommended_for_annotation
+
 # Ontology adapter mappings
 ontology_adapters:
   # Prefix: adapter_string
@@ -1893,6 +1899,14 @@ ontology_adapters:
   CHEBI: sqlite:obo:chebi
   UBERON: sqlite:obo:uberon
 </code></pre>
+<p>Two of these keys resolve differently against a plugin constructor argument
+or CLI flag. <code>cache_strategy</code> (and <code>cache_enum_expansions</code>,
+<code>saturate_enum_caches</code>) in the file <strong>override</strong> the constructor, so the file
+is the single place a project pins its cache behavior. <code>check_not4curation</code>
+and <code>not4curation_markers</code> do the reverse: an explicit constructor argument or
+CLI flag wins, and the file fills in only what was left unset, so a flag typed
+on the command line is never silently ignored. <code>severity_overrides</code> follows
+the same rule as the Not4Curation keys.</p>
 <h3 id="using-the-config-file">Using the Config File</h3>
 <p><strong>CLI:</strong></p>
 <pre><code class="language-bash">linkml-term-validator validate-schema --config oak_config.yaml schema.yaml
@@ -2057,6 +2071,16 @@ linkml-term-validator validate-data --cache-strategy greedy data.yaml -s schema.
 <pre><code class="language-bash">linkml-term-validator validate-schema --verbose schema.yaml
 </code></pre>
 <p>Shows detailed information about what's being validated and any issues encountered.</p>
+<p><strong>Not4Curation check:</strong></p>
+<pre><code class="language-bash">linkml-term-validator validate-data data.yaml --schema schema.yaml --no-check-not4curation
+</code></pre>
+<p>Terms their ontology marks as not for annotation (a <code>Not4Curation</code> or
+<code>not_recommended_for_annotation</code> synonym) are reported at <code>ERROR</code> by default
+in every command. Disable with <code>--no-check-not4curation</code>, or in
+<code>oak_config.yaml</code> with <code>check_not4curation: false</code>; demote instead of
+disabling with <code>severity_overrides</code>. An explicit CLI flag wins over the config
+file; the file wins over the default. See
+<a href="../plugin-reference/#not4curation-check">Not4Curation check</a>.</p>
 <p><strong>Label validation (data validation only):</strong></p>
 <pre><code class="language-bash">linkml-term-validator validate-data data.yaml --schema schema.yaml
 </code></pre>

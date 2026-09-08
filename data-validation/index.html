@@ -976,6 +976,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#member-marked-not4curation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Member Marked Not4Curation
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1719,6 +1730,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#member-marked-not4curation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Member Marked Not4Curation
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2195,6 +2217,19 @@ else:
 <p><strong>Solution:</strong> Either:
 1. Use a descendant term instead
 2. Set <code>include_self: true</code> in the enum definition</p>
+<h3 id="member-marked-not4curation">Member Marked Not4Curation</h3>
+<pre><code>ERROR: Ontology term XCO:0000294 is marked 'Not4Curation' by its ontology (not recommended for annotation); accepted into dynamic enum 'ExposureEnum' but should not be used
+  slot: exposure
+  enum: ExposureEnum
+  validation: progressive (not4curation marker)
+</code></pre>
+<p><strong>Cause:</strong> The value <em>is</em> in the closure, but its ontology keeps it only for
+the hierarchy and marks it with a "do not annotate" synonym. The check runs on
+the accepted value, so a positive enum-cache hit does not hide it.</p>
+<p><strong>Solution:</strong> Replace it with the intended term. To adopt gradually, demote
+<code>dynamic_enum_not4curation</code> to <code>WARN</code> via <code>severity_overrides</code>, or disable the
+check with <code>--no-check-not4curation</code>. See
+<a href="../plugin-reference/#not4curation-check">Not4Curation check</a>.</p>
 <h2 id="performance-considerations">Performance Considerations</h2>
 <h3 id="caching">Caching</h3>
 <p>The plugin uses two-level caching:</p>

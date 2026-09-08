@@ -819,7 +819,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Severity Overrides">
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#not4curation-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not4Curation check
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Not4Curation check">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1222,7 +1233,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Severity Overrides">
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#not4curation-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not4Curation check
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Not4Curation check">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1375,6 +1397,16 @@
 <td><code>None</code></td>
 <td>Map an error mode to the severity it is reported at</td>
 </tr>
+<tr>
+<td><code>check_not4curation</code></td>
+<td><code>True</code></td>
+<td>Flag terms their ontology marks as not for annotation (see <a href="#not4curation-check">Not4Curation check</a>)</td>
+</tr>
+<tr>
+<td><code>not4curation_markers</code></td>
+<td><code>None</code></td>
+<td>Custom marker substrings; <code>None</code> uses the built-in list</td>
+</tr>
 </tbody>
 </table>
 <p>Dynamic enum capable plugins also accept:</p>
@@ -1443,6 +1475,11 @@ one specific check without touching the severity of everything else.</p>
 <td><code>BindingValidationPlugin</code></td>
 </tr>
 <tr>
+<td><code>binding_not4curation</code></td>
+<td><code>ERROR</code></td>
+<td><code>BindingValidationPlugin</code></td>
+</tr>
+<tr>
 <td><code>term_not_found</code></td>
 <td><code>ERROR</code></td>
 <td><code>BindingValidationPlugin</code></td>
@@ -1453,12 +1490,22 @@ one specific check without touching the severity of everything else.</p>
 <td><code>DynamicEnumPlugin</code></td>
 </tr>
 <tr>
+<td><code>dynamic_enum_not4curation</code></td>
+<td><code>ERROR</code></td>
+<td><code>DynamicEnumPlugin</code></td>
+</tr>
+<tr>
 <td><code>permissible_value_meaning</code></td>
 <td><code>ERROR</code></td>
 <td><code>PermissibleValueMeaningPlugin</code></td>
 </tr>
 <tr>
 <td><code>permissible_value_obsolete</code></td>
+<td><code>ERROR</code></td>
+<td><code>PermissibleValueMeaningPlugin</code></td>
+</tr>
+<tr>
+<td><code>permissible_value_not4curation</code></td>
 <td><code>ERROR</code></td>
 <td><code>PermissibleValueMeaningPlugin</code></td>
 </tr>
@@ -1483,6 +1530,100 @@ severity_overrides:
 </code></pre>
 <p>Constructor arguments win over the config file. For
 <code>permissible_value_label_mismatch</code>, an explicit override wins over <code>strict_mode</code>.</p>
+<h3 id="not4curation-check">Not4Curation check</h3>
+<p>Some ontologies keep terms for hierarchy completeness that they explicitly do
+<strong>not</strong> want used for annotation, and mark them with a synonym rather than an
+obsoletion axiom. RGD's ontologies (XCO, CMO, MMO, RS) write a related synonym
+reading literally <code>Not4Curation</code>; some other OBO ontologies use
+<code>not_recommended_for_annotation</code>. Such a term exists, has a matching label,
+is not obsolete, and is reachable from a <code>reachable_from</code> source node, so it
+passed every other check here. <code>XCO:0000294</code> (estrogen/estrogen analog) is a
+real example: it validated cleanly as an exposure term while its own
+maintainers say not to use it (see
+<a href="https://github.com/linkml/linkml-term-validator/issues/70">issue #70</a>).</p>
+<p>Every ontology-backed plugin now reads a term's aliases and reports it when
+any alias carries a "do not annotate" marker:</p>
+<table>
+<thead>
+<tr>
+<th>Error mode</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>binding_not4curation</code></td>
+<td>a bound field's value that passed its enum check</td>
+</tr>
+<tr>
+<td><code>dynamic_enum_not4curation</code></td>
+<td>a slot value that passed a dynamic enum check</td>
+</tr>
+<tr>
+<td><code>permissible_value_not4curation</code></td>
+<td>a permissible value's <code>meaning</code></td>
+</tr>
+</tbody>
+</table>
+<p>The message quotes the ontology's own wording:</p>
+<pre><code>ERROR: Ontology term XCO:0000294 is marked 'Not4Curation' by its ontology (not recommended for annotation)
+</code></pre>
+<p><strong>Matching.</strong> Aliases are folded to lowercase alphanumerics and tested for each
+marker as a substring, so <code>Not4Curation</code>, <code>not4curation</code> and
+<code>not_recommended_for_annotation</code> all hit. The default markers are
+<code>not4curation</code>, <code>notforcuration</code> and <code>notrecommendedforannotation</code>. The check
+is deliberately not restricted to particular ontologies: on one that never
+uses the convention it simply never matches, at the cost of one alias query
+per term (near-free for a local <code>sqlite:</code> adapter; for <code>ols:</code> it reads the
+term payload the label lookup already fetched, so no extra round trip).</p>
+<p><strong>Fail by default.</strong> All three modes default to <code>ERROR</code>. A warning nobody
+reads reproduces the exact gap the check closes, so demote it only while
+working through a backlog:</p>
+<pre><code class="language-yaml">severity_overrides:
+  binding_not4curation: WARN
+</code></pre>
+<p><strong>Switching off or narrowing.</strong> In <code>oak_config.yaml</code> (read by the plugins, by
+<code>EnumValidator</code>, and so by every CLI command):</p>
+<pre><code class="language-yaml">check_not4curation: false          # disable entirely
+not4curation_markers:              # or replace the marker list
+  - not4curation
+  - do_not_annotate
+</code></pre>
+<p>or per plugin with <code>check_not4curation=False</code> / <code>not4curation_markers=[...]</code>,
+or on the CLI with <code>--no-check-not4curation</code>. Precedence: an explicit
+constructor argument or CLI flag wins over the config file, and the config
+file wins over the built-in default (on, with the default markers). The file
+only fills in what was left unset, so <code>--no-check-not4curation</code> is never
+silently overridden. Setting <code>not4curation_markers</code> replaces the default list
+rather than extending it, and the label counts as an alias, so choose custom
+markers with real labels in mind.</p>
+<p><code>EnumValidator</code> (behind <code>validate-schema</code> and <code>validate-text-file</code>) has no
+<code>severity_overrides</code>, so there the check is all-or-nothing: it reports at
+<code>ERROR</code> or is switched off. Demotion to <code>WARN</code> applies to the plugins, and so
+to <code>validate-data</code> and <code>linkml-validate</code>.</p>
+<p><strong>Terms that could not be checked.</strong> A marker <em>is</em> a synonym, so a term whose
+synonyms could not be read has not been vetted. That happens offline (synonyms
+are not cached), for a prefix with no adapter, or for an adapter that exposes
+no aliases. Those CURIEs are collected rather than treated as clean:
+<code>plugin.get_not4curation_unchecked()</code> and <code>EnumValidator.get_not4curation_unchecked()</code>
+return them, and the CLI prints them as a non-gating note:</p>
+<pre><code>ℹ️  Not4Curation check skipped for 3 term(s) (offline: synonyms are not cached, so the marker cannot be read):
+  - XCO:0000294
+  ...
+  Run once online to check these terms.
+</code></pre>
+<p><strong>Existing caches and cost.</strong> The enum cache is the offline positive-hit set
+for <code>reachable_from</code>. A flagged CURIE cached before this check existed still
+validates offline, and offline there is no way to read the marker. The check
+runs on the accepted value on every online run, so one online pass surfaces
+every flagged term already in the cache; you do not need to rebuild the cache
+to adopt it. The trade is that a warm-cache online run, which used to touch
+no ontology at all, now opens the adapter and reads aliases once per unique
+accepted term (for a <code>sqlite:obo:</code> adapter that is one local query; the first
+run may download the database). Aliases are held in memory only, not in the
+file cache, so an offline-only pipeline keeps reporting those terms as
+unchecked until it runs online once. Persisting the verdict alongside the
+cached label is a possible follow-up.</p>
 <h4 id="which-commands-honor-it">Which commands honor it</h4>
 <p><code>severity_overrides</code> changes the severity a <em>plugin</em> reports at, so it takes
 effect wherever that plugin runs — but whether the severity changes an exit code
