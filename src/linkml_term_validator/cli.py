@@ -81,6 +81,29 @@ _SEVERITY_EMOJI = {
 }
 
 
+def _effective_fail_on(fail_on: FailOn, strict: bool) -> FailOn:
+    """Fold ``--strict`` into the ``--fail-on`` threshold.
+
+    ``--strict`` promises that a WARN exits non-zero. It never loosens anything:
+    ``any`` already fails on warnings and stays ``any``; only ``error`` is raised
+    to ``warn``. This keeps ``--strict`` a stable pin for CI regardless of what
+    the default threshold does in a given release.
+
+    Examples:
+        >>> _effective_fail_on(FailOn.ERROR, strict=True)
+        <FailOn.WARN: 'warn'>
+        >>> _effective_fail_on(FailOn.ANY, strict=True)
+        <FailOn.ANY: 'any'>
+        >>> _effective_fail_on(FailOn.ERROR, strict=False)
+        <FailOn.ERROR: 'error'>
+        >>> _effective_fail_on(FailOn.WARN, strict=True)
+        <FailOn.WARN: 'warn'>
+    """
+    if strict and fail_on == FailOn.ERROR:
+        return FailOn.WARN
+    return fail_on
+
+
 def _counts_as_failure(results: list, fail_on: FailOn) -> bool:
     """Decide whether a file's results should make the process exit non-zero.
 
@@ -350,6 +373,16 @@ def validate_data(
             ),
         ),
     ] = FailOn.ANY,
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict",
+            help=(
+                "Exit non-zero on warnings, even under --fail-on error. Affects the "
+                "exit code only; results still print as WARN"
+            ),
+        ),
+    ] = False,
 ):
     """Validate data against dynamic enums and binding constraints.
 
@@ -364,12 +397,20 @@ def validate_data(
     linkml-validate decides its exit code, which is what makes a
     severity_overrides demotion take effect here too.
 
+    --strict is the stable way for CI to insist that warnings fail. It raises
+    --fail-on error to warn and leaves the default alone. Unlike --strict on
+    validate-schema, it does not promote warnings to ERROR in the report: it
+    changes the exit code only, and results still print as WARN. It does not
+    re-enable anything --lenient switched off: the two flags are independent,
+    and --strict --lenient means the same as --fail-on warn --lenient.
+
     Examples:
         linkml-term-validator validate-data data.yaml --schema schema.yaml
         linkml-term-validator validate-data data.yaml -s schema.yaml -t Person
         linkml-term-validator validate-data *.yaml -s schema.yaml --labels
         linkml-term-validator validate-data data.yaml -s schema.yaml --offline
         linkml-term-validator validate-data data.yaml -s schema.yaml --fail-on error
+        linkml-term-validator validate-data data.yaml -s schema.yaml --strict
     """
     # Verify all data files exist
     for data_path in data_paths:
@@ -379,6 +420,11 @@ def validate_data(
 
     # Parse cache strategy
     strategy = CacheStrategy(cache_strategy)
+
+    # --strict can only tighten the threshold, never loosen it. The requested
+    # value is kept so messages can say what the user typed.
+    requested_fail_on = fail_on
+    fail_on = _effective_fail_on(fail_on, strict)
 
     # Build plugin list based on options
     plugins = []
@@ -442,13 +488,19 @@ def validate_data(
             # Every result is reported regardless of --fail-on; the threshold
             # decides only the exit code, never what the user gets to see.
             files_with_issues.append(data_path)
-            if _counts_as_failure(report.results, fail_on):
+            failed = _counts_as_failure(report.results, fail_on)
+            if failed:
                 failed_files.append(data_path)
             total_issues += len(report.results)
+            # A file whose results all sit below the threshold is not a failure,
+            # so its header must not say so.
             if len(data_paths) > 1:
-                typer.echo(f"\n❌ {data_path.name} - {len(report.results)} issue(s):")
-            else:
+                marker = "❌" if failed else "⚠️ "
+                typer.echo(f"\n{marker} {data_path.name} - {len(report.results)} issue(s):")
+            elif failed:
                 typer.echo(f"\n❌ Validation failed with {len(report.results)} issue(s):\n")
+            else:
+                typer.echo(f"\n⚠️  {len(report.results)} issue(s) reported:\n")
             for result in report.results:
                 severity_emoji = _SEVERITY_EMOJI.get(result.severity, "⚠️ ")
                 typer.echo(f"  {severity_emoji} {result.severity.name}: {result.message}")
@@ -475,9 +527,12 @@ def validate_data(
         typer.echo("✅ Validation passed")
 
     if files_with_issues and not failed_files:
+        threshold = f"--fail-on {requested_fail_on.value}"
+        if fail_on != requested_fail_on:
+            threshold += f" (raised to {fail_on.value} by --strict)"
         typer.echo(
             f"\n⚠️  {total_issues} issue(s) reported, none at or above the "
-            f"--fail-on {fail_on.value} threshold; exiting 0."
+            f"{threshold} threshold; exiting 0."
         )
 
     if failed_files:
@@ -514,7 +569,10 @@ def validate_all(
         bool,
         typer.Option(
             "--strict",
-            help="Treat all warnings as errors (schema validation)",
+            help=(
+                "Treat warnings as errors. Schema mode promotes them to ERROR; "
+                "data mode makes them exit non-zero (exit code only)"
+            ),
         ),
     ] = False,
     lenient: Annotated[
@@ -582,11 +640,25 @@ def validate_all(
             help="Force offline validation: resolve only from the cache, never access ontology services",
         ),
     ] = False,
+    fail_on: Annotated[
+        FailOn,
+        typer.Option(
+            "--fail-on",
+            help=(
+                "Data validation: which results cause a non-zero exit: 'any' (default), "
+                "'error' (matching linkml-validate), or 'warn'"
+            ),
+        ),
+    ] = FailOn.ANY,
 ):
     """Validate schemas or data (auto-detect mode).
 
     - If --schema is NOT provided: validates input as a LinkML schema
     - If --schema IS provided: validates input as data against the schema
+
+    --strict applies in both modes. In schema mode it promotes warnings to
+    ERROR in the report. In data mode it only makes warnings exit non-zero,
+    whatever --fail-on says. It does not re-enable checks --lenient turned off.
 
     Examples:
         # Schema validation (default)
@@ -616,6 +688,8 @@ def validate_all(
             config=config,
             cache_strategy=cache_strategy,
             offline=offline,
+            fail_on=fail_on,
+            strict=strict,
         )
     else:
         # Schema validation mode (backward compatible) - call validate_schema directly
