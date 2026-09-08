@@ -1464,6 +1464,11 @@ linkml-term-validator validate-schema schema.yaml --offline --cache-dir cache
 <td><code>any</code></td>
 <td>Which results exit non-zero: <code>any</code>, <code>error</code> (matches <code>linkml-validate</code>), or <code>warn</code></td>
 </tr>
+<tr>
+<td><code>--strict</code></td>
+<td><code>false</code></td>
+<td>Exit non-zero on warnings, overriding <code>--fail-on error</code>. Exit code only; results still print as <code>WARN</code>. Does not re-enable checks <code>--lenient</code> turned off</td>
+</tr>
 </tbody>
 </table>
 <p>Examples:</p>
@@ -1474,6 +1479,7 @@ linkml-term-validator validate-data data.yaml -s schema.yaml --no-bindings
 linkml-term-validator validate-data data.yaml -s schema.yaml --no-dynamic-enums
 linkml-term-validator validate-data data.yaml -s schema.yaml --no-labels
 linkml-term-validator validate-data data.yaml -s schema.yaml --saturate-enum-caches
+linkml-term-validator validate-data data.yaml -s schema.yaml --strict
 </code></pre>
 <p>Offline dynamic enum validation requires a complete enum cache. Populate it online first:</p>
 <pre><code class="language-bash">linkml-term-validator validate-data data.yaml -s schema.yaml \
@@ -1492,6 +1498,12 @@ linkml-term-validator validate schema.yaml
 
 # Data validation
 linkml-term-validator validate data.yaml --schema schema.yaml
+
+# Data validation, exit code decided by severity as linkml-validate does
+linkml-term-validator validate data.yaml --schema schema.yaml --fail-on error
+
+# Data validation, warnings fail regardless of --fail-on
+linkml-term-validator validate data.yaml --schema schema.yaml --strict
 </code></pre>
 <h2 id="migrate-cache">migrate-cache</h2>
 <p>Normalizes existing label cache files.</p>

@@ -1897,7 +1897,38 @@ exit code.</p>
 <h3 id="strict-mode">Strict Mode</h3>
 <p>Use <code>--strict</code> to treat all warnings as errors:</p>
 <pre><code class="language-bash">linkml-term-validator validate-schema --strict schema.yaml
+linkml-term-validator validate-data data.yaml -s schema.yaml --strict
 </code></pre>
+<p>The flag does not mean quite the same thing on the two commands:</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>What <code>--strict</code> does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>validate-schema</code></td>
+<td>Promotes warnings to <code>ERROR</code> in the report itself. Counts and printed severities change.</td>
+</tr>
+<tr>
+<td><code>validate-data</code></td>
+<td>Changes the exit code only. Results still print as <code>WARN</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>On <code>validate-data</code>, <code>--strict</code> guarantees that a <code>WARN</code> exits non-zero. It
+only ever tightens the threshold: with the default <code>--fail-on any</code> it changes
+nothing, and with <code>--fail-on error</code> it raises the threshold to <code>warn</code>. Pin it
+in CI when you want warnings to fail regardless of what the default does in
+a given release.</p>
+<p><code>--strict</code> and <code>--lenient</code> are independent. <code>--lenient</code> turns off the binding
+term-existence check (except under <code>--offline</code>, where it always runs), and
+<code>--strict</code> does not bring it back. <code>--strict --lenient</code> means the same as
+<code>--fail-on warn --lenient</code>: skip existence checks, but fail on any warning
+that is still reported, such as a label mismatch. The <code>validate</code> command
+accepts <code>--strict</code> and <code>--fail-on</code> in data mode too.</p>
 <h2 id="see-also">See Also</h2>
 <ul>
 <li><a href="../configuration/">Configuration</a> - How to configure ontology adapters</li>
