@@ -20,7 +20,7 @@ import inspect
 import json
 import logging
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any, Literal, Optional, Union
 from urllib.parse import quote
@@ -37,6 +37,7 @@ from linkml_term_validator.utils import (
     OntologyServiceUnavailableError,
     get_prefix,
     normalize_string,
+    parse_not4curation_config,
     raise_if_service_unavailable,
 )
 
@@ -68,6 +69,8 @@ class BaseOntologyPlugin(ValidationPlugin):
         cache_strategy: Literal["progressive", "greedy"] | CacheStrategy = CacheStrategy.PROGRESSIVE,
         offline: bool = False,
         severity_overrides: Optional[SeverityOverrides] = None,
+        check_not4curation: Optional[bool] = None,
+        not4curation_markers: Optional[Iterable[str]] = None,
     ):
         """Initialize base ontology plugin.
 
@@ -86,6 +89,19 @@ class BaseOntologyPlugin(ValidationPlugin):
                 reported at, e.g. ``{"binding_label_mismatch": "ERROR"}``.
                 Use this to make a normally-advisory problem a hard failure --
                 ``linkml-validate`` exits non-zero only on ``ERROR``.
+            check_not4curation: Whether to flag terms whose ontology marks
+                them as not for annotation via a synonym such as
+                ``Not4Curation`` or ``not_recommended_for_annotation`` (#70).
+                An explicit ``True``/``False`` wins over ``oak_config.yaml``;
+                ``None`` (default) takes the config file's
+                ``check_not4curation`` if present, else ``True``. Reported at
+                ERROR unless ``severity_overrides`` demotes the
+                ``*_not4curation`` modes.
+            not4curation_markers: Substrings identifying such a synonym,
+                matched after folding aliases to lowercase alphanumerics.
+                An explicit list wins over the config file; ``None`` takes
+                the config file's ``not4curation_markers`` if present, else
+                the built-in defaults.
         """
         # Convert string to enum if needed
         if isinstance(cache_strategy, str):
@@ -104,7 +120,15 @@ class BaseOntologyPlugin(ValidationPlugin):
             ),
             cache_strategy=cache_strategy,
             offline=offline,
+            check_not4curation=check_not4curation,
+            not4curation_markers=(
+                list(not4curation_markers) if not4curation_markers is not None else None
+            ),
         )
+        # Remember what was passed explicitly, so _load_oak_config_extras can
+        # let the config file fill only the unset values.
+        self._check_not4curation_explicit = check_not4curation is not None
+        self._not4curation_markers_explicit = not4curation_markers is not None
 
         # Shared ontology access (adapter management + label caching).
         self.ontology = OntologyAccess(
@@ -113,6 +137,7 @@ class BaseOntologyPlugin(ValidationPlugin):
             cache_dir=self.config.cache_dir,
             oak_config_path=self.config.oak_config_path,
             offline=self.config.offline,
+            not4curation_markers=self.config.not4curation_markers,
         )
 
         # Enum-expansion caches (plugin-specific, not shared).
@@ -123,6 +148,10 @@ class BaseOntologyPlugin(ValidationPlugin):
         # oak_config.yaml the ontology service already parsed.
         if self.ontology.loaded_config:
             self._load_oak_config_extras(self.ontology.loaded_config)
+        # Resolve the Not4Curation switch to a concrete bool once the config
+        # file has had its say; nothing was set means the check is on.
+        if self.config.check_not4curation is None:
+            self.config.check_not4curation = True
 
     @property
     def cache_strategy(self) -> CacheStrategy:
@@ -241,6 +270,16 @@ class BaseOntologyPlugin(ValidationPlugin):
                 **self._normalize_severity_overrides(config["severity_overrides"]),
                 **self.severity_overrides,
             }
+        # Not4Curation keys: unlike cache_strategy, an explicit constructor
+        # argument (which is also how the CLI flag arrives) wins over the
+        # config file. The file only fills in what was left unset, so
+        # ``--no-check-not4curation`` is never silently ignored.
+        check, markers = parse_not4curation_config(config)
+        if check is not None and not self._check_not4curation_explicit:
+            self.config.check_not4curation = check
+        if markers is not None and not self._not4curation_markers_explicit:
+            self.ontology.not4curation_markers = markers
+            self.config.not4curation_markers = list(markers)
 
     @staticmethod
     def _parse_bool_config_value(value: Any, field_name: str) -> bool:
@@ -304,6 +343,33 @@ class BaseOntologyPlugin(ValidationPlugin):
     def is_obsolete(self, curie: str) -> Optional[bool]:
         """Return whether an ontology term is obsolete (None if undeterminable)."""
         return self.ontology.is_obsolete(curie)
+
+    def not4curation_markers_for(self, curie: str) -> Optional[list[str]]:
+        """Return the "do not annotate" markers an ontology attaches to a term.
+
+        The check runs only when ``check_not4curation`` is on. When it is off
+        nothing is looked up and nothing is recorded as unchecked, since the
+        user asked for no check at all.
+
+        Args:
+            curie: A CURIE like "XCO:0000294"
+
+        Returns:
+            The matching aliases (empty when clean or when the check is off),
+            or ``None`` when the term could not be checked. See
+            :meth:`OntologyAccess.find_not4curation_markers`.
+        """
+        if not self.config.check_not4curation:
+            return []
+        return self.ontology.find_not4curation_markers(curie)
+
+    def get_not4curation_unchecked(self) -> set[str]:
+        """CURIEs the Not4Curation check could not vet (no synonym data).
+
+        These are not clean. They are unknown, and callers should say so rather
+        than count them as passed. Returns a copy.
+        """
+        return self.ontology.get_not4curation_unchecked()
 
     # =========================================================================
     # Enum Caching

@@ -18,6 +18,7 @@ A collection of [LinkML ValidationPlugin](https://linkml.io/linkml/code/validato
 * ✅ Configurable per-prefix validation via `oak_config.yaml`
 * ✅ Standalone CLI + LinkML validator integration
 * ✅ Tracks unknown ontology prefixes
+* ✅ Flags obsolete terms, and terms their ontology marks `Not4Curation` / `not_recommended_for_annotation`
 
 ## Installation
 
@@ -264,6 +265,10 @@ GO:0007049,cell cycle,2025-11-15T10:30:01
 You might want to clear the cache if:
 - Ontology databases have been updated
 - You suspect stale or incorrect labels
+
+Adopting the Not4Curation check does not need a cache clear: the check runs on
+every accepted value during an online run. Offline, terms whose synonyms cannot
+be read are reported as unchecked rather than clean.
 
 ```bash
 # Clear cache for specific ontology

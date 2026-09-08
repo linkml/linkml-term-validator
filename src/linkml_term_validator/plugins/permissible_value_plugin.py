@@ -1,6 +1,6 @@
 """Plugin for validating meaning fields in enum permissible values."""
 
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Optional
 
@@ -10,7 +10,7 @@ from linkml_runtime.linkml_model import PermissibleValue
 
 from linkml_term_validator.models import ErrorMode
 from linkml_term_validator.plugins.base import BaseOntologyPlugin, SeverityOverrides
-from linkml_term_validator.utils import obsolete_term_message
+from linkml_term_validator.utils import not4curation_message, obsolete_term_message
 
 
 class PermissibleValueMeaningPlugin(BaseOntologyPlugin):
@@ -37,6 +37,8 @@ class PermissibleValueMeaningPlugin(BaseOntologyPlugin):
         strict_mode: bool = False,
         offline: bool = False,
         severity_overrides: Optional[SeverityOverrides] = None,
+        check_not4curation: Optional[bool] = None,
+        not4curation_markers: Optional[Iterable[str]] = None,
     ):
         """Initialize permissible value meaning plugin.
 
@@ -51,6 +53,11 @@ class PermissibleValueMeaningPlugin(BaseOntologyPlugin):
             severity_overrides: Mapping of ErrorMode to severity, e.g.
                 ``{"permissible_value_label_mismatch": "ERROR"}``. Takes
                 precedence over ``strict_mode`` for the modes it names.
+            check_not4curation: Flag a ``meaning`` whose ontology marks it as
+                not for annotation (#70). Explicit value wins over
+                ``oak_config.yaml``; None takes the config file's, else True
+            not4curation_markers: Custom marker substrings; explicit wins over
+                the config file; None takes the config file's, else defaults
         """
         super().__init__(
             oak_adapter_string=oak_adapter_string,
@@ -59,6 +66,8 @@ class PermissibleValueMeaningPlugin(BaseOntologyPlugin):
             oak_config_path=oak_config_path,
             offline=offline,
             severity_overrides=severity_overrides,
+            check_not4curation=check_not4curation,
+            not4curation_markers=not4curation_markers,
         )
         self.strict_mode = strict_mode
         self.schema_view = None
@@ -148,6 +157,26 @@ class PermissibleValueMeaningPlugin(BaseOntologyPlugin):
                 context=[f"enum: {enum_name}", f"value: {pv_name}"],
             )
             return
+
+        # A term its ontology marks "not for annotation" is neither missing nor
+        # obsolete: it resolves, its label matches, and it is reachable. Only its
+        # synonyms say not to use it. Report that, then carry on to the label
+        # check, which is still meaningful for a live term.
+        markers = self.not4curation_markers_for(meaning)
+        if markers:
+            yield ValidationResult(
+                type="permissible_value_not4curation",
+                severity=self.severity_for(ErrorMode.PERMISSIBLE_VALUE_NOT4CURATION),
+                message=not4curation_message(meaning, markers),
+                instance={
+                    "enum": enum_name,
+                    "value": pv_name,
+                    "meaning": meaning,
+                    "markers": markers,
+                },
+                instantiates=enum_name,
+                context=[f"enum: {enum_name}", f"value: {pv_name}"],
+            )
 
         # Check if label matches
         if pv.title or pv.description:

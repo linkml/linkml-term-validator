@@ -36,7 +36,7 @@ Example:
     query and validates that values fall within the closure.
 """
 
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any, Literal, Optional
 
@@ -45,6 +45,7 @@ from linkml.validator.validation_context import ValidationContext  # type: ignor
 
 from linkml_term_validator.models import CacheStrategy, ErrorMode
 from linkml_term_validator.plugins.base import BaseOntologyPlugin, SeverityOverrides
+from linkml_term_validator.utils import not4curation_message
 
 # Ontology properties that represent labels
 LABEL_PROPERTIES = {
@@ -102,6 +103,8 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         cache_strategy: Literal["progressive", "greedy"] | CacheStrategy = CacheStrategy.PROGRESSIVE,
         offline: bool = False,
         severity_overrides: Optional[SeverityOverrides] = None,
+        check_not4curation: Optional[bool] = None,
+        not4curation_markers: Optional[Iterable[str]] = None,
     ):
         """Initialize binding validation plugin.
 
@@ -120,6 +123,13 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             severity_overrides: Mapping of ErrorMode to severity, e.g.
                 ``{"binding_label_mismatch": "WARN"}`` to make label
                 disagreements advisory rather than the default hard failure
+            check_not4curation: Flag a bound term whose ontology marks it as
+                not for annotation, e.g. with a ``Not4Curation`` synonym
+                (#70). Explicit value wins over ``oak_config.yaml``; None
+                takes the config file's, else True. ``binding_not4curation``
+                defaults to ERROR; demote it via ``severity_overrides``
+            not4curation_markers: Custom marker substrings; explicit wins over
+                the config file; None takes the config file's, else defaults
         """
         super().__init__(
             oak_adapter_string=oak_adapter_string,
@@ -131,6 +141,8 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             cache_strategy=cache_strategy,
             offline=offline,
             severity_overrides=severity_overrides,
+            check_not4curation=check_not4curation,
+            not4curation_markers=not4curation_markers,
         )
         self.validate_labels = validate_labels
         self.strict = strict
@@ -344,21 +356,56 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             return
 
         # Validate against the enum range
+        enum_results: list[ValidationResult] = []
         if binding.range:
-            yield from self._validate_against_enum(
-                field_value=field_value,
-                enum_name=binding.range,
-                field_path=field_path,
-                slot_name=slot_name,
-                instance=instance,
-                target_class=target_class,
-                path=path,
+            enum_results = list(
+                self._validate_against_enum(
+                    field_value=field_value,
+                    enum_name=binding.range,
+                    field_path=field_path,
+                    slot_name=slot_name,
+                    instance=instance,
+                    target_class=target_class,
+                    path=path,
+                )
             )
+            yield from enum_results
 
         # Check term existence for configured prefixes (strict mode). Offline mode
         # always checks existence so an uncached term can't pass silently (#51).
+        exists_results: list[ValidationResult] = []
         if (self.strict or self.config.offline) and isinstance(field_value, str):
-            yield from self._validate_term_exists(
+            exists_results = list(
+                self._validate_term_exists(
+                    field_value=field_value,
+                    field_path=field_path,
+                    slot_name=slot_name,
+                    instance=instance,
+                    target_class=target_class,
+                    path=path,
+                )
+            )
+            yield from exists_results
+
+        # A term the enum accepted may still be one its ontology says not to
+        # annotate with (a Not4Curation synonym; see #70). It is checked only
+        # when membership passed and the term was not just reported absent: a
+        # value already rejected as out-of-enum or not-found needs no second
+        # result, and an absent term must not land in the "could not be
+        # checked" note. Both gates name the result type they mean, so an
+        # unrelated advisory result added later cannot silently suppress the
+        # flag. When existence is not checked at all (lenient, online) the term
+        # is not known to be absent, so an unresolvable one is reported as
+        # unchecked, which is the truth.
+        rejected = any(r.type == ErrorMode.BINDING_VALIDATION.value for r in enum_results)
+        not_found = any(r.type == ErrorMode.TERM_NOT_FOUND.value for r in exists_results)
+        if (
+            not rejected
+            and not not_found
+            and isinstance(field_value, str)
+            and self._not4curation_in_scope(field_value, binding.range)
+        ):
+            yield from self._validate_not4curation(
                 field_value=field_value,
                 field_path=field_path,
                 slot_name=slot_name,
@@ -625,6 +672,73 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                     prefix_context,
                 ],
             )
+
+    def _not4curation_in_scope(self, field_value: str, enum_name: Optional[str]) -> bool:
+        """Whether the Not4Curation check may consult an adapter for this term.
+
+        The check reads synonyms through an OAK adapter, and building one can
+        download an ontology. It therefore runs only where the pipeline would
+        already have resolved the term: the binding's enum is dynamic (an
+        adapter was needed for membership), the term's prefix has a configured
+        adapter (existence is checked for it), or validation is offline (no
+        adapter is ever built, and the term is recorded as unchecked). A term
+        bound to a static enum under a prefix nobody configured is outside the
+        validator's ontology scope, exactly as it is for the existence check.
+        """
+        if self.config.offline:
+            return True
+        prefix = self._get_prefix(field_value)
+        if prefix and self._is_prefix_configured(prefix):
+            return True
+        if enum_name and self.schema_view is not None:
+            enum_def = self.schema_view.get_enum(enum_name)
+            if enum_def is not None and self.is_dynamic_enum(enum_def):
+                return True
+        return False
+
+    def _validate_not4curation(
+        self,
+        field_value: str,
+        field_path: str,
+        slot_name: str,
+        instance: dict,
+        target_class: str,
+        path: str = "",
+    ) -> Iterator[ValidationResult]:
+        """Report a bound term its ontology marks as not for annotation.
+
+        The term exists, is current, and passed the enum check; only a synonym
+        (``Not4Curation``, ``not_recommended_for_annotation``) says not to use
+        it. Nothing else in the pipeline reads synonyms, and a positive enum
+        cache hit never will, so this is the one place the flag can surface.
+
+        Args:
+            field_value: CURIE that passed the binding's enum check
+            field_path: Path to the field within the binding
+            slot_name: Name of the slot
+            instance: Full instance
+            target_class: Name of the class
+            path: JSON path to this location
+
+        Yields:
+            One ``binding_not4curation`` result if the term is flagged
+        """
+        markers = self.not4curation_markers_for(field_value)
+        if not markers:
+            return
+        yield ValidationResult(
+            type="binding_not4curation",
+            severity=self.severity_for(ErrorMode.BINDING_NOT4CURATION),
+            message=not4curation_message(field_value, markers),
+            instance=instance,
+            instantiates=target_class,
+            context=[
+                f"path: {path}",
+                f"slot: {slot_name}",
+                f"field: {field_path}",
+                f"markers: {', '.join(markers)}",
+            ],
+        )
 
     @staticmethod
     def _is_absent_label(provided_label: Any) -> bool:

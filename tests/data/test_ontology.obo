@@ -42,3 +42,17 @@ name: obsolete test process
 def: "An obsolete test term" []
 is_obsolete: true
 replaced_by: TEST:0000006
+
+[Term]
+id: TEST:0000008
+name: flagged process
+def: "A process kept for the hierarchy but marked Not4Curation (RGD convention)" []
+synonym: "Not4Curation" RELATED []
+is_a: TEST:0000005 ! biological_process
+
+[Term]
+id: TEST:0000009
+name: discouraged process
+def: "A process marked with the OBO-style not_recommended_for_annotation synonym" []
+synonym: "not_recommended_for_annotation" RELATED []
+is_a: TEST:0000005 ! biological_process

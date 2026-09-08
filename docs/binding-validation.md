@@ -393,6 +393,26 @@ ERROR: Term 'GO:9999999' not found in ontology
   prefix: GO (configured in oak_config)
 ```
 
+### Term Marked Not4Curation
+
+When the term exists, is current, and is inside the enum, but its ontology
+says not to annotate with it (a `Not4Curation` or
+`not_recommended_for_annotation` synonym):
+
+```
+ERROR: Ontology term XCO:0000294 is marked 'Not4Curation' by its ontology (not recommended for annotation)
+  path: exposure_term
+  slot: exposure_term
+  field: id
+  markers: Not4Curation
+```
+
+**Solution:** use the term the ontology intends instead. Such terms usually
+have a proper equivalent elsewhere (`XCO:0000294` → `ECTO:9000010`, exposure
+to estrogens). Demote `binding_not4curation` to `WARN` while working through
+a backlog, or pass `--no-check-not4curation`. See
+[Not4Curation check](plugin-reference.md#not4curation-check).
+
 ### Label Mismatch
 
 ```

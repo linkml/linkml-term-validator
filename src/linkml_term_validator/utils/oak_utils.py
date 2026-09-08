@@ -19,6 +19,7 @@ import csv
 import logging
 import re
 import socket
+from collections.abc import Iterable, Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -141,6 +142,151 @@ def obsolete_term_message(curie: str) -> str:
     return f"Ontology term {curie} is obsolete"
 
 
+# Markers an ontology puts in a *synonym* to say "this term is kept for the
+# hierarchy; do not annotate with it". Such a term is not obsolete - it carries
+# no deprecation axiom - so it passes every existence, label, and reachability
+# check. RGD's ontologies (XCO, CMO, MMO, RS) spell the marker ``Not4Curation``;
+# some other OBO ontologies use ``not_recommended_for_annotation``. Aliases are
+# folded to lowercase alphanumerics before a substring match, so the exact
+# casing and separators used by the ontology do not matter (see issue #70).
+DEFAULT_NOT4CURATION_MARKERS: tuple[str, ...] = (
+    "not4curation",
+    "notforcuration",
+    "notrecommendedforannotation",
+)
+
+
+def normalize_marker_text(s: str) -> str:
+    """Fold a string to lowercase alphanumerics for marker matching.
+
+    This is deliberately more aggressive than :func:`normalize_string`, which
+    keeps word boundaries: a marker must hit whether the ontology writes
+    ``Not4Curation``, ``not_4_curation`` or ``NOT FOR CURATION``.
+
+    Examples:
+        >>> normalize_marker_text("Not4Curation")
+        'not4curation'
+        >>> normalize_marker_text("not_recommended_for_annotation")
+        'notrecommendedforannotation'
+        >>> normalize_marker_text("NOT FOR CURATION!")
+        'notforcuration'
+    """
+    return re.sub(r"[^0-9a-z]", "", s.lower())
+
+
+def normalize_not4curation_markers(markers: Optional[Iterable[str]]) -> tuple[str, ...]:
+    """Normalize a user-supplied marker list, falling back to the defaults.
+
+    ``None`` selects :data:`DEFAULT_NOT4CURATION_MARKERS`. An explicit list
+    replaces the defaults entirely (so a project can narrow the match), and a
+    list that normalizes to nothing is rejected rather than silently matching
+    every alias: the way to turn the check off is ``check_not4curation=False``.
+
+    Examples:
+        >>> normalize_not4curation_markers(None)
+        ('not4curation', 'notforcuration', 'notrecommendedforannotation')
+        >>> normalize_not4curation_markers(["Do_Not_Annotate", "Not4Curation"])
+        ('donotannotate', 'not4curation')
+        >>> normalize_not4curation_markers(["", "  "])
+        Traceback (most recent call last):
+        ...
+        ValueError: not4curation_markers must contain at least one non-empty marker (use check_not4curation=False to disable the check)
+    """
+    if markers is None:
+        return DEFAULT_NOT4CURATION_MARKERS
+    if isinstance(markers, str):
+        markers = [markers]
+    normalized = tuple(
+        dict.fromkeys(m for m in (normalize_marker_text(str(x)) for x in markers) if m)
+    )
+    if not normalized:
+        raise ValueError(
+            "not4curation_markers must contain at least one non-empty marker "
+            "(use check_not4curation=False to disable the check)"
+        )
+    return normalized
+
+
+def parse_not4curation_config(
+    config: Optional[Mapping[str, Any]],
+) -> tuple[Optional[bool], Optional[tuple[str, ...]]]:
+    """Read the Not4Curation keys from a parsed ``oak_config.yaml``.
+
+    Shared by the plugin base class and :class:`EnumValidator` so the two
+    cannot drift in how they coerce the values.
+
+    Args:
+        config: The parsed config mapping (or None)
+
+    Returns:
+        ``(check_not4curation, not4curation_markers)``; each is ``None`` when
+        its key is absent.
+
+    Raises:
+        ValueError: If ``check_not4curation`` is not a boolean (or the strings
+            ``"true"``/``"false"``), or ``not4curation_markers`` is not a
+            string or list of strings.
+
+    Examples:
+        >>> parse_not4curation_config(None)
+        (None, None)
+        >>> parse_not4curation_config({"check_not4curation": "false"})
+        (False, None)
+        >>> parse_not4curation_config({"not4curation_markers": ["Do Not Annotate"]})
+        (None, ('donotannotate',))
+        >>> parse_not4curation_config({"check_not4curation": "yes"})
+        Traceback (most recent call last):
+        ...
+        ValueError: check_not4curation must be a boolean or 'true'/'false', got: 'yes'
+    """
+    if not config:
+        return None, None
+
+    check: Optional[bool] = None
+    if "check_not4curation" in config:
+        raw = config["check_not4curation"]
+        if isinstance(raw, bool):
+            check = raw
+        elif isinstance(raw, str) and raw.strip().lower() in {"true", "false"}:
+            check = raw.strip().lower() == "true"
+        else:
+            raise ValueError(
+                f"check_not4curation must be a boolean or 'true'/'false', got: {raw!r}"
+            )
+
+    markers: Optional[tuple[str, ...]] = None
+    if "not4curation_markers" in config:
+        raw_markers = config["not4curation_markers"]
+        if isinstance(raw_markers, str):
+            raw_markers = [raw_markers]
+        if not isinstance(raw_markers, list) or not all(isinstance(m, str) for m in raw_markers):
+            raise ValueError(
+                "not4curation_markers must be a string or a list of strings, "
+                f"got {type(raw_markers).__name__}: {raw_markers!r}"
+            )
+        markers = normalize_not4curation_markers(raw_markers)
+
+    return check, markers
+
+
+def not4curation_message(curie: str, markers: Iterable[str]) -> str:
+    """Return the canonical message for a term its ontology flags as not for annotation.
+
+    Shared across the plugins and the standalone validator so every site emits
+    the same phrasing. ``markers`` are the aliases (as written in the ontology)
+    that carried the marker, so the user sees the ontology's own wording.
+
+    Examples:
+        >>> not4curation_message("XCO:0000294", ["Not4Curation"])
+        "Ontology term XCO:0000294 is marked 'Not4Curation' by its ontology (not recommended for annotation)"
+    """
+    quoted = ", ".join(f"'{m}'" for m in markers)
+    return (
+        f"Ontology term {curie} is marked {quoted} by its ontology "
+        "(not recommended for annotation)"
+    )
+
+
 def get_prefix(curie: str) -> Optional[str]:
     """Extract the prefix from a CURIE.
 
@@ -211,6 +357,7 @@ class OntologyAccess:
         cache_dir: Path | str = Path("cache"),
         oak_config_path: Optional[Path | str] = None,
         offline: bool = False,
+        not4curation_markers: Optional[Iterable[str]] = None,
     ):
         """Initialize ontology access.
 
@@ -221,10 +368,15 @@ class OntologyAccess:
             oak_config_path: Path to oak_config.yaml for per-prefix adapters
             offline: If True, never build OAK adapters (guaranteeing no external
                 access); resolve everything exclusively from the file cache.
+            not4curation_markers: Substrings that mark an alias as a
+                "do not annotate" flag, matched after folding to lowercase
+                alphanumerics. ``None`` uses
+                :data:`DEFAULT_NOT4CURATION_MARKERS`.
         """
         self.oak_adapter_string = oak_adapter_string
         self.cache_labels = cache_labels
         self.offline = offline
+        self.not4curation_markers = normalize_not4curation_markers(not4curation_markers)
         self.cache_dir = Path(cache_dir) if isinstance(cache_dir, str) else cache_dir
         self.oak_config_path = (
             Path(oak_config_path) if isinstance(oak_config_path, str) else oak_config_path
@@ -237,9 +389,17 @@ class OntologyAccess:
         # Per-prefix obsolete-entity sets (for adapters where a whole-ontology
         # ``obsoletes()`` scan is cheap); None means "could not determine".
         self._obsolete_cache: dict[str, Optional[set[str]]] = {}
-        # Per-CURIE OLS term payloads, so a term's label and obsolescence are
-        # resolved with a single network fetch. None caches "not resolvable".
+        # Per-CURIE OLS term payloads, so a term's label, obsolescence and
+        # synonyms are resolved with a single network fetch. None caches "not
+        # resolvable".
         self._ols_term_cache: dict[str, Optional[dict]] = {}
+        # Per-CURIE alias lists; None caches "could not be retrieved".
+        self._alias_cache: dict[str, Optional[list[str]]] = {}
+        # Not4Curation bookkeeping. A marker is a synonym, so a term whose
+        # synonyms could not be read has NOT been checked; it is recorded here
+        # so a degraded run can be told apart from a clean one.
+        self._not4curation_checked: set[str] = set()
+        self._not4curation_unchecked: set[str] = set()
 
         # ontology_adapters mapping plus the full parsed config (so callers can
         # read additional keys without re-reading the file).
@@ -660,3 +820,150 @@ class OntologyAccess:
                 return terms[0]
             return None
         return term
+
+    # =========================================================================
+    # Aliases and "not for annotation" markers
+    # =========================================================================
+
+    def entity_aliases(self, curie: str) -> Optional[list[str]]:
+        """Return every alias of a term (its label plus all synonyms).
+
+        Aliases are fetched at most once per CURIE. For OLS adapters they are
+        read from the term payload that the label lookup already fetched, so
+        the check adds no network round trip there.
+
+        Args:
+            curie: A CURIE like "XCO:0000294"
+
+        Returns:
+            The alias list (possibly empty), or ``None`` when aliases could not
+            be retrieved at all: no adapter (offline, unknown prefix), or an
+            adapter that does not expose aliases.
+        """
+        if curie in self._alias_cache:
+            return self._alias_cache[curie]
+
+        prefix = get_prefix(curie)
+        if not prefix:
+            return None
+
+        adapter = self.get_adapter(prefix)
+        if adapter is None:
+            # Not memoized: an adapter may still be configured later in the
+            # object's life (tests do this), and the answer is cheap.
+            return None
+
+        aliases: Optional[list[str]]
+        if self._is_ols_adapter(adapter):
+            aliases = self._ols_entity_aliases(adapter, curie)
+        else:
+            aliases = self._adapter_entity_aliases(adapter, curie)
+        self._alias_cache[curie] = aliases
+        return aliases
+
+    @staticmethod
+    def _adapter_entity_aliases(adapter: object, curie: str) -> Optional[list[str]]:
+        """Read aliases through OAK's ``entity_aliases`` (None if unsupported)."""
+        method = getattr(adapter, "entity_aliases", None)
+        if not callable(method):
+            return None
+        try:
+            result = method(curie)
+        except NotImplementedError:
+            return None
+        except Exception as e:  # noqa: BLE001 - adapters raise varied errors
+            raise_if_service_unavailable(curie, e)
+            logger.warning("Alias lookup for %s failed (term left unchecked): %s", curie, e)
+            return None
+        return [str(a) for a in (result or []) if a is not None]
+
+    def _ols_entity_aliases(self, adapter: object, curie: str) -> Optional[list[str]]:
+        """Read aliases from the cached OLS term payload.
+
+        Returns ``None`` when the term is unresolvable *or* when the payload
+        carries neither a ``synonyms`` nor an ``obo_synonym`` key. A label is
+        always present, so without that rule a payload shape this code does
+        not understand (an older OLS, a client that drops the key) would make
+        every term look vetted and clean. A term with no synonyms normally
+        still carries ``"synonyms": []`` or ``null``, and stays clean.
+        """
+        term = self._ols_term_dict(adapter, curie)
+        if term is None:
+            return None
+        if "synonyms" not in term and "obo_synonym" not in term:
+            return None
+        aliases: list[str] = []
+        label = term.get("label")
+        if isinstance(label, str):
+            aliases.append(label)
+        synonyms = term.get("synonyms")
+        if isinstance(synonyms, list):
+            aliases.extend(x for x in synonyms if isinstance(x, str))
+        # OLS4 also lists scoped OBO synonyms as ``{"name": ..., "scope": ...}``.
+        obo_synonyms = term.get("obo_synonym")
+        if isinstance(obo_synonyms, list):
+            for entry in obo_synonyms:
+                name = entry.get("name") if isinstance(entry, dict) else None
+                if isinstance(name, str):
+                    aliases.append(name)
+        return aliases
+
+    def find_not4curation_markers(self, curie: str) -> Optional[list[str]]:
+        """Return the aliases of a term that carry a "do not annotate" marker.
+
+        Some ontologies keep terms for structural completeness that they
+        explicitly do not want used for annotation, and say so with a synonym
+        (``Not4Curation``, ``not_recommended_for_annotation``) rather than an
+        obsoletion axiom. Such a term exists, has a matching label, and is
+        reachable, so nothing else here catches it.
+
+        Every alias is folded to lowercase alphanumerics and tested for each
+        configured marker as a substring. The check is generic on purpose: on
+        an ontology that never uses the convention it simply never matches.
+
+        A marker *is* a synonym, so a term whose synonyms could not be read has
+        not been checked. Those CURIEs are recorded and can be read back with
+        :meth:`get_not4curation_unchecked` so a run that could not check is
+        never mistaken for a clean one.
+
+        Args:
+            curie: A CURIE like "XCO:0000294"
+
+        Returns:
+            The matching aliases as written in the ontology (empty when the
+            term is clean), or ``None`` when the term could not be checked:
+            no adapter, offline, an adapter without alias support, an OLS
+            payload with no synonym field at all, or an alias list that came
+            back empty. An OAK alias map always carries the ``rdfs:label``, so
+            an empty list for a resolvable term means the adapter surfaced
+            nothing, not that the term has no synonyms.
+        """
+        aliases = self.entity_aliases(curie)
+        if not aliases:
+            self._not4curation_unchecked.add(curie)
+            return None
+        self._not4curation_checked.add(curie)
+        self._not4curation_unchecked.discard(curie)
+        # Order-preserving dedupe: OLS can list the same synonym under both
+        # ``synonyms`` and ``obo_synonym``, and the message should name it once.
+        return [
+            alias
+            for alias in dict.fromkeys(aliases)
+            if any(marker in normalize_marker_text(alias) for marker in self.not4curation_markers)
+        ]
+
+    def get_not4curation_checked(self) -> set[str]:
+        """CURIEs whose aliases were read and tested for a marker (a copy)."""
+        return set(self._not4curation_checked)
+
+    def get_not4curation_unchecked(self) -> set[str]:
+        """CURIEs the Not4Curation check was asked about but could not check.
+
+        A term lands here when its aliases could not be read (no adapter,
+        offline, unsupported adapter, or an empty alias list). It is not
+        clean; it is unknown. Callers should report the count rather than fold
+        it into a pass. A copy is returned, so mutating it cannot change the
+        validator's own bookkeeping.
+        """
+        return set(self._not4curation_unchecked)
+

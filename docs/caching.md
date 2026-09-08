@@ -276,6 +276,20 @@ You might want to clear the cache if:
 - **You suspect stale or incorrect labels** in cached data
 - **You're testing validation behavior** and want to force fresh lookups
 
+You do **not** need to clear the enum cache to adopt the
+[Not4Curation check](plugin-reference.md#not4curation-check). The cache only
+records membership; the check runs on every accepted value during an online
+run, so one online pass surfaces every flagged term already cached. Offline,
+synonyms are not available and such terms are reported as *unchecked* (a
+non-gating note), never as clean.
+
+Note the cost this adds to a warm cache: an online `validate-data` run that
+previously answered every value from the enum cache without touching an
+ontology now opens the adapter and reads aliases once per unique accepted term.
+For a local `sqlite:obo:` adapter that is one query per term after the
+database is present; the first such run may download it. Pass
+`--no-check-not4curation` if a run must stay free of ontology I/O.
+
 ```bash
 # Clear cache for specific ontology
 rm -rf cache/go/

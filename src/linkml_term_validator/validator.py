@@ -16,7 +16,9 @@ from linkml_term_validator.utils import (
     OntologyAccess,
     get_prefix,
     normalize_string,
+    not4curation_message,
     obsolete_term_message,
+    parse_not4curation_config,
 )
 
 
@@ -48,10 +50,63 @@ class EnumValidator:
             cache_dir=config.cache_dir,
             oak_config_path=config.oak_config_path,
             offline=config.offline,
+            not4curation_markers=config.not4curation_markers,
         )
+        # The shared oak_config.yaml may carry the Not4Curation keys too, so the
+        # CLI and the plugins read one file and agree (see #70).
+        self._load_not4curation_config(self.ontology.loaded_config)
 
         if config.cache_labels:
             config.get_cache_dir()
+
+    def _load_not4curation_config(self, loaded: dict) -> None:
+        """Fill unset Not4Curation settings from oak_config, then resolve.
+
+        An explicit value on the :class:`ValidationConfig` (which is how a CLI
+        flag arrives) wins over the config file; the file fills only what was
+        left as ``None``. Afterwards ``check_not4curation`` is a concrete bool.
+        """
+        check, markers = parse_not4curation_config(loaded)
+        if check is not None and self.config.check_not4curation is None:
+            self.config.check_not4curation = check
+        if markers is not None and self.config.not4curation_markers is None:
+            self.ontology.not4curation_markers = markers
+            self.config.not4curation_markers = list(markers)
+        if self.config.check_not4curation is None:
+            self.config.check_not4curation = True
+
+    def _not4curation_issue(
+        self,
+        curie: str,
+        enum_name: str,
+        value_name: str,
+        expected_label: Optional[str],
+        actual_label: Optional[str],
+    ) -> Optional[ValidationIssue]:
+        """Build the issue for a term its ontology marks as not for annotation.
+
+        Returns None when the check is off, the term is clean, or the term
+        could not be checked (the last is recorded on the ontology access
+        object and surfaced by :meth:`get_not4curation_unchecked`).
+        """
+        if not self.config.check_not4curation:
+            return None
+        markers = self.ontology.find_not4curation_markers(curie)
+        if not markers:
+            return None
+        return ValidationIssue(
+            enum_name=enum_name,
+            value_name=value_name,
+            severity=SeverityLevel.ERROR,
+            message=not4curation_message(curie, markers),
+            meaning=curie,
+            expected_label=expected_label,
+            actual_label=actual_label,
+        )
+
+    def get_not4curation_unchecked(self) -> set[str]:
+        """CURIEs the Not4Curation check was asked about but could not vet (a copy)."""
+        return self.ontology.get_not4curation_unchecked()
 
     # =========================================================================
     # Ontology-access delegation (see linkml_term_validator.utils.OntologyAccess)
@@ -359,6 +414,14 @@ class EnumValidator:
                 )
                 continue
 
+            # Not obsolete, but its ontology may still say "do not annotate"
+            # through a synonym. Report it and go on to the label check.
+            flagged = self._not4curation_issue(
+                meaning, enum_name, value_name, pv.title or value_name, actual_label
+            )
+            if flagged is not None:
+                issues.append(flagged)
+
             expected_aliases = self.extract_aliases(pv, value_name)
             normalized_actual = self.normalize_string(actual_label)
 
@@ -421,6 +484,11 @@ class EnumValidator:
 
             issues = self.validate_enum(enum_def, enum_name)
             result.issues.extend(issues)
+
+        # A term whose synonyms could not be read was not vetted for a
+        # Not4Curation marker. Carry that forward so a degraded run is
+        # distinguishable from a clean one.
+        result.not4curation_unchecked = sorted(self.get_not4curation_unchecked())
 
         return result
 
@@ -489,6 +557,12 @@ class EnumValidator:
                     )
                 )
                 continue
+
+            flagged = self._not4curation_issue(
+                curie, location, curie, expected_label, actual_label
+            )
+            if flagged is not None:
+                issues.append(flagged)
 
             normalized_actual = self.normalize_string(actual_label)
             normalized_expected = self.normalize_string(expected_label)

@@ -14,6 +14,12 @@ cache_strategy: progressive  # or "greedy"
 cache_enum_expansions: true
 saturate_enum_caches: false
 
+# Not4Curation check (optional; both default as shown)
+check_not4curation: true
+# not4curation_markers:
+#   - not4curation
+#   - not_recommended_for_annotation
+
 # Ontology adapter mappings
 ontology_adapters:
   # Prefix: adapter_string
@@ -21,6 +27,15 @@ ontology_adapters:
   CHEBI: sqlite:obo:chebi
   UBERON: sqlite:obo:uberon
 ```
+
+Two of these keys resolve differently against a plugin constructor argument
+or CLI flag. `cache_strategy` (and `cache_enum_expansions`,
+`saturate_enum_caches`) in the file **override** the constructor, so the file
+is the single place a project pins its cache behavior. `check_not4curation`
+and `not4curation_markers` do the reverse: an explicit constructor argument or
+CLI flag wins, and the file fills in only what was left unset, so a flag typed
+on the command line is never silently ignored. `severity_overrides` follows
+the same rule as the Not4Curation keys.
 
 ### Using the Config File
 
@@ -264,6 +279,20 @@ linkml-term-validator validate-schema --verbose schema.yaml
 ```
 
 Shows detailed information about what's being validated and any issues encountered.
+
+**Not4Curation check:**
+
+```bash
+linkml-term-validator validate-data data.yaml --schema schema.yaml --no-check-not4curation
+```
+
+Terms their ontology marks as not for annotation (a `Not4Curation` or
+`not_recommended_for_annotation` synonym) are reported at `ERROR` by default
+in every command. Disable with `--no-check-not4curation`, or in
+`oak_config.yaml` with `check_not4curation: false`; demote instead of
+disabling with `severity_overrides`. An explicit CLI flag wins over the config
+file; the file wins over the default. See
+[Not4Curation check](plugin-reference.md#not4curation-check).
 
 **Label validation (data validation only):**
 

@@ -30,6 +30,7 @@ linkml-term-validator validate-schema [OPTIONS] SCHEMA_PATH
 | `--cache-dir` | `cache` | Directory for label and enum caches |
 | `--config`, `-c` | none | Path to `oak_config.yaml` |
 | `--offline` | `false` | Resolve only from the cache; never build OAK adapters |
+| `--check-not4curation / --no-check-not4curation` | `--check-not4curation` | Flag terms their ontology marks as not for annotation (see [Not4Curation check](plugin-reference.md#not4curation-check)) |
 | `--verbose`, `-v` | `false` | Print validation summary details |
 
 Examples:
@@ -65,8 +66,10 @@ linkml-term-validator validate-data [OPTIONS] DATA_PATHS...
 | `--config`, `-c` | none | Path to `oak_config.yaml` |
 | `--cache-strategy` | `progressive` | `progressive` for lazy checks or `greedy` for upfront expansion |
 | `--offline` | `false` | Resolve only from the cache; never build OAK adapters |
+| `--check-not4curation / --no-check-not4curation` | `--check-not4curation` | Flag terms their ontology marks as not for annotation (see [Not4Curation check](plugin-reference.md#not4curation-check)) |
 | `--fail-on` | `any` | Which results exit non-zero: `any`, `error` (matches `linkml-validate`), or `warn` |
 | `--strict` | `false` | Exit non-zero on warnings, overriding `--fail-on error`. Exit code only; results still print as `WARN`. Does not re-enable checks `--lenient` turned off |
+| `--check-not4curation / --no-check-not4curation` | `--check-not4curation` | Flag terms their ontology marks as not for annotation (`Not4Curation`, `not_recommended_for_annotation`). Reported at `ERROR` unless `severity_overrides` demotes it. Terms whose synonyms could not be read are listed in a non-gating note |
 
 Examples:
 
@@ -161,6 +164,7 @@ The default regex matches annotations like `@term GO:0008150 "biological process
 | `--no-cache` | `false` | Disable label cache writes |
 | `--cache-dir` | `cache` | Directory for label caches |
 | `--offline` | `false` | Resolve only from the cache; never build OAK adapters |
+| `--check-not4curation / --no-check-not4curation` | `--check-not4curation` | Flag terms their ontology marks as not for annotation (see [Not4Curation check](plugin-reference.md#not4curation-check)) |
 | `--verbose`, `-v` | `false` | Show each validated term |
 
 Examples:
