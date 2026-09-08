@@ -488,13 +488,19 @@ def validate_data(
             # Every result is reported regardless of --fail-on; the threshold
             # decides only the exit code, never what the user gets to see.
             files_with_issues.append(data_path)
-            if _counts_as_failure(report.results, fail_on):
+            failed = _counts_as_failure(report.results, fail_on)
+            if failed:
                 failed_files.append(data_path)
             total_issues += len(report.results)
+            # A file whose results all sit below the threshold is not a failure,
+            # so its header must not say so.
             if len(data_paths) > 1:
-                typer.echo(f"\n❌ {data_path.name} - {len(report.results)} issue(s):")
-            else:
+                marker = "❌" if failed else "⚠️ "
+                typer.echo(f"\n{marker} {data_path.name} - {len(report.results)} issue(s):")
+            elif failed:
                 typer.echo(f"\n❌ Validation failed with {len(report.results)} issue(s):\n")
+            else:
+                typer.echo(f"\n⚠️  {len(report.results)} issue(s) reported:\n")
             for result in report.results:
                 severity_emoji = _SEVERITY_EMOJI.get(result.severity, "⚠️ ")
                 typer.echo(f"  {severity_emoji} {result.severity.name}: {result.message}")

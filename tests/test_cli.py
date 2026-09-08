@@ -818,6 +818,9 @@ def test_strict_does_not_loosen_for_info(runner, info_fixtures):
     assert result.exit_code == 0
     assert "INFO" in result.output
     assert "--fail-on error (raised to warn by --strict) threshold" in result.output
+    # A run that exits 0 must not open with a failure header.
+    assert "Validation failed" not in result.output
+    assert "1 issue(s) reported:" in result.output
 
 
 def test_strict_note_unchanged_when_strict_is_a_no_op(runner, info_fixtures):
@@ -833,15 +836,37 @@ def test_strict_note_unchanged_when_strict_is_a_no_op(runner, info_fixtures):
 
 
 def test_strict_and_lenient_are_independent(runner, fail_on_fixtures):
-    """--lenient only skips the term-existence check. A label mismatch is still
-    reported, and --strict still makes that WARN exit 1. The pair is accepted
-    because it means exactly --fail-on warn --lenient."""
+    """--lenient only skips the term-existence check. A label WARN is still
+    reported, and --strict still makes it exit 1 with --lenient on. The pair
+    means exactly --fail-on warn --lenient, so it is accepted."""
     schema, data_path, config = fail_on_fixtures
-    result = runner.invoke(
-        app, _fail_on_args(schema, data_path, config, "--strict", "--lenient")
+    lax = _fail_on_args(schema, data_path, config, "--fail-on", "error", "--lenient")
+    assert runner.invoke(app, lax).exit_code == 0
+    strict = _fail_on_args(
+        schema, data_path, config, "--fail-on", "error", "--lenient", "--strict"
     )
+    result = runner.invoke(app, strict)
     assert result.exit_code == 1
     assert "WARN" in result.output
+
+
+def test_strict_does_not_re_enable_existence_checks(runner, fail_on_fixtures):
+    """The CLI's --strict and the binding plugin's `strict` are different
+    things. --lenient turns the term-existence check off, and the CLI flag
+    must not wire itself into the plugin and turn it back on."""
+    schema, data_path, _ = fail_on_fixtures
+    missing = data_path.parent / "missing.yaml"
+    missing.write_text("annotation_id: ann:1\nprocess:\n  id: TEST:9999999\n  label: whatever\n")
+    plain_config = data_path.parent / "oak_plain.yaml"
+    plain_config.write_text(
+        "ontology_adapters:\n  TEST: simpleobo:tests/data/test_ontology.obo\n"
+    )
+    with_checks = runner.invoke(app, _fail_on_args(schema, missing, plain_config, "--strict"))
+    assert "not found in ontology" in with_checks.output
+    lenient = runner.invoke(
+        app, _fail_on_args(schema, missing, plain_config, "--strict", "--lenient")
+    )
+    assert "not found in ontology" not in lenient.output
 
 
 def _validate_data_mode_args(schema, data_path, config, *extra):
