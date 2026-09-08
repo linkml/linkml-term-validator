@@ -276,6 +276,13 @@ You might want to clear the cache if:
 - **You suspect stale or incorrect labels** in cached data
 - **You're testing validation behavior** and want to force fresh lookups
 
+You do **not** need to clear the enum cache to adopt the
+[Not4Curation check](plugin-reference.md#not4curation-check). The cache only
+records membership; the check runs on every accepted value during an online
+run, so one online pass surfaces every flagged term already cached. Offline,
+synonyms are not available and such terms are reported as *unchecked* (a
+non-gating note), never as clean.
+
 ```bash
 # Clear cache for specific ontology
 rm -rf cache/go/

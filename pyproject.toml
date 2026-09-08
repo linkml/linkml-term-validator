@@ -76,6 +76,8 @@ quiet-level = 3
 # Ref.: https://github.com/crate-ci/typos (spell checker)
 [tool.typos.default.extend-words]
 linke = "linke"
+# Clinical Measurement Ontology (RGD), not a typo for "COM".
+CMO = "CMO"
 [tool.typos.files]
 extend-exclude = [
   "LICENSE",

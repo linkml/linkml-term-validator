@@ -77,17 +77,33 @@ class ErrorMode(str, Enum):
     BINDING_LABEL_MISMATCH = ("binding_label_mismatch", "ERROR")
     """A label field disagrees with the ontology's canonical label."""
 
+    BINDING_NOT4CURATION = ("binding_not4curation", "ERROR")
+    """A bound term is one its ontology marks as not for annotation.
+
+    The term exists, is not obsolete, and sits inside the enum; its ontology
+    simply says not to annotate with it (a ``Not4Curation`` or
+    ``not_recommended_for_annotation`` synonym). Defaults to ERROR because a
+    warning nobody reads reproduces the exact gap this check closes (#70);
+    demote it to WARN while working through an existing backlog.
+    """
+
     TERM_NOT_FOUND = ("term_not_found", "ERROR")
     """A term ID could not be found in the configured ontologies."""
 
     DYNAMIC_ENUM_VALIDATION = ("dynamic_enum_validation", "ERROR")
     """A value is outside a dynamic enum's expanded closure."""
 
+    DYNAMIC_ENUM_NOT4CURATION = ("dynamic_enum_not4curation", "ERROR")
+    """A dynamic enum value is one its ontology marks as not for annotation."""
+
     PERMISSIBLE_VALUE_MEANING = ("permissible_value_meaning", "ERROR")
     """A permissible value's ``meaning`` does not resolve to a real term."""
 
     PERMISSIBLE_VALUE_OBSOLETE = ("permissible_value_obsolete", "ERROR")
     """A permissible value's ``meaning`` points at an obsolete term."""
+
+    PERMISSIBLE_VALUE_NOT4CURATION = ("permissible_value_not4curation", "ERROR")
+    """A permissible value's ``meaning`` is a term its ontology marks as not for annotation."""
 
     PERMISSIBLE_VALUE_LABEL_MISMATCH = ("permissible_value_label_mismatch", "WARN")
     """A permissible value's title/description disagrees with the ontology.
@@ -174,6 +190,13 @@ class ValidationResult(BaseModel):
     total_enums_checked: int = Field(default=0, description="Number of enums validated")
     total_values_checked: int = Field(default=0, description="Number of permissible values checked")
     total_meanings_checked: int = Field(default=0, description="Number of meanings validated")
+    not4curation_unchecked: list[str] = Field(
+        default_factory=list,
+        description=(
+            "CURIEs whose synonyms could not be read, so the Not4Curation check "
+            "did not run for them. Not clean: unknown."
+        ),
+    )
 
     def has_errors(self) -> bool:
         """Check if any errors were found.
@@ -248,6 +271,11 @@ class ValidationResult(BaseModel):
         print(f"Enums checked: {self.total_enums_checked}")
         print(f"Values checked: {self.total_values_checked}")
         print(f"Meanings validated: {self.total_meanings_checked}")
+        if self.not4curation_unchecked:
+            print(
+                "Not4Curation check skipped (no synonym data): "
+                f"{len(self.not4curation_unchecked)} term(s)"
+            )
         print()
 
         errors = [i for i in self.issues if i.is_error()]
@@ -326,6 +354,22 @@ class ValidationConfig(BaseModel):
             "If True, force offline validation: never build OAK adapters and "
             "resolve everything exclusively from the file cache, guaranteeing "
             "no external access"
+        ),
+    )
+    check_not4curation: bool = Field(
+        default=True,
+        description=(
+            "If True (default), flag terms whose ontology marks them as not for "
+            "annotation via a synonym such as 'Not4Curation' or "
+            "'not_recommended_for_annotation'"
+        ),
+    )
+    not4curation_markers: Optional[list[str]] = Field(
+        default=None,
+        description=(
+            "Substrings that identify a 'do not annotate' synonym, matched after "
+            "folding aliases to lowercase alphanumerics. None uses the built-in "
+            "defaults (not4curation, notforcuration, notrecommendedforannotation)"
         ),
     )
 

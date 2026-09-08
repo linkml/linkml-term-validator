@@ -250,6 +250,27 @@ successor (`term replaced by` / `consider`) in the ontology.
 > LTV handles both so a single bad value is reported as an ordinary validation
 > result instead of aborting the whole run.
 
+### "Term is marked Not4Curation" Error
+
+```
+ERROR: Ontology term XCO:0000294 is marked 'Not4Curation' by its ontology (not recommended for annotation)
+```
+
+**Cause:** the term is real and current, but its ontology keeps it only for
+hierarchy completeness and flags it with a "do not annotate" synonym
+(`Not4Curation` in RGD's ontologies, `not_recommended_for_annotation` in some
+other OBO ontologies). The label check still runs afterwards, since the label
+itself is legitimate.
+
+**Solution:** point the permissible value at the term the ontology intends.
+Pass `--no-check-not4curation` or set `check_not4curation: false` in
+`oak_config.yaml` to disable the check. See
+[Not4Curation check](plugin-reference.md#not4curation-check).
+
+If synonyms could not be read for some terms (offline, or a prefix without an
+adapter), the command prints a `Not4Curation check skipped` note listing them.
+Those terms were not vetted; the note never changes the exit code.
+
 ### "Label mismatch" Warning
 
 ```

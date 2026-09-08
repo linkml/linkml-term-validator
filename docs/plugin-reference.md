@@ -14,6 +14,8 @@ The ontology-backed plugins share these constructor options:
 | `oak_config_path` | `None` | Path to `oak_config.yaml` |
 | `offline` | `False` | Read only from cache; never build OAK adapters |
 | `severity_overrides` | `None` | Map an error mode to the severity it is reported at |
+| `check_not4curation` | `True` | Flag terms their ontology marks as not for annotation (see [Not4Curation check](#not4curation-check)) |
+| `not4curation_markers` | `None` | Custom marker substrings; `None` uses the built-in list |
 
 Dynamic enum capable plugins also accept:
 
@@ -48,10 +50,13 @@ The available error modes, and the severity each is reported at by default:
 | `binding_validation` | `ERROR` | `BindingValidationPlugin` |
 | `binding_label_invalid` | `ERROR` | `BindingValidationPlugin` |
 | `binding_label_mismatch` | `ERROR` | `BindingValidationPlugin` |
+| `binding_not4curation` | `ERROR` | `BindingValidationPlugin` |
 | `term_not_found` | `ERROR` | `BindingValidationPlugin` |
 | `dynamic_enum_validation` | `ERROR` | `DynamicEnumPlugin` |
+| `dynamic_enum_not4curation` | `ERROR` | `DynamicEnumPlugin` |
 | `permissible_value_meaning` | `ERROR` | `PermissibleValueMeaningPlugin` |
 | `permissible_value_obsolete` | `ERROR` | `PermissibleValueMeaningPlugin` |
+| `permissible_value_not4curation` | `ERROR` | `PermissibleValueMeaningPlugin` |
 | `permissible_value_label_mismatch` | `WARN` (`ERROR` under `strict_mode`) | `PermissibleValueMeaningPlugin` |
 
 Keys and values accept either strings or the `ErrorMode` / `Severity` enum
@@ -72,6 +77,88 @@ severity_overrides:
 
 Constructor arguments win over the config file. For
 `permissible_value_label_mismatch`, an explicit override wins over `strict_mode`.
+
+### Not4Curation check
+
+Some ontologies keep terms for hierarchy completeness that they explicitly do
+**not** want used for annotation, and mark them with a synonym rather than an
+obsoletion axiom. RGD's ontologies (XCO, CMO, MMO, RS) write a related synonym
+reading literally `Not4Curation`; some other OBO ontologies use
+`not_recommended_for_annotation`. Such a term exists, has a matching label,
+is not obsolete, and is reachable from a `reachable_from` source node, so it
+passed every other check here. `XCO:0000294` (estrogen/estrogen analog) is a
+real example: it validated cleanly as an exposure term while its own
+maintainers say not to use it (see
+[issue #70](https://github.com/linkml/linkml-term-validator/issues/70)).
+
+Every ontology-backed plugin now reads a term's aliases and reports it when
+any alias carries a "do not annotate" marker:
+
+| Error mode | Where |
+|------------|-------|
+| `binding_not4curation` | a bound field's value that passed its enum check |
+| `dynamic_enum_not4curation` | a slot value that passed a dynamic enum check |
+| `permissible_value_not4curation` | a permissible value's `meaning` |
+
+The message quotes the ontology's own wording:
+
+```
+ERROR: Ontology term XCO:0000294 is marked 'Not4Curation' by its ontology (not recommended for annotation)
+```
+
+**Matching.** Aliases are folded to lowercase alphanumerics and tested for each
+marker as a substring, so `Not4Curation`, `not4curation` and
+`not_recommended_for_annotation` all hit. The default markers are
+`not4curation`, `notforcuration` and `notrecommendedforannotation`. The check
+is deliberately not restricted to particular ontologies: on one that never
+uses the convention it simply never matches, at the cost of one alias query
+per term (near-free for a local `sqlite:` adapter; for `ols:` it reads the
+term payload the label lookup already fetched, so no extra round trip).
+
+**Fail by default.** All three modes default to `ERROR`. A warning nobody
+reads reproduces the exact gap the check closes, so demote it only while
+working through a backlog:
+
+```yaml
+severity_overrides:
+  binding_not4curation: WARN
+```
+
+**Switching off or narrowing.** In `oak_config.yaml` (read by the plugins, by
+`EnumValidator`, and so by every CLI command):
+
+```yaml
+check_not4curation: false          # disable entirely
+not4curation_markers:              # or replace the marker list
+  - not4curation
+  - do_not_annotate
+```
+
+or per plugin with `check_not4curation=False` / `not4curation_markers=[...]`,
+or on the CLI with `--no-check-not4curation`. Like `cache_strategy`, the
+config-file keys win over the constructor argument.
+
+**Terms that could not be checked.** A marker *is* a synonym, so a term whose
+synonyms could not be read has not been vetted. That happens offline (synonyms
+are not cached), for a prefix with no adapter, or for an adapter that exposes
+no aliases. Those CURIEs are collected rather than treated as clean:
+`plugin.get_not4curation_unchecked()` and `EnumValidator.get_not4curation_unchecked()`
+return them, and the CLI prints them as a non-gating note:
+
+```
+ℹ️  Not4Curation check skipped for 3 term(s) (offline: synonyms are not cached, so the marker cannot be read):
+  - XCO:0000294
+  ...
+  Run once online to check these terms.
+```
+
+**Existing caches.** The enum cache is the offline positive-hit set for
+`reachable_from`. A flagged CURIE cached before this check existed still
+validates offline, and offline there is no way to read the marker. The check
+runs on the accepted value on every online run, so one online pass surfaces
+every flagged term already in the cache; you do not need to rebuild the cache
+to adopt it, but an offline-only pipeline will keep reporting those terms as
+unchecked until it runs online once.
 
 #### Which commands honor it
 

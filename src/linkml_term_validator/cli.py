@@ -140,6 +140,38 @@ def _fail_service_unavailable(exc: OntologyServiceUnavailableError) -> typer.Exi
     return typer.Exit(code=EXIT_SERVICE_UNAVAILABLE)
 
 
+# How many unchecked CURIEs to list by name before collapsing to a count.
+_NOT4CURATION_UNCHECKED_LIST_LIMIT = 10
+
+
+def _echo_not4curation_unchecked(unchecked: set[str], offline: bool) -> None:
+    """Report terms the Not4Curation check could not vet.
+
+    A "do not annotate" marker is a synonym, so a term whose synonyms could
+    not be read has not been checked for one. Folding those into a pass would
+    make a degraded run look clean (#70), so they are called out separately.
+    This is a note, not a result: it never changes the exit code.
+    """
+    if not unchecked:
+        return
+    reason = (
+        "offline: synonyms are not cached, so the marker cannot be read"
+        if offline
+        else "no synonym data available from the adapter"
+    )
+    typer.echo(
+        f"\nℹ️  Not4Curation check skipped for {len(unchecked)} term(s) ({reason}):"
+    )
+    listed = sorted(unchecked)
+    for curie in listed[:_NOT4CURATION_UNCHECKED_LIST_LIMIT]:
+        typer.echo(f"  - {curie}")
+    remaining = len(listed) - _NOT4CURATION_UNCHECKED_LIST_LIMIT
+    if remaining > 0:
+        typer.echo(f"  ... and {remaining} more")
+    if offline:
+        typer.echo("  Run once online to check these terms.")
+
+
 @app.command()
 def validate_schema(
     schema_path: Annotated[
@@ -193,6 +225,17 @@ def validate_schema(
             help="Force offline validation: resolve only from the cache, never access ontology services",
         ),
     ] = False,
+    check_not4curation: Annotated[
+        bool,
+        typer.Option(
+            "--check-not4curation/--no-check-not4curation",
+            help=(
+                "Flag terms whose ontology marks them as not for annotation "
+                "(a 'Not4Curation' or 'not_recommended_for_annotation' synonym). "
+                "Default: enabled"
+            ),
+        ),
+    ] = True,
     verbose: Annotated[
         bool,
         typer.Option(
@@ -219,6 +262,7 @@ def validate_schema(
         cache_dir=cache_dir,
         oak_config_path=config,
         offline=offline,
+        check_not4curation=check_not4curation,
     )
 
     validator = EnumValidator(validation_config)
@@ -229,6 +273,8 @@ def validate_schema(
 
     if verbose or result.has_errors() or result.has_warnings():
         result.print_summary(verbose=verbose)
+
+    _echo_not4curation_unchecked(validator.get_not4curation_unchecked(), offline)
 
     # In offline mode unresolved terms are reported as errors above (not skipped),
     # so the "validation skipped / add to oak_config" note would be misleading.
@@ -383,6 +429,18 @@ def validate_data(
             ),
         ),
     ] = False,
+    check_not4curation: Annotated[
+        bool,
+        typer.Option(
+            "--check-not4curation/--no-check-not4curation",
+            help=(
+                "Flag terms whose ontology marks them as not for annotation "
+                "(a 'Not4Curation' or 'not_recommended_for_annotation' synonym). "
+                "Default: enabled; reported at ERROR unless severity_overrides "
+                "demotes it"
+            ),
+        ),
+    ] = True,
 ):
     """Validate data against dynamic enums and binding constraints.
 
@@ -411,6 +469,7 @@ def validate_data(
         linkml-term-validator validate-data data.yaml -s schema.yaml --offline
         linkml-term-validator validate-data data.yaml -s schema.yaml --fail-on error
         linkml-term-validator validate-data data.yaml -s schema.yaml --strict
+        linkml-term-validator validate-data data.yaml -s schema.yaml --no-check-not4curation
     """
     # Verify all data files exist
     for data_path in data_paths:
@@ -440,6 +499,7 @@ def validate_data(
                 saturate_enum_caches=saturate_enum_caches and not no_cache,
                 cache_strategy=strategy,
                 offline=offline,
+                check_not4curation=check_not4curation,
             )
         )
 
@@ -456,6 +516,7 @@ def validate_data(
                 saturate_enum_caches=saturate_enum_caches and not no_cache,
                 cache_strategy=strategy,
                 offline=offline,
+                check_not4curation=check_not4curation,
             )
         )
 
@@ -534,6 +595,13 @@ def validate_data(
             f"\n⚠️  {total_issues} issue(s) reported, none at or above the "
             f"{threshold} threshold; exiting 0."
         )
+
+    # Terms whose synonyms could not be read were not vetted for a
+    # Not4Curation marker. Say so; a clean exit must not imply they were.
+    unchecked: set[str] = set()
+    for plugin in plugins:
+        unchecked |= plugin.get_not4curation_unchecked()
+    _echo_not4curation_unchecked(unchecked, offline)
 
     if failed_files:
         raise typer.Exit(code=1)
@@ -650,6 +718,17 @@ def validate_all(
             ),
         ),
     ] = FailOn.ANY,
+    check_not4curation: Annotated[
+        bool,
+        typer.Option(
+            "--check-not4curation/--no-check-not4curation",
+            help=(
+                "Flag terms whose ontology marks them as not for annotation "
+                "(a 'Not4Curation' or 'not_recommended_for_annotation' synonym). "
+                "Default: enabled"
+            ),
+        ),
+    ] = True,
 ):
     """Validate schemas or data (auto-detect mode).
 
@@ -690,6 +769,7 @@ def validate_all(
             offline=offline,
             fail_on=fail_on,
             strict=strict,
+            check_not4curation=check_not4curation,
         )
     else:
         # Schema validation mode (backward compatible) - call validate_schema directly
@@ -701,6 +781,7 @@ def validate_all(
             cache_dir=cache_dir,
             config=config,
             offline=offline,
+            check_not4curation=check_not4curation,
             verbose=verbose,
         )
 
@@ -977,6 +1058,17 @@ def validate_text_file(
             help="Force offline validation: resolve only from the cache, never access ontology services",
         ),
     ] = False,
+    check_not4curation: Annotated[
+        bool,
+        typer.Option(
+            "--check-not4curation/--no-check-not4curation",
+            help=(
+                "Flag terms whose ontology marks them as not for annotation "
+                "(a 'Not4Curation' or 'not_recommended_for_annotation' synonym). "
+                "Default: enabled"
+            ),
+        ),
+    ] = True,
     verbose: Annotated[
         bool,
         typer.Option(
@@ -1043,6 +1135,7 @@ def validate_text_file(
         cache_dir=cache_dir,
         oak_config_path=config,
         offline=offline,
+        check_not4curation=check_not4curation,
     )
     validator = EnumValidator(validation_config)
 
@@ -1074,6 +1167,8 @@ def validate_text_file(
         for prefix in sorted(unknown_prefixes):
             typer.echo(f"  - {prefix}")
         typer.echo("\nConsider adding these to oak_config.yaml to enable validation.")
+
+    _echo_not4curation_unchecked(validator.get_not4curation_unchecked(), offline)
 
     error_count = sum(1 for i in issues if i.is_error())
     total = len(pairs)

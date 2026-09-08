@@ -318,6 +318,24 @@ ERROR: Value 'CL:0000540' is not valid for enum 'NeuronTypeEnum'
 1. Use a descendant term instead
 2. Set `include_self: true` in the enum definition
 
+### Member Marked Not4Curation
+
+```
+ERROR: Ontology term XCO:0000294 is marked 'Not4Curation' by its ontology (not recommended for annotation); accepted into dynamic enum 'ExposureEnum' but should not be used
+  slot: exposure
+  enum: ExposureEnum
+  validation: progressive (not4curation marker)
+```
+
+**Cause:** The value *is* in the closure, but its ontology keeps it only for
+the hierarchy and marks it with a "do not annotate" synonym. The check runs on
+the accepted value, so a positive enum-cache hit does not hide it.
+
+**Solution:** Replace it with the intended term. To adopt gradually, demote
+`dynamic_enum_not4curation` to `WARN` via `severity_overrides`, or disable the
+check with `--no-check-not4curation`. See
+[Not4Curation check](plugin-reference.md#not4curation-check).
+
 ## Performance Considerations
 
 ### Caching

@@ -14,6 +14,12 @@ cache_strategy: progressive  # or "greedy"
 cache_enum_expansions: true
 saturate_enum_caches: false
 
+# Not4Curation check (optional; both default as shown)
+check_not4curation: true
+# not4curation_markers:
+#   - not4curation
+#   - not_recommended_for_annotation
+
 # Ontology adapter mappings
 ontology_adapters:
   # Prefix: adapter_string
@@ -264,6 +270,19 @@ linkml-term-validator validate-schema --verbose schema.yaml
 ```
 
 Shows detailed information about what's being validated and any issues encountered.
+
+**Not4Curation check:**
+
+```bash
+linkml-term-validator validate-data data.yaml --schema schema.yaml --no-check-not4curation
+```
+
+Terms their ontology marks as not for annotation (a `Not4Curation` or
+`not_recommended_for_annotation` synonym) are reported at `ERROR` by default
+in every command. Disable with `--no-check-not4curation`, or in
+`oak_config.yaml` with `check_not4curation: false`; demote instead of
+disabling with `severity_overrides`. See
+[Not4Curation check](plugin-reference.md#not4curation-check).
 
 **Label validation (data validation only):**
 

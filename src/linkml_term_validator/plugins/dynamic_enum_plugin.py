@@ -11,7 +11,7 @@ Example:
     {}
 """
 
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any, Literal, Optional
 
@@ -20,7 +20,7 @@ from linkml.validator.validation_context import ValidationContext  # type: ignor
 
 from linkml_term_validator.models import CacheStrategy, ErrorMode
 from linkml_term_validator.plugins.base import BaseOntologyPlugin, SeverityOverrides
-from linkml_term_validator.utils import obsolete_term_message
+from linkml_term_validator.utils import not4curation_message, obsolete_term_message
 
 
 class DynamicEnumPlugin(BaseOntologyPlugin):
@@ -58,6 +58,8 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
         cache_strategy: Literal["progressive", "greedy"] | CacheStrategy = CacheStrategy.PROGRESSIVE,
         offline: bool = False,
         severity_overrides: Optional[SeverityOverrides] = None,
+        check_not4curation: bool = True,
+        not4curation_markers: Optional[Iterable[str]] = None,
     ):
         """Initialize dynamic enum plugin.
 
@@ -73,6 +75,9 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
                 and resolve everything exclusively from the file cache
             severity_overrides: Mapping of ErrorMode to severity, e.g.
                 ``{"dynamic_enum_validation": "WARN"}``
+            check_not4curation: If True (default), flag an enum member whose
+                ontology marks it as not for annotation (#70)
+            not4curation_markers: Custom marker substrings; None uses defaults
         """
         super().__init__(
             oak_adapter_string=oak_adapter_string,
@@ -84,6 +89,8 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
             oak_config_path=oak_config_path,
             cache_strategy=cache_strategy,
             offline=offline,
+            check_not4curation=check_not4curation,
+            not4curation_markers=not4curation_markers,
         )
         self.schema_view = None
         self.expanded_enums: dict[str, set[str]] = {}
@@ -211,6 +218,14 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
                         f"allowed_values: {len(allowed_values)} terms",
                     ],
                 )
+                continue
+
+            # Membership passed. The closure (and its cache) includes every
+            # descendant, flagged or not, so the "do not annotate" check has to
+            # run on the accepted value itself.
+            yield from self._check_not4curation(
+                val_str, enum_name, slot_name, instance, target_class, "validation: greedy"
+            )
 
     def _validate_enum_value_progressive(
         self,
@@ -278,3 +293,57 @@ class DynamicEnumPlugin(BaseOntologyPlugin):
                         validation_note,
                     ],
                 )
+                continue
+
+            # Membership passed, possibly straight from the enum cache. A cached
+            # positive hit says nothing about a "do not annotate" synonym, so the
+            # check runs on the accepted value regardless of how it was accepted.
+            yield from self._check_not4curation(
+                val_str,
+                enum_def.name or "unknown",
+                slot_name,
+                instance,
+                target_class,
+                "validation: progressive",
+            )
+
+    def _check_not4curation(
+        self,
+        value: str,
+        enum_name: str,
+        slot_name: str,
+        instance: dict,
+        target_class: str,
+        validation_note: str,
+    ) -> Iterator[ValidationResult]:
+        """Report an accepted enum value its ontology marks as not for annotation.
+
+        Args:
+            value: The CURIE that passed enum membership
+            enum_name: Name of the enum it was accepted into
+            slot_name: Name of the slot
+            instance: Full instance being validated
+            target_class: Name of the class being validated
+            validation_note: Context line naming the membership path taken
+
+        Yields:
+            One ``dynamic_enum_not4curation`` result if the term is flagged
+        """
+        markers = self.not4curation_markers_for(value)
+        if not markers:
+            return
+        yield ValidationResult(
+            type="dynamic_enum_not4curation",
+            severity=self.severity_for(ErrorMode.DYNAMIC_ENUM_NOT4CURATION),
+            message=(
+                f"{not4curation_message(value, markers)}; "
+                f"accepted into dynamic enum '{enum_name}' but should not be used"
+            ),
+            instance=instance,
+            instantiates=target_class,
+            context=[
+                f"slot: {slot_name}",
+                f"enum: {enum_name}",
+                f"{validation_note} (not4curation marker)",
+            ],
+        )
