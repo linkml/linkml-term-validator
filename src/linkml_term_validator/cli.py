@@ -81,6 +81,27 @@ _SEVERITY_EMOJI = {
 }
 
 
+def _effective_fail_on(fail_on: FailOn, strict: bool) -> FailOn:
+    """Fold ``--strict`` into the ``--fail-on`` threshold.
+
+    ``--strict`` promises that a WARN exits non-zero. It never loosens anything:
+    ``any`` already fails on warnings and stays ``any``; only ``error`` is raised
+    to ``warn``. This keeps ``--strict`` a stable pin for CI regardless of what
+    the default threshold does in a given release.
+
+    Examples:
+        >>> _effective_fail_on(FailOn.ERROR, strict=True)
+        <FailOn.WARN: 'warn'>
+        >>> _effective_fail_on(FailOn.ANY, strict=True)
+        <FailOn.ANY: 'any'>
+        >>> _effective_fail_on(FailOn.ERROR, strict=False)
+        <FailOn.ERROR: 'error'>
+    """
+    if strict and fail_on == FailOn.ERROR:
+        return FailOn.WARN
+    return fail_on
+
+
 def _counts_as_failure(results: list, fail_on: FailOn) -> bool:
     """Decide whether a file's results should make the process exit non-zero.
 
@@ -350,6 +371,16 @@ def validate_data(
             ),
         ),
     ] = FailOn.ANY,
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict",
+            help=(
+                "Treat warnings as errors: guarantee that WARN results exit non-zero, "
+                "even when --fail-on error would otherwise let them pass"
+            ),
+        ),
+    ] = False,
 ):
     """Validate data against dynamic enums and binding constraints.
 
@@ -364,12 +395,16 @@ def validate_data(
     linkml-validate decides its exit code, which is what makes a
     severity_overrides demotion take effect here too.
 
+    --strict is the stable way for CI to insist that warnings fail. It mirrors
+    --strict on validate-schema and always wins over --fail-on error.
+
     Examples:
         linkml-term-validator validate-data data.yaml --schema schema.yaml
         linkml-term-validator validate-data data.yaml -s schema.yaml -t Person
         linkml-term-validator validate-data *.yaml -s schema.yaml --labels
         linkml-term-validator validate-data data.yaml -s schema.yaml --offline
         linkml-term-validator validate-data data.yaml -s schema.yaml --fail-on error
+        linkml-term-validator validate-data data.yaml -s schema.yaml --strict
     """
     # Verify all data files exist
     for data_path in data_paths:
@@ -379,6 +414,9 @@ def validate_data(
 
     # Parse cache strategy
     strategy = CacheStrategy(cache_strategy)
+
+    # --strict can only tighten the threshold, never loosen it.
+    fail_on = _effective_fail_on(fail_on, strict)
 
     # Build plugin list based on options
     plugins = []
@@ -514,7 +552,7 @@ def validate_all(
         bool,
         typer.Option(
             "--strict",
-            help="Treat all warnings as errors (schema validation)",
+            help="Treat all warnings as errors",
         ),
     ] = False,
     lenient: Annotated[
@@ -582,11 +620,24 @@ def validate_all(
             help="Force offline validation: resolve only from the cache, never access ontology services",
         ),
     ] = False,
+    fail_on: Annotated[
+        FailOn,
+        typer.Option(
+            "--fail-on",
+            help=(
+                "Data validation: which results cause a non-zero exit: 'any' (default), "
+                "'error' (matching linkml-validate), or 'warn'"
+            ),
+        ),
+    ] = FailOn.ANY,
 ):
     """Validate schemas or data (auto-detect mode).
 
     - If --schema is NOT provided: validates input as a LinkML schema
     - If --schema IS provided: validates input as data against the schema
+
+    --strict applies in both modes. For data it guarantees warnings exit
+    non-zero, whatever --fail-on says.
 
     Examples:
         # Schema validation (default)
@@ -616,6 +667,8 @@ def validate_all(
             config=config,
             cache_strategy=cache_strategy,
             offline=offline,
+            fail_on=fail_on,
+            strict=strict,
         )
     else:
         # Schema validation mode (backward compatible) - call validate_schema directly

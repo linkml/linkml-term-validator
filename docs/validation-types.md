@@ -289,7 +289,15 @@ Use `--strict` to treat all warnings as errors:
 
 ```bash
 linkml-term-validator validate-schema --strict schema.yaml
+linkml-term-validator validate-data data.yaml -s schema.yaml --strict
 ```
+
+On `validate-data`, `--strict` guarantees that a `WARN` exits non-zero. It
+only ever tightens the threshold: with the default `--fail-on any` it changes
+nothing, and with `--fail-on error` it raises the threshold to `warn`. Pin it
+in CI when you want warnings to fail regardless of what the default does in
+a given release. The `validate` command accepts `--strict` and `--fail-on`
+in data mode too.
 
 ## See Also
 

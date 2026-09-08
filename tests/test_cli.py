@@ -755,3 +755,76 @@ def test_fail_on_rejects_unknown_value(runner, fail_on_fixtures):
     schema, data_path, config = fail_on_fixtures
     result = runner.invoke(app, _fail_on_args(schema, data_path, config, "--fail-on", "nonsense"))
     assert result.exit_code != 0
+
+
+# =============================================================================
+# --strict on validate-data (issue #29)
+#
+# CI needs a flag it can pin that means "warnings fail", independent of what the
+# default --fail-on threshold happens to be in a given release. --strict only
+# ever tightens the threshold: it turns --fail-on error into --fail-on warn and
+# leaves the default (any) alone.
+# =============================================================================
+
+
+def test_validate_data_help_shows_strict(runner):
+    """--strict must be discoverable on validate-data, as it is on validate-schema."""
+    result = runner.invoke(app, ["validate-data", "--help"])
+    assert result.exit_code == 0
+    assert "--strict" in result.output
+
+
+def test_strict_warning_exits_0_without_and_1_with(runner, fail_on_fixtures):
+    """The contract from the issue: under a warning-tolerant threshold, a
+    warning-producing run exits 0 without --strict and 1 with it."""
+    schema, data_path, config = fail_on_fixtures
+    lax = _fail_on_args(schema, data_path, config, "--fail-on", "error")
+    assert runner.invoke(app, lax).exit_code == 0
+    strict = _fail_on_args(schema, data_path, config, "--fail-on", "error", "--strict")
+    result = runner.invoke(app, strict)
+    assert result.exit_code == 1
+    assert "WARN" in result.output
+
+
+def test_strict_alone_still_fails_on_a_warning(runner, fail_on_fixtures):
+    """--strict on its own must not loosen the default: a WARN still exits 1."""
+    schema, data_path, config = fail_on_fixtures
+    result = runner.invoke(app, _fail_on_args(schema, data_path, config, "--strict"))
+    assert result.exit_code == 1
+
+
+def test_strict_reports_effective_threshold(runner, fail_on_fixtures):
+    """When --strict overrides --fail-on error, the exit is a failure, not the
+    "none at or above the threshold" note."""
+    schema, data_path, config = fail_on_fixtures
+    result = runner.invoke(
+        app, _fail_on_args(schema, data_path, config, "--fail-on", "error", "--strict")
+    )
+    assert "none at or above" not in result.output
+
+
+def _validate_data_mode_args(schema, data_path, config, *extra):
+    return [
+        "validate",
+        str(data_path),
+        "-s",
+        str(schema),
+        "-a",
+        "simpleobo:tests/data/test_ontology.obo",
+        "-c",
+        str(config),
+        "--no-cache",
+        *extra,
+    ]
+
+
+def test_validate_command_data_mode_propagates_strict(runner, fail_on_fixtures):
+    """`validate --schema` delegates to validate-data and must carry --strict
+    and --fail-on across, not just in schema mode."""
+    schema, data_path, config = fail_on_fixtures
+    lax = _validate_data_mode_args(schema, data_path, config, "--fail-on", "error")
+    assert runner.invoke(app, lax).exit_code == 0
+    strict = _validate_data_mode_args(
+        schema, data_path, config, "--fail-on", "error", "--strict"
+    )
+    assert runner.invoke(app, strict).exit_code == 1
