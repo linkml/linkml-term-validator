@@ -292,12 +292,20 @@ linkml-term-validator validate-schema --strict schema.yaml
 linkml-term-validator validate-data data.yaml -s schema.yaml --strict
 ```
 
+The flag does not mean quite the same thing on the two commands:
+
+| Command | What `--strict` does |
+|---------|----------------------|
+| `validate-schema` | Promotes warnings to `ERROR` in the report itself. Counts and printed severities change. |
+| `validate-data` | Changes the exit code only. Results still print as `WARN`. |
+
 On `validate-data`, `--strict` guarantees that a `WARN` exits non-zero. It
 only ever tightens the threshold: with the default `--fail-on any` it changes
 nothing, and with `--fail-on error` it raises the threshold to `warn`. Pin it
 in CI when you want warnings to fail regardless of what the default does in
-a given release. The `validate` command accepts `--strict` and `--fail-on`
-in data mode too.
+a given release. It cannot be combined with `--lenient`, which switches
+term-existence checks off entirely; the command rejects the pair. The
+`validate` command accepts `--strict` and `--fail-on` in data mode too.
 
 ## See Also
 

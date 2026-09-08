@@ -793,14 +793,54 @@ def test_strict_alone_still_fails_on_a_warning(runner, fail_on_fixtures):
     assert result.exit_code == 1
 
 
-def test_strict_reports_effective_threshold(runner, fail_on_fixtures):
-    """When --strict overrides --fail-on error, the exit is a failure, not the
-    "none at or above the threshold" note."""
+def test_strict_does_not_loosen_for_info(runner, fail_on_fixtures):
+    """Demoted to INFO, the mismatch is below even the raised threshold. The run
+    must exit 0 and the note must name what the user typed and what --strict
+    did to it, not just the effective value."""
+    schema, data_path, _ = fail_on_fixtures
+    info_config = data_path.parent / "oak_info.yaml"
+    info_config.write_text(
+        "ontology_adapters:\n"
+        "  TEST: simpleobo:tests/data/test_ontology.obo\n"
+        "severity_overrides:\n"
+        "  binding_label_mismatch: INFO\n"
+    )
+    result = runner.invoke(
+        app, _fail_on_args(schema, data_path, info_config, "--fail-on", "error", "--strict")
+    )
+    assert result.exit_code == 0
+    assert "INFO" in result.output
+    assert "--fail-on error (raised to warn by --strict) threshold" in result.output
+
+
+def test_strict_note_unchanged_when_strict_is_a_no_op(runner, fail_on_fixtures):
+    """Under the default threshold --strict changes nothing, so the note must
+    not claim it raised anything. Reached only with an all-INFO run."""
+    schema, data_path, _ = fail_on_fixtures
+    info_config = data_path.parent / "oak_info.yaml"
+    info_config.write_text(
+        "ontology_adapters:\n"
+        "  TEST: simpleobo:tests/data/test_ontology.obo\n"
+        "severity_overrides:\n"
+        "  binding_label_mismatch: INFO\n"
+    )
+    result = runner.invoke(
+        app, _fail_on_args(schema, data_path, info_config, "--fail-on", "warn", "--strict")
+    )
+    assert result.exit_code == 0
+    assert "--fail-on warn threshold" in result.output
+    assert "raised" not in result.output
+
+
+def test_strict_rejects_lenient(runner, fail_on_fixtures):
+    """--lenient turns term-existence checks off, so --strict could not make
+    them fail. The pair is a usage error, not a silent override."""
     schema, data_path, config = fail_on_fixtures
     result = runner.invoke(
-        app, _fail_on_args(schema, data_path, config, "--fail-on", "error", "--strict")
+        app, _fail_on_args(schema, data_path, config, "--strict", "--lenient")
     )
-    assert "none at or above" not in result.output
+    assert result.exit_code == 2
+    assert "--strict and --lenient conflict" in result.output
 
 
 def _validate_data_mode_args(schema, data_path, config, *extra):
@@ -828,3 +868,23 @@ def test_validate_command_data_mode_propagates_strict(runner, fail_on_fixtures):
         schema, data_path, config, "--fail-on", "error", "--strict"
     )
     assert runner.invoke(app, strict).exit_code == 1
+
+
+def test_validate_command_data_mode_rejects_strict_lenient(runner, fail_on_fixtures):
+    """The conflict check lives in validate-data, so it must fire through
+    `validate --schema` as well."""
+    schema, data_path, config = fail_on_fixtures
+    result = runner.invoke(
+        app, _validate_data_mode_args(schema, data_path, config, "--strict", "--lenient")
+    )
+    assert result.exit_code == 2
+    assert "--strict and --lenient conflict" in result.output
+
+
+def test_validate_command_schema_mode_strict_unchanged(runner, examples_dir):
+    """Schema mode did not change: --strict on a clean schema still exits 0."""
+    schema_path = examples_dir / "simple_schema.yaml"
+    result = runner.invoke(
+        app, ["validate", str(schema_path), "--strict", "--cache-dir", "cache"]
+    )
+    assert result.exit_code == 0

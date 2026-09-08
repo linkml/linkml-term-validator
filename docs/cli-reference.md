@@ -66,7 +66,7 @@ linkml-term-validator validate-data [OPTIONS] DATA_PATHS...
 | `--cache-strategy` | `progressive` | `progressive` for lazy checks or `greedy` for upfront expansion |
 | `--offline` | `false` | Resolve only from the cache; never build OAK adapters |
 | `--fail-on` | `any` | Which results exit non-zero: `any`, `error` (matches `linkml-validate`), or `warn` |
-| `--strict` | `false` | Treat warnings as errors: guarantees `WARN` exits non-zero, overriding `--fail-on error` |
+| `--strict` | `false` | Exit non-zero on warnings, overriding `--fail-on error`. Exit code only; results still print as `WARN`. Conflicts with `--lenient` |
 
 Examples:
 
@@ -107,6 +107,9 @@ linkml-term-validator validate schema.yaml
 
 # Data validation
 linkml-term-validator validate data.yaml --schema schema.yaml
+
+# Data validation, exit code decided by severity as linkml-validate does
+linkml-term-validator validate data.yaml --schema schema.yaml --fail-on error
 
 # Data validation, warnings fail regardless of --fail-on
 linkml-term-validator validate data.yaml --schema schema.yaml --strict
