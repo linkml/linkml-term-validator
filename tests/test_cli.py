@@ -793,10 +793,9 @@ def test_strict_alone_still_fails_on_a_warning(runner, fail_on_fixtures):
     assert result.exit_code == 1
 
 
-def test_strict_does_not_loosen_for_info(runner, fail_on_fixtures):
-    """Demoted to INFO, the mismatch is below even the raised threshold. The run
-    must exit 0 and the note must name what the user typed and what --strict
-    did to it, not just the effective value."""
+@pytest.fixture
+def info_fixtures(fail_on_fixtures):
+    """Same schema and data, with the mismatch demoted all the way to INFO."""
     schema, data_path, _ = fail_on_fixtures
     info_config = data_path.parent / "oak_info.yaml"
     info_config.write_text(
@@ -805,42 +804,44 @@ def test_strict_does_not_loosen_for_info(runner, fail_on_fixtures):
         "severity_overrides:\n"
         "  binding_label_mismatch: INFO\n"
     )
+    return schema, data_path, info_config
+
+
+def test_strict_does_not_loosen_for_info(runner, info_fixtures):
+    """Demoted to INFO, the mismatch is below even the raised threshold. The run
+    must exit 0 and the note must name what the user typed and what --strict
+    did to it, not just the effective value."""
+    schema, data_path, config = info_fixtures
     result = runner.invoke(
-        app, _fail_on_args(schema, data_path, info_config, "--fail-on", "error", "--strict")
+        app, _fail_on_args(schema, data_path, config, "--fail-on", "error", "--strict")
     )
     assert result.exit_code == 0
     assert "INFO" in result.output
     assert "--fail-on error (raised to warn by --strict) threshold" in result.output
 
 
-def test_strict_note_unchanged_when_strict_is_a_no_op(runner, fail_on_fixtures):
-    """Under the default threshold --strict changes nothing, so the note must
-    not claim it raised anything. Reached only with an all-INFO run."""
-    schema, data_path, _ = fail_on_fixtures
-    info_config = data_path.parent / "oak_info.yaml"
-    info_config.write_text(
-        "ontology_adapters:\n"
-        "  TEST: simpleobo:tests/data/test_ontology.obo\n"
-        "severity_overrides:\n"
-        "  binding_label_mismatch: INFO\n"
-    )
+def test_strict_note_unchanged_when_strict_is_a_no_op(runner, info_fixtures):
+    """Under a threshold already at or above warn, --strict changes nothing, so
+    the note must not claim it raised anything. Reached only with an all-INFO run."""
+    schema, data_path, config = info_fixtures
     result = runner.invoke(
-        app, _fail_on_args(schema, data_path, info_config, "--fail-on", "warn", "--strict")
+        app, _fail_on_args(schema, data_path, config, "--fail-on", "warn", "--strict")
     )
     assert result.exit_code == 0
     assert "--fail-on warn threshold" in result.output
-    assert "raised" not in result.output
+    assert "(raised to" not in result.output
 
 
-def test_strict_rejects_lenient(runner, fail_on_fixtures):
-    """--lenient turns term-existence checks off, so --strict could not make
-    them fail. The pair is a usage error, not a silent override."""
+def test_strict_and_lenient_are_independent(runner, fail_on_fixtures):
+    """--lenient only skips the term-existence check. A label mismatch is still
+    reported, and --strict still makes that WARN exit 1. The pair is accepted
+    because it means exactly --fail-on warn --lenient."""
     schema, data_path, config = fail_on_fixtures
     result = runner.invoke(
         app, _fail_on_args(schema, data_path, config, "--strict", "--lenient")
     )
-    assert result.exit_code == 2
-    assert "--strict and --lenient conflict" in result.output
+    assert result.exit_code == 1
+    assert "WARN" in result.output
 
 
 def _validate_data_mode_args(schema, data_path, config, *extra):
@@ -868,17 +869,6 @@ def test_validate_command_data_mode_propagates_strict(runner, fail_on_fixtures):
         schema, data_path, config, "--fail-on", "error", "--strict"
     )
     assert runner.invoke(app, strict).exit_code == 1
-
-
-def test_validate_command_data_mode_rejects_strict_lenient(runner, fail_on_fixtures):
-    """The conflict check lives in validate-data, so it must fire through
-    `validate --schema` as well."""
-    schema, data_path, config = fail_on_fixtures
-    result = runner.invoke(
-        app, _validate_data_mode_args(schema, data_path, config, "--strict", "--lenient")
-    )
-    assert result.exit_code == 2
-    assert "--strict and --lenient conflict" in result.output
 
 
 def test_validate_command_schema_mode_strict_unchanged(runner, examples_dir):

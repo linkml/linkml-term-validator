@@ -96,6 +96,8 @@ def _effective_fail_on(fail_on: FailOn, strict: bool) -> FailOn:
         <FailOn.ANY: 'any'>
         >>> _effective_fail_on(FailOn.ERROR, strict=False)
         <FailOn.ERROR: 'error'>
+        >>> _effective_fail_on(FailOn.WARN, strict=True)
+        <FailOn.WARN: 'warn'>
     """
     if strict and fail_on == FailOn.ERROR:
         return FailOn.WARN
@@ -377,7 +379,7 @@ def validate_data(
             "--strict",
             help=(
                 "Exit non-zero on warnings, even under --fail-on error. Affects the "
-                "exit code only; results still print as WARN. Conflicts with --lenient"
+                "exit code only; results still print as WARN"
             ),
         ),
     ] = False,
@@ -398,8 +400,9 @@ def validate_data(
     --strict is the stable way for CI to insist that warnings fail. It raises
     --fail-on error to warn and leaves the default alone. Unlike --strict on
     validate-schema, it does not promote warnings to ERROR in the report: it
-    changes the exit code only, and results still print as WARN. It cannot be
-    combined with --lenient, which switches term-existence checks off.
+    changes the exit code only, and results still print as WARN. It does not
+    re-enable anything --lenient switched off: the two flags are independent,
+    and --strict --lenient means the same as --fail-on warn --lenient.
 
     Examples:
         linkml-term-validator validate-data data.yaml --schema schema.yaml
@@ -417,12 +420,6 @@ def validate_data(
 
     # Parse cache strategy
     strategy = CacheStrategy(cache_strategy)
-
-    if strict and lenient:
-        raise typer.BadParameter(
-            "--strict and --lenient conflict: --lenient switches term-existence "
-            "checks off, so --strict could not make them fail. Drop one."
-        )
 
     # --strict can only tighten the threshold, never loosen it. The requested
     # value is kept so messages can say what the user typed.
@@ -655,7 +652,7 @@ def validate_all(
 
     --strict applies in both modes. In schema mode it promotes warnings to
     ERROR in the report. In data mode it only makes warnings exit non-zero,
-    whatever --fail-on says, and it conflicts with --lenient.
+    whatever --fail-on says. It does not re-enable checks --lenient turned off.
 
     Examples:
         # Schema validation (default)

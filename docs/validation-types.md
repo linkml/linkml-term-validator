@@ -303,9 +303,14 @@ On `validate-data`, `--strict` guarantees that a `WARN` exits non-zero. It
 only ever tightens the threshold: with the default `--fail-on any` it changes
 nothing, and with `--fail-on error` it raises the threshold to `warn`. Pin it
 in CI when you want warnings to fail regardless of what the default does in
-a given release. It cannot be combined with `--lenient`, which switches
-term-existence checks off entirely; the command rejects the pair. The
-`validate` command accepts `--strict` and `--fail-on` in data mode too.
+a given release.
+
+`--strict` and `--lenient` are independent. `--lenient` turns off the binding
+term-existence check (except under `--offline`, where it always runs), and
+`--strict` does not bring it back. `--strict --lenient` means the same as
+`--fail-on warn --lenient`: skip existence checks, but fail on any warning
+that is still reported, such as a label mismatch. The `validate` command
+accepts `--strict` and `--fail-on` in data mode too.
 
 ## See Also
 

@@ -66,7 +66,7 @@ linkml-term-validator validate-data [OPTIONS] DATA_PATHS...
 | `--cache-strategy` | `progressive` | `progressive` for lazy checks or `greedy` for upfront expansion |
 | `--offline` | `false` | Resolve only from the cache; never build OAK adapters |
 | `--fail-on` | `any` | Which results exit non-zero: `any`, `error` (matches `linkml-validate`), or `warn` |
-| `--strict` | `false` | Exit non-zero on warnings, overriding `--fail-on error`. Exit code only; results still print as `WARN`. Conflicts with `--lenient` |
+| `--strict` | `false` | Exit non-zero on warnings, overriding `--fail-on error`. Exit code only; results still print as `WARN`. Does not re-enable checks `--lenient` turned off |
 
 Examples:
 
