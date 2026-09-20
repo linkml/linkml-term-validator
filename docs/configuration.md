@@ -20,6 +20,10 @@ check_not4curation: true
 #   - not4curation
 #   - not_recommended_for_annotation
 
+# Riding out a transient ontology-service failure (optional; defaults shown)
+service_retries: 2          # extra attempts; 0 fails fast
+service_retry_backoff: 1.0  # seconds before the first retry, doubling thereafter
+
 # Ontology adapter mappings
 ontology_adapters:
   # Prefix: adapter_string
@@ -34,8 +38,18 @@ or CLI flag. `cache_strategy` (and `cache_enum_expansions`,
 is the single place a project pins its cache behavior. `check_not4curation`
 and `not4curation_markers` do the reverse: an explicit constructor argument or
 CLI flag wins, and the file fills in only what was left unset, so a flag typed
-on the command line is never silently ignored. `severity_overrides` follows
-the same rule as the Not4Curation keys.
+on the command line is never silently ignored. `severity_overrides`,
+`service_retries` and `service_retry_backoff` follow the same rule as the
+Not4Curation keys.
+
+`service_retries` and `service_retry_backoff` decide how long a lookup waits
+out a service that reports itself unavailable — a connect or read timeout, a
+5xx, a 429 — before the run gives up with exit code 2. Only that case is
+retried: a term that does not exist, or whose label is wrong, is a definitive
+answer and is never re-asked. The defaults make up to three attempts spaced 1s
+and 2s apart, which is enough to survive the stalled request that otherwise
+fails a CI build whose data is fine; `service_retries: 0` restores fail-fast
+behavior.
 
 ### Using the Config File
 

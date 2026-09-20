@@ -71,6 +71,8 @@ class BaseOntologyPlugin(ValidationPlugin):
         severity_overrides: Optional[SeverityOverrides] = None,
         check_not4curation: Optional[bool] = None,
         not4curation_markers: Optional[Iterable[str]] = None,
+        service_retries: Optional[int] = None,
+        service_retry_backoff: Optional[float] = None,
     ):
         """Initialize base ontology plugin.
 
@@ -102,6 +104,15 @@ class BaseOntologyPlugin(ValidationPlugin):
                 An explicit list wins over the config file; ``None`` takes
                 the config file's ``not4curation_markers`` if present, else
                 the built-in defaults.
+            service_retries: How many extra attempts a lookup gets while the
+                ontology service reports itself unavailable (a timeout, a 5xx,
+                a 429), so one stalled request does not fail the run. An
+                explicit value wins over the config file's ``service_retries``;
+                ``None`` takes that if present, else 2. ``0`` fails fast.
+            service_retry_backoff: Seconds before the first retry, doubling for
+                each further one. An explicit value wins over the config file's
+                ``service_retry_backoff``; ``None`` takes that if present,
+                else 1.0.
         """
         # Convert string to enum if needed
         if isinstance(cache_strategy, str):
@@ -124,6 +135,8 @@ class BaseOntologyPlugin(ValidationPlugin):
             not4curation_markers=(
                 list(not4curation_markers) if not4curation_markers is not None else None
             ),
+            service_retries=service_retries,
+            service_retry_backoff=service_retry_backoff,
         )
         # Remember what was passed explicitly, so _load_oak_config_extras can
         # let the config file fill only the unset values.
@@ -138,6 +151,8 @@ class BaseOntologyPlugin(ValidationPlugin):
             oak_config_path=self.config.oak_config_path,
             offline=self.config.offline,
             not4curation_markers=self.config.not4curation_markers,
+            service_retries=self.config.service_retries,
+            service_retry_backoff=self.config.service_retry_backoff,
         )
 
         # Enum-expansion caches (plugin-specific, not shared).
@@ -821,7 +836,7 @@ class BaseOntologyPlugin(ValidationPlugin):
                     # value must be an ancestor of source_node (we traverse up
                     # from the source), i.e. value appears among source_node's
                     # ancestors.
-                    ancestors = self._call_graph_traversal(
+                    ancestors = self._traverse(
                         adapter=adapter,
                         method_name="ancestors",
                         start_curie=source_node,
@@ -833,7 +848,7 @@ class BaseOntologyPlugin(ValidationPlugin):
                 else:
                     # value must be a descendant of source_node, i.e. source_node
                     # appears among value's ancestors.
-                    ancestors = self._call_graph_traversal(
+                    ancestors = self._traverse(
                         adapter=adapter,
                         method_name="ancestors",
                         start_curie=value,
@@ -858,6 +873,32 @@ class BaseOntologyPlugin(ValidationPlugin):
                 continue
 
         return False
+
+    def _traverse(
+        self,
+        adapter: object,
+        method_name: str,
+        start_curie: str,
+        predicates: list[str],
+        reflexive: bool,
+    ) -> set[str]:
+        """Call an OAK traversal method, riding out a transient service outage.
+
+        Graph traversal is the other half of the work that talks to an ontology
+        service (``OntologyAccess`` covers label, obsolescence and alias
+        lookups), so it gets the same retry policy: a stalled request costs a
+        backoff, not the run.
+        """
+        return self.ontology.retry_service_call(
+            lambda: self._call_graph_traversal(
+                adapter=adapter,
+                method_name=method_name,
+                start_curie=start_curie,
+                predicates=predicates,
+                reflexive=reflexive,
+            ),
+            f"traversing {method_name} from {start_curie}",
+        )
 
     @staticmethod
     def _call_graph_traversal(
@@ -1119,7 +1160,7 @@ class BaseOntologyPlugin(ValidationPlugin):
         for source_node in query.source_nodes:
             if query.traverse_up:
                 # Get ancestors
-                ancestors_result = self._call_graph_traversal(
+                ancestors_result = self._traverse(
                     adapter=adapter,
                     method_name="ancestors",
                     start_curie=source_node,
@@ -1130,7 +1171,7 @@ class BaseOntologyPlugin(ValidationPlugin):
                     values.update(ancestors_result)
             else:
                 # Get descendants (default)
-                descendants_result = self._call_graph_traversal(
+                descendants_result = self._traverse(
                     adapter=adapter,
                     method_name="descendants",
                     start_curie=source_node,

@@ -223,3 +223,24 @@ CLI flag > `oak_config.yaml` > default (on, default markers); `None` means
 `parse_not4curation_config()` so they cannot drift. For OLS, aliases come from
 the term payload; a payload with no `synonyms`/`obo_synonym` key at all is
 treated as unchecked, not clean.
+
+### Transient Service Failures
+
+A remote ontology service (EBI's OLS above all) stalls or drops the occasional
+request without being down, and an unreachable service aborts the run with exit
+code 2, so one stalled request used to fail a CI build whose data was fine — on
+whichever CURIE happened to be in flight. Every lookup that raises
+`OntologyServiceUnavailableError` (connect/read timeout, 5xx, 408, 429) is
+therefore retried under a `RetryPolicy`: `service_retries` extra attempts (2 by
+default) with an exponential `service_retry_backoff` (1s, then 2s). Only that
+error is retried — a missing term or a wrong label is a definitive answer and is
+never re-asked, so no data error is ever papered over. `OntologyAccess` funnels
+its network-touching methods (`get_label`, `is_obsolete`, `entity_aliases`)
+through `retry_service_call()`, and `BaseOntologyPlugin._traverse()` does the
+same for graph traversal; new call sites that reach a service belong behind one
+of those. Precedence matches the Not4Curation keys: explicit constructor
+argument or CLI flag (`--retries`, `--retry-wait`) > `oak_config.yaml`
+(`service_retries`, `service_retry_backoff`) > defaults; `None` means "unset",
+`0` restores fail-fast. Tests never wait out a real backoff: the autouse
+`instant_retry_backoff` fixture in `tests/conftest.py` zeroes the default, and a
+test that cares about the delays passes its own policy or `_sleep`.

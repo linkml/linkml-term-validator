@@ -133,8 +133,9 @@ def _fail_service_unavailable(exc: OntologyServiceUnavailableError) -> typer.Exi
         "\n🌐 Unable to validate at this time: ontology service unavailable.\n"
         f"   {exc}\n"
         "   Terms could not be checked; this is not a data error. "
-        "Retry when the ontology service is reachable, or use --offline to "
-        "validate against the local cache only.",
+        "The lookup was already retried (see --retries/--retry-wait); retry when "
+        "the ontology service is reachable, or use --offline to validate against "
+        "the local cache only.",
         err=True,
     )
     return typer.Exit(code=EXIT_SERVICE_UNAVAILABLE)
@@ -170,6 +171,34 @@ def _echo_not4curation_unchecked(unchecked: set[str], offline: bool) -> None:
         typer.echo(f"  ... and {remaining} more")
     if offline:
         typer.echo("  Run once online to check these terms.")
+
+
+# The retry knobs are shared verbatim by every command that resolves terms
+# against an ontology service, so the four cannot drift apart.
+RetriesOption = Annotated[
+    Optional[int],
+    typer.Option(
+        "--retries",
+        min=0,
+        help=(
+            "Extra attempts while the ontology service reports itself unavailable "
+            "(a timeout, a 5xx, a 429), so one stalled request does not fail the "
+            "run. Default: 2, unless oak_config.yaml sets service_retries; "
+            "0 fails fast"
+        ),
+    ),
+]
+RetryWaitOption = Annotated[
+    Optional[float],
+    typer.Option(
+        "--retry-wait",
+        min=0,
+        help=(
+            "Seconds to wait before the first retry, doubling for each further "
+            "one. Default: 1.0, unless oak_config.yaml sets service_retry_backoff"
+        ),
+    ),
+]
 
 
 @app.command()
@@ -237,6 +266,8 @@ def validate_schema(
             ),
         ),
     ] = None,
+    service_retries: RetriesOption = None,
+    service_retry_backoff: RetryWaitOption = None,
     verbose: Annotated[
         bool,
         typer.Option(
@@ -264,6 +295,8 @@ def validate_schema(
         oak_config_path=config,
         offline=offline,
         check_not4curation=check_not4curation,
+        service_retries=service_retries,
+        service_retry_backoff=service_retry_backoff,
     )
 
     validator = EnumValidator(validation_config)
@@ -443,6 +476,8 @@ def validate_data(
             ),
         ),
     ] = None,
+    service_retries: RetriesOption = None,
+    service_retry_backoff: RetryWaitOption = None,
 ):
     """Validate data against dynamic enums and binding constraints.
 
@@ -502,6 +537,8 @@ def validate_data(
                 cache_strategy=strategy,
                 offline=offline,
                 check_not4curation=check_not4curation,
+                service_retries=service_retries,
+                service_retry_backoff=service_retry_backoff,
             )
         )
 
@@ -519,6 +556,8 @@ def validate_data(
                 cache_strategy=strategy,
                 offline=offline,
                 check_not4curation=check_not4curation,
+                service_retries=service_retries,
+                service_retry_backoff=service_retry_backoff,
             )
         )
 
@@ -732,6 +771,8 @@ def validate_all(
             ),
         ),
     ] = None,
+    service_retries: RetriesOption = None,
+    service_retry_backoff: RetryWaitOption = None,
 ):
     """Validate schemas or data (auto-detect mode).
 
@@ -773,6 +814,8 @@ def validate_all(
             fail_on=fail_on,
             strict=strict,
             check_not4curation=check_not4curation,
+            service_retries=service_retries,
+            service_retry_backoff=service_retry_backoff,
         )
     else:
         # Schema validation mode (backward compatible) - call validate_schema directly
@@ -785,6 +828,8 @@ def validate_all(
             config=config,
             offline=offline,
             check_not4curation=check_not4curation,
+            service_retries=service_retries,
+            service_retry_backoff=service_retry_backoff,
             verbose=verbose,
         )
 
@@ -1073,6 +1118,8 @@ def validate_text_file(
             ),
         ),
     ] = None,
+    service_retries: RetriesOption = None,
+    service_retry_backoff: RetryWaitOption = None,
     verbose: Annotated[
         bool,
         typer.Option(
@@ -1140,6 +1187,8 @@ def validate_text_file(
         oak_config_path=config,
         offline=offline,
         check_not4curation=check_not4curation,
+        service_retries=service_retries,
+        service_retry_backoff=service_retry_backoff,
     )
     validator = EnumValidator(validation_config)
 
