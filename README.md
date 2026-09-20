@@ -50,8 +50,10 @@ Installation defaults to the current project. Use `-a codex` or
 npx skills add linkml/linkml-term-validator --skill linkml-term-validator -a codex -g
 ```
 
-The skill provides agent instructions. Install the runtime separately as described
-above; it does not configure credentials, backend services, or data sources.
+The skill helps agents configure ontology QC, interpret failures and coverage,
+and set up repository hooks and CI using bundled reference guides. Install the
+runtime separately as described above; installing the skill does not activate
+hooks or configure CI, credentials, or data sources.
 
 ## Quick Start
 
