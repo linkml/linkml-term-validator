@@ -33,6 +33,26 @@ uv add linkml-term-validator
 ```
 
 
+## Agent skill
+
+Install the [linkml-term-validator workflow skill](skills/linkml-term-validator/SKILL.md) with the
+[skills CLI](https://skills.sh/) (requires Node.js). Preview available skills first:
+
+```bash
+npx skills add linkml/linkml-term-validator --list
+npx skills add linkml/linkml-term-validator --skill linkml-term-validator
+```
+
+Installation defaults to the current project. Use `-a codex` or
+`-a claude-code` to select an agent; add `-g` for your user-wide skills directory:
+
+```bash
+npx skills add linkml/linkml-term-validator --skill linkml-term-validator -a codex -g
+```
+
+The skill provides agent instructions. Install the runtime separately as described
+above; it does not configure credentials, backend services, or data sources.
+
 ## Quick Start
 
 For interactive tutorials, see the [Jupyter notebooks](notebooks/) in the `notebooks/` directory.
