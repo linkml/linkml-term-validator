@@ -1184,11 +1184,17 @@ class BaseOntologyPlugin(ValidationPlugin):
                     reflexive=include_self,
                 )
                 if not descendants_result:
-                    descendants_result = self._ols_descendants(
-                        adapter=adapter,
-                        source_node=source_node,
-                        predicates=predicates,
-                        reflexive=include_self,
+                    # Same retry policy as _traverse: this fallback is the path
+                    # OLS-backed enums actually take when descendants() answers
+                    # nothing, so a stalled page must not end the expansion.
+                    descendants_result = self.ontology.retry_service_call(
+                        lambda: self._ols_descendants(
+                            adapter=adapter,
+                            source_node=source_node,
+                            predicates=predicates,
+                            reflexive=include_self,
+                        ),
+                        f"paging OLS descendants of {source_node}",
                     )
                 if descendants_result:
                     values.update(descendants_result)
@@ -1224,15 +1230,26 @@ class BaseOntologyPlugin(ValidationPlugin):
 
         # OLS4 requires double-encoded IRIs in term-path endpoints.
         encoded_iri = quote(quote(iri, safe=""), safe="")
-        records = client.get_paged(
-            f"ontologies/{focus_ontology}/terms/{encoded_iri}/descendants",
-            key="terms",
-        )
-        values = {
-            record["obo_id"]
-            for record in records
-            if isinstance(record, dict) and isinstance(record.get("obo_id"), str)
-        }
+        # The request AND the iteration of its pages sit inside the guard:
+        # get_paged answers with a generator, so the HTTP calls run while the
+        # set is being built (the same trap as _call_graph_traversal). A network
+        # failure is normalized so it is retried and, if it persists, reported
+        # as "unable to validate" instead of a raw client traceback.
+        try:
+            records = client.get_paged(
+                f"ontologies/{focus_ontology}/terms/{encoded_iri}/descendants",
+                key="terms",
+            )
+            values = {
+                record["obo_id"]
+                for record in records
+                if isinstance(record, dict) and isinstance(record.get("obo_id"), str)
+            }
+        except OntologyServiceUnavailableError:
+            raise
+        except Exception as e:  # noqa: BLE001 - clients raise varied errors
+            raise_if_service_unavailable(source_node, e)
+            raise
         if reflexive:
             values.add(source_node)
         else:

@@ -476,6 +476,93 @@ def test_the_spent_attempts_are_recorded_on_the_error():
     assert exc_info.value.attempts == 3
 
 
+def test_ols_descendant_fallback_retries_a_lazily_raised_timeout(monkeypatch):
+    """The fallback OLS paging is the path OLS-backed enums actually take.
+
+    ``client.get_paged`` is a generator too, so the requests run while the
+    result set is built - it needs the same classification and retry as
+    ``_call_graph_traversal``.
+    """
+
+    class FlakyPagingClient:
+        def __init__(self, failures):
+            self.failures = failures
+            self.calls = 0
+
+        def get_paged(self, path, key):
+            self.calls += 1
+            fails = self.calls <= self.failures
+
+            def pages():
+                yield {"obo_id": "GO:0009987"}
+                if fails:
+                    raise _read_timeout()
+                yield {"obo_id": "GO:0000278"}
+
+            return pages()
+
+    class EmptyDescendantsOlsAdapter:
+        focus_ontology = "go"
+
+        def __init__(self, failures):
+            self.client = FlakyPagingClient(failures)
+
+        def curie_to_uri(self, curie):
+            return f"http://purl.obolibrary.org/obo/{curie.replace(':', '_')}"
+
+        def descendants(self, curies, predicates=None, reflexive=False):
+            return set()
+
+    adapter = EmptyDescendantsOlsAdapter(failures=2)
+    monkeypatch.setattr(oak_utils, "get_adapter", lambda s: adapter)
+    plugin = DynamicEnumPlugin(cache_labels=False, cache_enum_expansions=False)
+
+    query = SimpleNamespace(
+        source_nodes=["GO:0007049"],
+        relationship_types=["rdfs:subClassOf"],
+        traverse_up=False,
+        include_self=False,
+    )
+    values = plugin._expand_reachable_from(query)
+
+    assert values == {"GO:0009987", "GO:0000278"}
+    assert adapter.client.calls == 3
+
+
+def test_ols_descendant_fallback_classifies_a_persistent_timeout(monkeypatch):
+    """Once the retries are spent it is "unable to validate", not a traceback."""
+
+    class DownPagingClient:
+        def get_paged(self, path, key):
+            def pages():
+                yield {"obo_id": "GO:0009987"}
+                raise _read_timeout()
+
+            return pages()
+
+    class DownOlsAdapter:
+        focus_ontology = "go"
+        client = DownPagingClient()
+
+        def curie_to_uri(self, curie):
+            return f"http://purl.obolibrary.org/obo/{curie.replace(':', '_')}"
+
+        def descendants(self, curies, predicates=None, reflexive=False):
+            return set()
+
+    monkeypatch.setattr(oak_utils, "get_adapter", lambda s: DownOlsAdapter())
+    plugin = DynamicEnumPlugin(cache_labels=False, cache_enum_expansions=False)
+
+    query = SimpleNamespace(
+        source_nodes=["GO:0007049"],
+        relationship_types=["rdfs:subClassOf"],
+        traverse_up=False,
+        include_self=False,
+    )
+    with pytest.raises(OntologyServiceUnavailableError):
+        plugin._expand_reachable_from(query)
+
+
 # =============================================================================
 # End to end through the CLI
 # =============================================================================
