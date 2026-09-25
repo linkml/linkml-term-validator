@@ -105,6 +105,8 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         severity_overrides: Optional[SeverityOverrides] = None,
         check_not4curation: Optional[bool] = None,
         not4curation_markers: Optional[Iterable[str]] = None,
+        service_retries: Optional[int] = None,
+        service_retry_backoff: Optional[float] = None,
     ):
         """Initialize binding validation plugin.
 
@@ -130,6 +132,12 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                 defaults to ERROR; demote it via ``severity_overrides``
             not4curation_markers: Custom marker substrings; explicit wins over
                 the config file; None takes the config file's, else defaults
+            service_retries: Extra attempts while the ontology service reports
+                itself unavailable; explicit wins over the config file's
+                ``service_retries``; None takes that, else 2 (0 fails fast)
+            service_retry_backoff: Seconds before the first retry, doubling
+                thereafter; explicit wins over the config file's
+                ``service_retry_backoff``; None takes that, else 1.0
         """
         super().__init__(
             oak_adapter_string=oak_adapter_string,
@@ -143,6 +151,8 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             severity_overrides=severity_overrides,
             check_not4curation=check_not4curation,
             not4curation_markers=not4curation_markers,
+            service_retries=service_retries,
+            service_retry_backoff=service_retry_backoff,
         )
         self.validate_labels = validate_labels
         self.strict = strict

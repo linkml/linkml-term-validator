@@ -19,10 +19,12 @@ import csv
 import logging
 import re
 import socket
-from collections.abc import Iterable, Mapping
+import time
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, TypeVar
 
 from oaklib import get_adapter
 from ruamel.yaml import YAML
@@ -30,6 +32,8 @@ from ruamel.yaml import YAML
 from linkml_term_validator.cache_utils import atomic_write_csv, locked_cache_file
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 
 class OntologyServiceUnavailableError(Exception):
@@ -47,6 +51,9 @@ class OntologyServiceUnavailableError(Exception):
     def __init__(self, curie: str, original: Optional[BaseException] = None):
         self.curie = curie
         self.original = original
+        # Set by retry_on_service_unavailable when it gives up, so a caller can
+        # report how many attempts were spent rather than guessing.
+        self.attempts: Optional[int] = None
         detail = f": {original}" if original is not None else ""
         super().__init__(f"could not reach ontology service to resolve {curie}{detail}")
 
@@ -83,6 +90,24 @@ except Exception:  # pragma: no cover
 _CONNECTIVITY_EXC_TUPLE = tuple(_CONNECTIVITY_EXC_TYPES)
 
 
+def _exception_chain(exc: BaseException) -> Iterator[BaseException]:
+    """Yield an exception and the causes it wraps, outermost first.
+
+    An explicit cause wins; otherwise the implicit context is followed only
+    when it was not suppressed via ``raise ... from None``, so an unrelated
+    in-flight error cannot be mistaken for this one's cause.
+    """
+    seen: set[int] = set()
+    current: Optional[BaseException] = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        yield current
+        next_exc = current.__cause__
+        if next_exc is None and not current.__suppress_context__:
+            next_exc = current.__context__
+        current = next_exc
+
+
 def is_connectivity_error(exc: BaseException) -> bool:
     """Return True if an exception (or its cause chain) is a network outage.
 
@@ -95,19 +120,7 @@ def is_connectivity_error(exc: BaseException) -> bool:
     was explicitly suppressed (``raise ... from None``) is not followed, so an
     unrelated in-flight connection error cannot cause a false positive.
     """
-    seen: set[int] = set()
-    current: Optional[BaseException] = exc
-    while current is not None and id(current) not in seen:
-        seen.add(id(current))
-        if isinstance(current, _CONNECTIVITY_EXC_TUPLE):
-            return True
-        # An explicit cause wins; otherwise follow the implicit context only when
-        # it was not suppressed via ``raise ... from None``.
-        next_exc = current.__cause__
-        if next_exc is None and not current.__suppress_context__:
-            next_exc = current.__context__
-        current = next_exc
-    return False
+    return any(isinstance(link, _CONNECTIVITY_EXC_TUPLE) for link in _exception_chain(exc))
 
 
 def raise_if_service_unavailable(curie: str, exc: BaseException) -> None:
@@ -127,6 +140,268 @@ def raise_if_service_unavailable(curie: str, exc: BaseException) -> None:
     status = getattr(getattr(exc, "response", None), "status_code", None)
     if isinstance(status, int) and (status >= 500 or status in (408, 429)):
         raise OntologyServiceUnavailableError(curie, exc) from exc
+
+
+# =============================================================================
+# Riding out a transient outage
+# =============================================================================
+
+# A remote ontology service (EBI's OLS above all) stalls or drops the occasional
+# request without being down: the next attempt a second later answers normally.
+# Because an unreachable service aborts the whole run with "unable to validate",
+# one stalled request is otherwise enough to fail a CI build that has nothing
+# wrong with it - and the term it fails on is whichever one was in flight, so the
+# failure says nothing about the data (monarch-initiative/dismech#10396). A
+# lookup that reports the service unavailable is therefore retried a bounded
+# number of times, with an exponential backoff, before it is believed.
+DEFAULT_SERVICE_RETRIES = 2
+DEFAULT_SERVICE_RETRY_BACKOFF = 1.0
+# Ceiling on a single wait, so a generous ``retries`` cannot turn into a
+# multi-minute stall: doubling from 1s reaches ~17 minutes by the tenth retry.
+MAX_SERVICE_RETRY_DELAY = 60.0
+
+
+@dataclass(frozen=True)
+class RetryPolicy:
+    """How many times, and how long, to wait out a transient service failure.
+
+    ``retries`` counts the attempts *after* the first, so the defaults make up
+    to three attempts spaced 1s and 2s apart; ``retries=0`` restores fail-fast
+    behavior. Backoff is deterministic (no jitter): these are a handful of
+    sequential lookups from one process, not a thundering herd.
+
+    Examples:
+        >>> RetryPolicy().attempts
+        3
+        >>> [RetryPolicy().delay_for(n) for n in range(2)]
+        [1.0, 2.0]
+        >>> RetryPolicy(retries=0).attempts
+        1
+        >>> RetryPolicy(retries=-1)
+        Traceback (most recent call last):
+        ...
+        ValueError: service_retries must be >= 0, got: -1
+    """
+
+    retries: int = DEFAULT_SERVICE_RETRIES
+    backoff: float = DEFAULT_SERVICE_RETRY_BACKOFF
+
+    def __post_init__(self) -> None:
+        if self.retries < 0:
+            raise ValueError(f"service_retries must be >= 0, got: {self.retries}")
+        if self.backoff < 0:
+            raise ValueError(f"service_retry_backoff must be >= 0, got: {self.backoff}")
+
+    @property
+    def attempts(self) -> int:
+        """Total attempts a call gets: the first one plus the retries."""
+        return self.retries + 1
+
+    def delay_for(self, attempt: int) -> float:
+        """Seconds to wait after ``attempt`` (0-based) failed attempts.
+
+        The doubling is capped at :data:`MAX_SERVICE_RETRY_DELAY`, so a large
+        ``retries`` cannot stall a run for minutes. A ``backoff`` set above the
+        cap is honored as written - an explicit setting is never shortened.
+
+        Examples:
+            >>> RetryPolicy(retries=10).delay_for(9)
+            60.0
+            >>> RetryPolicy(backoff=90.0).delay_for(0)
+            90.0
+        """
+        return min(self.backoff * (2**attempt), max(MAX_SERVICE_RETRY_DELAY, self.backoff))
+
+
+def parse_retry_config(
+    config: Optional[Mapping[str, Any]],
+) -> tuple[Optional[int], Optional[float]]:
+    """Read the retry keys from a parsed ``oak_config.yaml``.
+
+    Shared by every construction path so the CLI, the plugins and
+    :class:`~linkml_term_validator.validator.EnumValidator` cannot drift.
+
+    Args:
+        config: The parsed config mapping (or None)
+
+    Returns:
+        ``(service_retries, service_retry_backoff)``; each is ``None`` when its
+        key is absent.
+
+    Raises:
+        ValueError: If ``service_retries`` is not a non-negative integer or
+            ``service_retry_backoff`` is not a non-negative number.
+
+    Examples:
+        >>> parse_retry_config(None)
+        (None, None)
+        >>> parse_retry_config({"service_retries": 5})
+        (5, None)
+        >>> parse_retry_config({"service_retry_backoff": 0.5})
+        (None, 0.5)
+        >>> parse_retry_config({"service_retries": "lots"})
+        Traceback (most recent call last):
+        ...
+        ValueError: service_retries must be a non-negative integer, got: 'lots'
+    """
+    if not config:
+        return None, None
+
+    retries: Optional[int] = None
+    if "service_retries" in config:
+        raw = config["service_retries"]
+        # bool is an int subclass; ``service_retries: true`` is a typo, not 1.
+        if isinstance(raw, bool) or not isinstance(raw, int) or raw < 0:
+            raise ValueError(f"service_retries must be a non-negative integer, got: {raw!r}")
+        retries = raw
+
+    backoff: Optional[float] = None
+    if "service_retry_backoff" in config:
+        raw_backoff = config["service_retry_backoff"]
+        if (
+            isinstance(raw_backoff, bool)
+            or not isinstance(raw_backoff, (int, float))
+            or raw_backoff < 0
+        ):
+            raise ValueError(
+                f"service_retry_backoff must be a non-negative number, got: {raw_backoff!r}"
+            )
+        backoff = float(raw_backoff)
+
+    return retries, backoff
+
+
+def resolve_retry_policy(
+    retries: Optional[int] = None,
+    backoff: Optional[float] = None,
+    config: Optional[Mapping[str, Any]] = None,
+) -> RetryPolicy:
+    """Build a :class:`RetryPolicy` from the three sources, in precedence order.
+
+    An explicit argument (a constructor argument or a CLI flag) wins over
+    ``oak_config.yaml``, which wins over the built-in defaults - the same
+    precedence the Not4Curation settings use. ``None`` means "unset".
+
+    Examples:
+        >>> resolve_retry_policy()
+        RetryPolicy(retries=2, backoff=1.0)
+        >>> resolve_retry_policy(config={"service_retries": 4})
+        RetryPolicy(retries=4, backoff=1.0)
+        >>> resolve_retry_policy(retries=0, config={"service_retries": 4})
+        RetryPolicy(retries=0, backoff=1.0)
+    """
+    config_retries, config_backoff = parse_retry_config(config)
+    if retries is None:
+        retries = config_retries if config_retries is not None else DEFAULT_SERVICE_RETRIES
+    if backoff is None:
+        backoff = config_backoff if config_backoff is not None else DEFAULT_SERVICE_RETRY_BACKOFF
+    return RetryPolicy(retries=retries, backoff=backoff)
+
+
+def retry_after_seconds(exc: BaseException) -> Optional[float]:
+    """Read a ``Retry-After`` delay, in seconds, from a rate-limited response.
+
+    A 429 (and sometimes a 503) from an ontology service carries the header,
+    and the service knows better than a fixed backoff how long it wants to be
+    left alone. Only the delta-seconds form is read: the HTTP-date form is
+    ignored rather than guessed at, as is a value that is absent, unparseable
+    or negative. The cause chain is walked, since the response is attached to
+    the wrapped ``requests`` error rather than to
+    :class:`OntologyServiceUnavailableError` itself.
+
+    Examples:
+        >>> class _Response:
+        ...     headers = {"Retry-After": "12"}
+        >>> class _RateLimited(Exception):
+        ...     response = _Response()
+        >>> retry_after_seconds(_RateLimited())
+        12.0
+        >>> retry_after_seconds(ValueError("no response attached"))
+        >>> class _Dated(Exception):
+        ...     class response:  # noqa: N801 - a stand-in for a requests response
+        ...         headers = {"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"}
+        >>> retry_after_seconds(_Dated())
+    """
+    for link in _exception_chain(exc):
+        headers = getattr(getattr(link, "response", None), "headers", None)
+        getter = getattr(headers, "get", None)
+        raw = getter("Retry-After") if callable(getter) else None
+        if raw is None:
+            continue
+        try:
+            seconds = float(str(raw).strip())
+        except ValueError:
+            continue
+        if seconds >= 0:
+            return seconds
+    return None
+
+
+def retry_on_service_unavailable(
+    operation: Callable[[], T],
+    *,
+    policy: Optional[RetryPolicy] = None,
+    description: str = "resolving an ontology term",
+    sleep: Callable[[float], None] = time.sleep,
+) -> T:
+    """Run ``operation``, retrying while the ontology service is unavailable.
+
+    Only :class:`OntologyServiceUnavailableError` is retried: it is exactly the
+    "we could not determine anything" case (a connect/read timeout, a 5xx, a
+    429). A definitive answer - the term is missing, the label is wrong - never
+    reaches this function, so no data error is ever retried, and a real outage
+    still fails, just after the policy's attempts are spent.
+
+    A ``Retry-After`` header on the failing response overrides the backoff when
+    it asks for longer, and the exception that finally escapes carries the
+    number of ``attempts`` spent.
+
+    Args:
+        operation: The lookup to run; it must be safe to call more than once
+        policy: Attempts and backoff (defaults to the resolved module defaults)
+        description: What is being looked up, for the retry log line
+        sleep: Injected for tests, so a backoff need not be waited out
+
+    Examples:
+        >>> attempts = []
+        >>> def flaky():
+        ...     attempts.append(1)
+        ...     if len(attempts) < 3:
+        ...         raise OntologyServiceUnavailableError("GO:0008150")
+        ...     return "biological_process"
+        >>> retry_on_service_unavailable(flaky, sleep=lambda seconds: None)
+        'biological_process'
+        >>> len(attempts)
+        3
+    """
+    policy = policy or resolve_retry_policy()
+    for attempt in range(policy.attempts):
+        try:
+            return operation()
+        except OntologyServiceUnavailableError as exc:
+            if attempt == policy.attempts - 1:
+                # Say how much was tried, so a caller need not guess.
+                exc.attempts = policy.attempts
+                raise
+            delay = policy.delay_for(attempt)
+            asked_for = retry_after_seconds(exc)
+            if asked_for is not None:
+                # A rate-limited service asking for longer wins over the
+                # backoff, still clamped so an outlandish value cannot hang
+                # the run (an explicit larger backoff is never shortened).
+                delay = min(max(delay, asked_for), max(MAX_SERVICE_RETRY_DELAY, policy.backoff))
+            logger.warning(
+                "Ontology service unavailable while %s (attempt %d of %d): %s; "
+                "retrying in %gs",
+                description,
+                attempt + 1,
+                policy.attempts,
+                exc,
+                delay,
+            )
+            sleep(delay)
+    # Unreachable: the loop either returns or re-raises on its last attempt.
+    raise AssertionError("retry loop exited without a result")  # pragma: no cover
 
 
 def obsolete_term_message(curie: str) -> str:
@@ -358,6 +633,8 @@ class OntologyAccess:
         oak_config_path: Optional[Path | str] = None,
         offline: bool = False,
         not4curation_markers: Optional[Iterable[str]] = None,
+        service_retries: Optional[int] = None,
+        service_retry_backoff: Optional[float] = None,
     ):
         """Initialize ontology access.
 
@@ -372,6 +649,15 @@ class OntologyAccess:
                 "do not annotate" flag, matched after folding to lowercase
                 alphanumerics. ``None`` uses
                 :data:`DEFAULT_NOT4CURATION_MARKERS`.
+            service_retries: How many extra attempts a lookup gets while the
+                ontology service reports itself unavailable (a timeout, a 5xx,
+                a 429). ``None`` takes ``service_retries`` from
+                ``oak_config.yaml`` if present, else
+                :data:`DEFAULT_SERVICE_RETRIES`; ``0`` fails fast.
+            service_retry_backoff: Seconds before the first retry, doubling
+                for each further one. ``None`` takes
+                ``service_retry_backoff`` from ``oak_config.yaml`` if present,
+                else :data:`DEFAULT_SERVICE_RETRY_BACKOFF`.
         """
         self.oak_adapter_string = oak_adapter_string
         self.cache_labels = cache_labels
@@ -407,6 +693,27 @@ class OntologyAccess:
         self.loaded_config: dict[str, Any] = {}
         if self.oak_config_path and self.oak_config_path.exists():
             self._load_oak_config()
+
+        # Resolved after the config file is read, so an explicit argument can
+        # win over it. Indirecting sleep lets tests exercise the backoff
+        # without waiting it out.
+        self.retry_policy = resolve_retry_policy(
+            service_retries, service_retry_backoff, self.loaded_config
+        )
+        self._sleep: Callable[[float], None] = time.sleep
+
+    def retry_service_call(self, operation: Callable[[], T], description: str) -> T:
+        """Run a lookup under this instance's retry policy.
+
+        Every network-touching public method funnels through here, so a single
+        transient failure costs a backoff rather than the whole run.
+        """
+        return retry_on_service_unavailable(
+            operation,
+            policy=self.retry_policy,
+            description=description,
+            sleep=self._sleep,
+        )
 
     def _load_oak_config(self) -> None:
         """Load the ``ontology_adapters`` mapping from oak_config.yaml."""
@@ -563,13 +870,33 @@ class OntologyAccess:
             adapter_string = self._adapter_string_for_prefix(prefix, self.oak_adapter_string)
 
         if adapter_string:
-            adapter = get_adapter(adapter_string)
+            adapter = self.retry_service_call(
+                lambda: self._build_adapter(adapter_string, prefix),
+                f"building the {prefix} adapter",
+            )
             self._configure_adapter_for_prefix(adapter, prefix)
             self._adapter_cache[prefix] = adapter
             return adapter
 
         self._adapter_cache[prefix] = None
         return None
+
+    @staticmethod
+    def _build_adapter(adapter_string: str, prefix: str) -> object:
+        """Build an OAK adapter, classifying a network failure as an outage.
+
+        Building an adapter can download an ontology database or open a remote
+        connection, so it fails the same transient way a lookup does. Naming
+        that case means a stalled download is retried and, if it stays down,
+        ends the run with "unable to validate" rather than a raw traceback.
+        Any other error is left alone: a bad adapter string is a
+        configuration problem, not an outage.
+        """
+        try:
+            return get_adapter(adapter_string)
+        except Exception as e:  # noqa: BLE001 - adapters raise varied errors
+            raise_if_service_unavailable(f"{prefix}:*", e)
+            raise
 
     @staticmethod
     def _adapter_string_for_prefix(prefix: str, adapter_string: str) -> str | None:
@@ -645,20 +972,32 @@ class OntologyAccess:
         # OntologyServiceUnavailableError to fail fast rather than mislabeling
         # every term as invalid data. Anything else is logged loudly and treated
         # as not found (preserving prior behavior for unexpected adapter errors).
-        try:
-            label = self._get_adapter_label(adapter, curie)
-        except OntologyServiceUnavailableError:
-            raise
-        except Exception as e:  # noqa: BLE001 - adapters raise varied errors
-            raise_if_service_unavailable(curie, e)
-            self._log_lookup_failure(curie, e)
-            label = None
+        label = self.retry_service_call(
+            lambda: self._lookup_adapter_label(adapter, curie),
+            f"resolving the label for {curie}",
+        )
         self._label_cache[curie] = label
 
         if label and self.cache_labels:
             self.save_to_cache(prefix, curie, label)
 
         return label
+
+    def _lookup_adapter_label(self, adapter: object, curie: str) -> Optional[str]:
+        """Resolve a label through an adapter, classifying the failure modes.
+
+        Separated from :meth:`get_label` so it can be re-run by the retry
+        policy: a service problem propagates (and is retried), while any other
+        adapter error stays a logged "not found".
+        """
+        try:
+            return self._get_adapter_label(adapter, curie)
+        except OntologyServiceUnavailableError:
+            raise
+        except Exception as e:  # noqa: BLE001 - adapters raise varied errors
+            raise_if_service_unavailable(curie, e)
+            self._log_lookup_failure(curie, e)
+            return None
 
     def _get_adapter_label(self, adapter: object, curie: str) -> Optional[str]:
         """Get a label from an adapter, including OLS4 response compatibility."""
@@ -728,11 +1067,17 @@ class OntologyAccess:
         # ``obsoletes()`` scan would page through every deprecated term in the
         # ontology, so it is not usable per-value against a remote service.
         if self._is_ols_adapter(adapter):
-            return self._ols_is_obsolete(adapter, curie)
+            return self.retry_service_call(
+                lambda: self._ols_is_obsolete(adapter, curie),
+                f"checking whether {curie} is obsolete",
+            )
 
         # Local/SQLite adapters: a one-time ``obsoletes()`` scan is cheap and is
         # cached per prefix.
-        obsoletes = self._get_obsoletes_set(prefix, adapter)
+        obsoletes = self.retry_service_call(
+            lambda: self._get_obsoletes_set(prefix, adapter),
+            f"reading the obsolete terms of {prefix}",
+        )
         if obsoletes is None:
             return None
         return curie in obsoletes
@@ -853,11 +1198,12 @@ class OntologyAccess:
             # object's life (tests do this), and the answer is cheap.
             return None
 
-        aliases: Optional[list[str]]
-        if self._is_ols_adapter(adapter):
-            aliases = self._ols_entity_aliases(adapter, curie)
-        else:
-            aliases = self._adapter_entity_aliases(adapter, curie)
+        read_aliases = (
+            (lambda: self._ols_entity_aliases(adapter, curie))
+            if self._is_ols_adapter(adapter)
+            else (lambda: self._adapter_entity_aliases(adapter, curie))
+        )
+        aliases = self.retry_service_call(read_aliases, f"reading the aliases of {curie}")
         self._alias_cache[curie] = aliases
         return aliases
 
