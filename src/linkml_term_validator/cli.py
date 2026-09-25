@@ -129,13 +129,16 @@ def _fail_service_unavailable(exc: OntologyServiceUnavailableError) -> typer.Exi
     from data being invalid. Surfacing it as "unable to validate at this time"
     (rather than "term not found") avoids mislabeling every term as bad data.
     """
+    # The retry loop records what it spent, so the message can be truthful
+    # whether the lookup was retried twice or not at all (--retries 0).
+    attempts = getattr(exc, "attempts", None)
+    tried = f" after {attempts} attempt{'s' if attempts != 1 else ''}" if attempts else ""
     typer.echo(
-        "\n🌐 Unable to validate at this time: ontology service unavailable.\n"
+        f"\n🌐 Unable to validate at this time: ontology service unavailable{tried}.\n"
         f"   {exc}\n"
-        "   Terms could not be checked; this is not a data error. "
-        "The lookup was already retried (see --retries/--retry-wait); retry when "
-        "the ontology service is reachable, or use --offline to validate against "
-        "the local cache only.",
+        "   Terms could not be checked; this is not a data error. Retry when the "
+        "ontology service is reachable, raise --retries/--retry-wait to ride out a "
+        "longer stall, or use --offline to validate against the local cache only.",
         err=True,
     )
     return typer.Exit(code=EXIT_SERVICE_UNAVAILABLE)

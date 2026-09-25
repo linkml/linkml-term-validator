@@ -4,6 +4,7 @@ from linkml_term_validator.utils.oak_utils import (
     DEFAULT_NOT4CURATION_MARKERS,
     DEFAULT_SERVICE_RETRIES,
     DEFAULT_SERVICE_RETRY_BACKOFF,
+    MAX_SERVICE_RETRY_DELAY,
     OntologyAccess,
     OntologyServiceUnavailableError,
     RetryPolicy,
@@ -18,6 +19,7 @@ from linkml_term_validator.utils.oak_utils import (
     parse_retry_config,
     raise_if_service_unavailable,
     resolve_retry_policy,
+    retry_after_seconds,
     retry_on_service_unavailable,
 )
 
@@ -25,6 +27,7 @@ __all__ = [
     "DEFAULT_NOT4CURATION_MARKERS",
     "DEFAULT_SERVICE_RETRIES",
     "DEFAULT_SERVICE_RETRY_BACKOFF",
+    "MAX_SERVICE_RETRY_DELAY",
     "OntologyAccess",
     "OntologyServiceUnavailableError",
     "RetryPolicy",
@@ -39,5 +42,6 @@ __all__ = [
     "parse_retry_config",
     "raise_if_service_unavailable",
     "resolve_retry_policy",
+    "retry_after_seconds",
     "retry_on_service_unavailable",
 ]

@@ -232,8 +232,10 @@ code 2, so one stalled request used to fail a CI build whose data was fine — o
 whichever CURIE happened to be in flight. Every lookup that raises
 `OntologyServiceUnavailableError` (connect/read timeout, 5xx, 408, 429) is
 therefore retried under a `RetryPolicy`: `service_retries` extra attempts (2 by
-default) with an exponential `service_retry_backoff` (1s, then 2s). Only that
-error is retried — a missing term or a wrong label is a definitive answer and is
+default) with an exponential `service_retry_backoff` (1s, then 2s), a single
+wait capped at `MAX_SERVICE_RETRY_DELAY` (60s) and a `Retry-After` header
+honored when a rate-limited service asks for longer. Only that error is
+retried — a missing term or a wrong label is a definitive answer and is
 never re-asked, so no data error is ever papered over. `OntologyAccess` funnels
 its network-touching methods (`get_label`, `is_obsolete`, `entity_aliases`)
 through `retry_service_call()`, and `BaseOntologyPlugin._traverse()` does the
@@ -243,4 +245,7 @@ argument or CLI flag (`--retries`, `--retry-wait`) > `oak_config.yaml`
 (`service_retries`, `service_retry_backoff`) > defaults; `None` means "unset",
 `0` restores fail-fast. Tests never wait out a real backoff: the autouse
 `instant_retry_backoff` fixture in `tests/conftest.py` zeroes the default, and a
-test that cares about the delays passes its own policy or `_sleep`.
+test that cares about the delays passes its own policy or `_sleep`. Materialize
+an adapter's result *inside* the classifying `try`: OAK traversals answer with
+generators, so a lazily raised timeout would otherwise escape unclassified and
+never be retried (PR #74 review).

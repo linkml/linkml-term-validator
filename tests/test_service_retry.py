@@ -9,6 +9,7 @@ just as importantly, pin what is *not* retried: a definitive answer about a term
 """
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import requests
@@ -18,6 +19,7 @@ from linkml_term_validator.cli import app
 from linkml_term_validator.plugins import DynamicEnumPlugin
 from linkml_term_validator.utils import (
     DEFAULT_SERVICE_RETRIES,
+    MAX_SERVICE_RETRY_DELAY,
     OntologyAccess,
     OntologyServiceUnavailableError,
     RetryPolicy,
@@ -336,6 +338,144 @@ def test_graph_traversal_survives_a_transient_timeout(monkeypatch):
     assert adapter.calls == 3
 
 
+def test_graph_traversal_retries_a_lazily_raised_timeout(monkeypatch):
+    """OAK traversals often answer with a generator.
+
+    The requests then run while the result is being materialized, not when the
+    method is called, so a timeout raised there must still be classified and
+    retried - otherwise the traversal half of the retry never fires.
+    """
+
+    class LazyGraphAdapter:
+        def __init__(self, failures):
+            self.failures = failures
+            self.calls = 0
+
+        def ancestors(self, curies, predicates=None, reflexive=False):
+            self.calls += 1
+            fails = self.calls <= self.failures
+
+            def walk():
+                yield "GO:0007049"
+                if fails:
+                    raise _read_timeout()
+                yield "GO:0008150"
+
+            return walk()
+
+    adapter = LazyGraphAdapter(failures=2)
+    plugin = DynamicEnumPlugin(cache_labels=False, cache_enum_expansions=False)
+
+    values = plugin._traverse(
+        adapter=adapter,
+        method_name="ancestors",
+        start_curie="GO:0007049",
+        predicates=["rdfs:subClassOf"],
+        reflexive=True,
+    )
+
+    assert values == {"GO:0007049", "GO:0008150"}
+    assert adapter.calls == 3
+
+
+# =============================================================================
+# OLS term payloads
+# =============================================================================
+
+
+class FlakyOlsAdapter:
+    """An OLS-shaped adapter whose term payload times out the first calls."""
+
+    def __init__(self, failures: int):
+        self.failures = failures
+        self.calls = 0
+        self.resource = SimpleNamespace(scheme="ols", slug="go")
+        self.focus_ontology = "go"
+        self.client = self
+
+    def curie_to_uri(self, curie):
+        return f"http://purl.obolibrary.org/obo/{curie.replace(':', '_')}"
+
+    def get_term(self, ontology, iri):
+        self.calls += 1
+        if self.calls <= self.failures:
+            raise _read_timeout()
+        return {"label": "cell cycle", "is_obsolete": True, "synonyms": ["Not4Curation"]}
+
+
+def test_ols_obsolescence_check_survives_a_transient_timeout(access_factory):
+    adapter = FlakyOlsAdapter(failures=2)
+    access = access_factory(adapter)
+
+    assert access.is_obsolete("GO:0007049") is True
+    assert adapter.calls == 3
+
+
+def test_ols_alias_read_survives_a_transient_timeout(access_factory):
+    adapter = FlakyOlsAdapter(failures=2)
+    access = access_factory(adapter)
+
+    assert access.entity_aliases("GO:0007049") == ["cell cycle", "Not4Curation"]
+    assert adapter.calls == 3
+
+
+# =============================================================================
+# Retry-After
+# =============================================================================
+
+
+def _rate_limited(retry_after: str) -> OntologyServiceUnavailableError:
+    """A 429 carrying a Retry-After header, wrapped as the lookups wrap it."""
+    response = requests.Response()
+    response.status_code = 429
+    response.headers["Retry-After"] = retry_after
+    original = requests.exceptions.HTTPError("429 Too Many Requests", response=response)
+    try:
+        raise OntologyServiceUnavailableError("GO:0008150", original) from original
+    except OntologyServiceUnavailableError as exc:
+        return exc
+
+
+@pytest.mark.parametrize(
+    ("header", "expected"),
+    [
+        # The service asks for longer than the backoff: it wins.
+        ("5", 5.0),
+        # It asks for less: the backoff stands.
+        ("0", 0.5),
+        # An outlandish value is clamped rather than hanging the run.
+        ("99999", MAX_SERVICE_RETRY_DELAY),
+        # The HTTP-date form is not guessed at; the backoff stands.
+        ("Wed, 21 Oct 2026 07:28:00 GMT", 0.5),
+    ],
+)
+def test_retry_after_steers_the_wait(header, expected):
+    delays: list[float] = []
+    rate_limited = _rate_limited(header)
+
+    def always_rate_limited():
+        raise rate_limited
+
+    with pytest.raises(OntologyServiceUnavailableError):
+        retry_on_service_unavailable(
+            always_rate_limited,
+            policy=RetryPolicy(retries=1, backoff=0.5),
+            sleep=delays.append,
+        )
+    assert delays == [expected]
+
+
+def test_the_spent_attempts_are_recorded_on_the_error():
+    def always_down():
+        raise OntologyServiceUnavailableError("GO:0008150")
+
+    with pytest.raises(OntologyServiceUnavailableError) as exc_info:
+        retry_on_service_unavailable(
+            always_down, policy=RetryPolicy(retries=2), sleep=lambda seconds: None
+        )
+    assert exc_info.value.attempts == 3
+
+
 # =============================================================================
 # End to end through the CLI
 # =============================================================================
@@ -389,3 +529,24 @@ def test_validate_schema_help_documents_the_retry_flags(runner):
     assert result.exit_code == 0
     assert "--retries" in result.output
     assert "--retry-wait" in result.output
+
+
+def test_the_outage_message_reports_the_attempts_spent(runner, tmp_path, monkeypatch):
+    adapter = FlakyAdapter(failures=99)
+    monkeypatch.setattr(oak_utils, "get_adapter", lambda s: adapter)
+
+    result = _validate_schema(runner, tmp_path)
+
+    assert result.exit_code == 2, result.output
+    assert "after 3 attempts" in result.output
+
+
+def test_the_outage_message_claims_no_retry_when_there_was_none(runner, tmp_path, monkeypatch):
+    adapter = FlakyAdapter(failures=99)
+    monkeypatch.setattr(oak_utils, "get_adapter", lambda s: adapter)
+
+    result = _validate_schema(runner, tmp_path, ["--retries", "0"])
+
+    assert result.exit_code == 2, result.output
+    assert "after 1 attempt." in result.output
+    assert "attempts" not in result.output

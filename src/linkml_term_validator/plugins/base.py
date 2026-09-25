@@ -933,14 +933,19 @@ class BaseOntologyPlugin(ValidationPlugin):
         # site instead. A network outage is normalized to
         # OntologyServiceUnavailableError so it surfaces as "unable to validate"
         # rather than a raw adapter traceback.
+        #
+        # Materializing the result stays INSIDE the guard: OAK traversals often
+        # answer with a generator, so the requests only run while the set is
+        # being built. Building it outside would let a read timeout escape
+        # unclassified - never retried, and a raw traceback in greedy expansion
+        # or a silent "not reachable" in the progressive check.
         try:
-            results = method([start_curie], **kwargs)
+            values = set(method([start_curie], **kwargs) or [])
         except OntologyServiceUnavailableError:
             raise
         except Exception as e:  # noqa: BLE001 - adapters raise varied errors
             raise_if_service_unavailable(start_curie, e)
             raise
-        values = set(results or [])
         if reflexive:
             values.add(start_curie)
         else:

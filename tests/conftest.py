@@ -31,6 +31,12 @@ def instant_retry_backoff(monkeypatch):
     outage would otherwise spend the real 1s + 2s waiting it out. The retries
     themselves still happen - only the sleeping is skipped - and a test that
     cares about the delays sets its own policy.
+
+    This patches the module default, which is what every path that *resolves* a
+    policy reads: ``OntologyAccess`` (so also the plugins, ``EnumValidator`` and
+    the CLI) and a bare ``retry_on_service_unavailable(op)``. A test that builds
+    a ``RetryPolicy`` itself picks its own backoff, and one that wants no wait at
+    all passes ``sleep``.
     """
     monkeypatch.setattr(oak_utils, "DEFAULT_SERVICE_RETRY_BACKOFF", 0.0)
 

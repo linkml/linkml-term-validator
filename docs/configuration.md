@@ -49,7 +49,9 @@ retried: a term that does not exist, or whose label is wrong, is a definitive
 answer and is never re-asked. The defaults make up to three attempts spaced 1s
 and 2s apart, which is enough to survive the stalled request that otherwise
 fails a CI build whose data is fine; `service_retries: 0` restores fail-fast
-behavior.
+behavior. A single wait is capped at 60s, so a generous `service_retries`
+cannot stall a run for minutes, and a `Retry-After` header on a rate-limited
+response (HTTP 429) overrides the backoff when the service asks for longer.
 
 ### Using the Config File
 

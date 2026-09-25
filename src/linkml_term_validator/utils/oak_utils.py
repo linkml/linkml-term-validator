@@ -20,7 +20,7 @@ import logging
 import re
 import socket
 import time
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -51,6 +51,9 @@ class OntologyServiceUnavailableError(Exception):
     def __init__(self, curie: str, original: Optional[BaseException] = None):
         self.curie = curie
         self.original = original
+        # Set by retry_on_service_unavailable when it gives up, so a caller can
+        # report how many attempts were spent rather than guessing.
+        self.attempts: Optional[int] = None
         detail = f": {original}" if original is not None else ""
         super().__init__(f"could not reach ontology service to resolve {curie}{detail}")
 
@@ -87,6 +90,24 @@ except Exception:  # pragma: no cover
 _CONNECTIVITY_EXC_TUPLE = tuple(_CONNECTIVITY_EXC_TYPES)
 
 
+def _exception_chain(exc: BaseException) -> Iterator[BaseException]:
+    """Yield an exception and the causes it wraps, outermost first.
+
+    An explicit cause wins; otherwise the implicit context is followed only
+    when it was not suppressed via ``raise ... from None``, so an unrelated
+    in-flight error cannot be mistaken for this one's cause.
+    """
+    seen: set[int] = set()
+    current: Optional[BaseException] = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        yield current
+        next_exc = current.__cause__
+        if next_exc is None and not current.__suppress_context__:
+            next_exc = current.__context__
+        current = next_exc
+
+
 def is_connectivity_error(exc: BaseException) -> bool:
     """Return True if an exception (or its cause chain) is a network outage.
 
@@ -99,19 +120,7 @@ def is_connectivity_error(exc: BaseException) -> bool:
     was explicitly suppressed (``raise ... from None``) is not followed, so an
     unrelated in-flight connection error cannot cause a false positive.
     """
-    seen: set[int] = set()
-    current: Optional[BaseException] = exc
-    while current is not None and id(current) not in seen:
-        seen.add(id(current))
-        if isinstance(current, _CONNECTIVITY_EXC_TUPLE):
-            return True
-        # An explicit cause wins; otherwise follow the implicit context only when
-        # it was not suppressed via ``raise ... from None``.
-        next_exc = current.__cause__
-        if next_exc is None and not current.__suppress_context__:
-            next_exc = current.__context__
-        current = next_exc
-    return False
+    return any(isinstance(link, _CONNECTIVITY_EXC_TUPLE) for link in _exception_chain(exc))
 
 
 def raise_if_service_unavailable(curie: str, exc: BaseException) -> None:
@@ -147,6 +156,9 @@ def raise_if_service_unavailable(curie: str, exc: BaseException) -> None:
 # number of times, with an exponential backoff, before it is believed.
 DEFAULT_SERVICE_RETRIES = 2
 DEFAULT_SERVICE_RETRY_BACKOFF = 1.0
+# Ceiling on a single wait, so a generous ``retries`` cannot turn into a
+# multi-minute stall: doubling from 1s reaches ~17 minutes by the tenth retry.
+MAX_SERVICE_RETRY_DELAY = 60.0
 
 
 @dataclass(frozen=True)
@@ -186,8 +198,19 @@ class RetryPolicy:
         return self.retries + 1
 
     def delay_for(self, attempt: int) -> float:
-        """Seconds to wait after ``attempt`` (0-based) failed attempts."""
-        return self.backoff * (2**attempt)
+        """Seconds to wait after ``attempt`` (0-based) failed attempts.
+
+        The doubling is capped at :data:`MAX_SERVICE_RETRY_DELAY`, so a large
+        ``retries`` cannot stall a run for minutes. A ``backoff`` set above the
+        cap is honored as written - an explicit setting is never shortened.
+
+        Examples:
+            >>> RetryPolicy(retries=10).delay_for(9)
+            60.0
+            >>> RetryPolicy(backoff=90.0).delay_for(0)
+            90.0
+        """
+        return min(self.backoff * (2**attempt), max(MAX_SERVICE_RETRY_DELAY, self.backoff))
 
 
 def parse_retry_config(
@@ -235,11 +258,11 @@ def parse_retry_config(
     backoff: Optional[float] = None
     if "service_retry_backoff" in config:
         raw_backoff = config["service_retry_backoff"]
-        if isinstance(raw_backoff, bool) or not isinstance(raw_backoff, (int, float)):
-            raise ValueError(
-                f"service_retry_backoff must be a non-negative number, got: {raw_backoff!r}"
-            )
-        if raw_backoff < 0:
+        if (
+            isinstance(raw_backoff, bool)
+            or not isinstance(raw_backoff, (int, float))
+            or raw_backoff < 0
+        ):
             raise ValueError(
                 f"service_retry_backoff must be a non-negative number, got: {raw_backoff!r}"
             )
@@ -275,6 +298,45 @@ def resolve_retry_policy(
     return RetryPolicy(retries=retries, backoff=backoff)
 
 
+def retry_after_seconds(exc: BaseException) -> Optional[float]:
+    """Read a ``Retry-After`` delay, in seconds, from a rate-limited response.
+
+    A 429 (and sometimes a 503) from an ontology service carries the header,
+    and the service knows better than a fixed backoff how long it wants to be
+    left alone. Only the delta-seconds form is read: the HTTP-date form is
+    ignored rather than guessed at, as is a value that is absent, unparseable
+    or negative. The cause chain is walked, since the response is attached to
+    the wrapped ``requests`` error rather than to
+    :class:`OntologyServiceUnavailableError` itself.
+
+    Examples:
+        >>> class _Response:
+        ...     headers = {"Retry-After": "12"}
+        >>> class _RateLimited(Exception):
+        ...     response = _Response()
+        >>> retry_after_seconds(_RateLimited())
+        12.0
+        >>> retry_after_seconds(ValueError("no response attached"))
+        >>> class _Dated(Exception):
+        ...     class response:  # noqa: N801 - a stand-in for a requests response
+        ...         headers = {"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"}
+        >>> retry_after_seconds(_Dated())
+    """
+    for link in _exception_chain(exc):
+        headers = getattr(getattr(link, "response", None), "headers", None)
+        getter = getattr(headers, "get", None)
+        raw = getter("Retry-After") if callable(getter) else None
+        if raw is None:
+            continue
+        try:
+            seconds = float(str(raw).strip())
+        except ValueError:
+            continue
+        if seconds >= 0:
+            return seconds
+    return None
+
+
 def retry_on_service_unavailable(
     operation: Callable[[], T],
     *,
@@ -290,9 +352,13 @@ def retry_on_service_unavailable(
     reaches this function, so no data error is ever retried, and a real outage
     still fails, just after the policy's attempts are spent.
 
+    A ``Retry-After`` header on the failing response overrides the backoff when
+    it asks for longer, and the exception that finally escapes carries the
+    number of ``attempts`` spent.
+
     Args:
         operation: The lookup to run; it must be safe to call more than once
-        policy: Attempts and backoff (defaults to :class:`RetryPolicy`)
+        policy: Attempts and backoff (defaults to the resolved module defaults)
         description: What is being looked up, for the retry log line
         sleep: Injected for tests, so a backoff need not be waited out
 
@@ -308,14 +374,22 @@ def retry_on_service_unavailable(
         >>> len(attempts)
         3
     """
-    policy = policy or RetryPolicy()
+    policy = policy or resolve_retry_policy()
     for attempt in range(policy.attempts):
         try:
             return operation()
         except OntologyServiceUnavailableError as exc:
             if attempt == policy.attempts - 1:
+                # Say how much was tried, so a caller need not guess.
+                exc.attempts = policy.attempts
                 raise
             delay = policy.delay_for(attempt)
+            asked_for = retry_after_seconds(exc)
+            if asked_for is not None:
+                # A rate-limited service asking for longer wins over the
+                # backoff, still clamped so an outlandish value cannot hang
+                # the run (an explicit larger backoff is never shortened).
+                delay = min(max(delay, asked_for), max(MAX_SERVICE_RETRY_DELAY, policy.backoff))
             logger.warning(
                 "Ontology service unavailable while %s (attempt %d of %d): %s; "
                 "retrying in %gs",

@@ -31,7 +31,7 @@ linkml-term-validator validate-schema [OPTIONS] SCHEMA_PATH
 | `--config`, `-c` | none | Path to `oak_config.yaml` |
 | `--offline` | `false` | Resolve only from the cache; never build OAK adapters |
 | `--retries` | `2` | Extra attempts while the ontology service reports itself unavailable (timeout, 5xx, 429). `0` fails fast |
-| `--retry-wait` | `1.0` | Seconds before the first retry, doubling for each further one |
+| `--retry-wait` | `1.0` | Seconds before the first retry, doubling for each further one (a single wait is capped at 60s; a `Retry-After` header wins when it asks for longer) |
 | `--check-not4curation / --no-check-not4curation` | `--check-not4curation` | Flag terms their ontology marks as not for annotation (see [Not4Curation check](plugin-reference.md#not4curation-check)) |
 | `--verbose`, `-v` | `false` | Print validation summary details |
 
@@ -69,7 +69,7 @@ linkml-term-validator validate-data [OPTIONS] DATA_PATHS...
 | `--cache-strategy` | `progressive` | `progressive` for lazy checks or `greedy` for upfront expansion |
 | `--offline` | `false` | Resolve only from the cache; never build OAK adapters |
 | `--retries` | `2` | Extra attempts while the ontology service reports itself unavailable (timeout, 5xx, 429). `0` fails fast |
-| `--retry-wait` | `1.0` | Seconds before the first retry, doubling for each further one |
+| `--retry-wait` | `1.0` | Seconds before the first retry, doubling for each further one (a single wait is capped at 60s; a `Retry-After` header wins when it asks for longer) |
 | `--check-not4curation / --no-check-not4curation` | `--check-not4curation` | Flag terms their ontology marks as not for annotation (see [Not4Curation check](plugin-reference.md#not4curation-check)) |
 | `--fail-on` | `any` | Which results exit non-zero: `any`, `error` (matches `linkml-validate`), or `warn` |
 | `--strict` | `false` | Exit non-zero on warnings, overriding `--fail-on error`. Exit code only; results still print as `WARN`. Does not re-enable checks `--lenient` turned off |
@@ -169,7 +169,7 @@ The default regex matches annotations like `@term GO:0008150 "biological process
 | `--cache-dir` | `cache` | Directory for label caches |
 | `--offline` | `false` | Resolve only from the cache; never build OAK adapters |
 | `--retries` | `2` | Extra attempts while the ontology service reports itself unavailable (timeout, 5xx, 429). `0` fails fast |
-| `--retry-wait` | `1.0` | Seconds before the first retry, doubling for each further one |
+| `--retry-wait` | `1.0` | Seconds before the first retry, doubling for each further one (a single wait is capped at 60s; a `Retry-After` header wins when it asks for longer) |
 | `--check-not4curation / --no-check-not4curation` | `--check-not4curation` | Flag terms their ontology marks as not for annotation (see [Not4Curation check](plugin-reference.md#not4curation-check)) |
 | `--verbose`, `-v` | `false` | Show each validated term |
 
