@@ -30,6 +30,8 @@ linkml-term-validator validate-schema [OPTIONS] SCHEMA_PATH
 | `--cache-dir` | `cache` | Directory for label and enum caches |
 | `--config`, `-c` | none | Path to `oak_config.yaml` |
 | `--offline` | `false` | Resolve only from the cache; never build OAK adapters |
+| `--retries` | `2` | Extra attempts while the ontology service reports itself unavailable (timeout, 5xx, 429). `0` fails fast |
+| `--retry-wait` | `1.0` | Seconds before the first retry, doubling for each further one (a single wait is capped at 60s; a `Retry-After` header wins when it asks for longer) |
 | `--check-not4curation / --no-check-not4curation` | `--check-not4curation` | Flag terms their ontology marks as not for annotation (see [Not4Curation check](plugin-reference.md#not4curation-check)) |
 | `--verbose`, `-v` | `false` | Print validation summary details |
 
@@ -66,6 +68,8 @@ linkml-term-validator validate-data [OPTIONS] DATA_PATHS...
 | `--config`, `-c` | none | Path to `oak_config.yaml` |
 | `--cache-strategy` | `progressive` | `progressive` for lazy checks or `greedy` for upfront expansion |
 | `--offline` | `false` | Resolve only from the cache; never build OAK adapters |
+| `--retries` | `2` | Extra attempts while the ontology service reports itself unavailable (timeout, 5xx, 429). `0` fails fast |
+| `--retry-wait` | `1.0` | Seconds before the first retry, doubling for each further one (a single wait is capped at 60s; a `Retry-After` header wins when it asks for longer) |
 | `--check-not4curation / --no-check-not4curation` | `--check-not4curation` | Flag terms their ontology marks as not for annotation (see [Not4Curation check](plugin-reference.md#not4curation-check)) |
 | `--fail-on` | `any` | Which results exit non-zero: `any`, `error` (matches `linkml-validate`), or `warn` |
 | `--strict` | `false` | Exit non-zero on warnings, overriding `--fail-on error`. Exit code only; results still print as `WARN`. Does not re-enable checks `--lenient` turned off |
@@ -164,6 +168,8 @@ The default regex matches annotations like `@term GO:0008150 "biological process
 | `--no-cache` | `false` | Disable label cache writes |
 | `--cache-dir` | `cache` | Directory for label caches |
 | `--offline` | `false` | Resolve only from the cache; never build OAK adapters |
+| `--retries` | `2` | Extra attempts while the ontology service reports itself unavailable (timeout, 5xx, 429). `0` fails fast |
+| `--retry-wait` | `1.0` | Seconds before the first retry, doubling for each further one (a single wait is capped at 60s; a `Retry-After` header wins when it asks for longer) |
 | `--check-not4curation / --no-check-not4curation` | `--check-not4curation` | Flag terms their ontology marks as not for annotation (see [Not4Curation check](plugin-reference.md#not4curation-check)) |
 | `--verbose`, `-v` | `false` | Show each validated term |
 
@@ -185,7 +191,7 @@ linkml-term-validator validate-text-file document.md \
 |------|---------|
 | `0` | No validation errors |
 | `1` | Validation errors, missing files, invalid options, or cache migration failure |
-| `2` | Unable to validate: the ontology service was unreachable (network outage, or a transient HTTP status — 5xx, 408 timeout, or 429 rate-limit), so terms could not be checked. This is distinct from invalid data — retry when the service is reachable, or use `--offline` to validate against the local cache only. Validation *fails fast*: the run aborts on the first outage rather than reporting every subsequent term as missing. Across a multi-file `validate-data` run this means one prefix's transient outage stops the whole run, including files that were fully resolvable from the local cache. |
+| `2` | Unable to validate: the ontology service was unreachable (network outage, or a transient HTTP status — 5xx, 408 timeout, or 429 rate-limit), so terms could not be checked. This is distinct from invalid data — retry when the service is reachable, or use `--offline` to validate against the local cache only. The lookup is retried first (`--retries`, default 2, with an exponential `--retry-wait`), so this code means the service stayed unavailable across every attempt, not that one request stalled. Once the attempts are spent validation *fails fast*: the run aborts on that outage rather than reporting every subsequent term as missing. Across a multi-file `validate-data` run this means one prefix's transient outage stops the whole run, including files that were fully resolvable from the local cache. |
 
 ## See Also
 

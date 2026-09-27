@@ -374,6 +374,24 @@ class ValidationConfig(BaseModel):
             "defaults (not4curation, notforcuration, notrecommendedforannotation)"
         ),
     )
+    service_retries: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description=(
+            "How many extra attempts a lookup gets while the ontology service "
+            "reports itself unavailable (a timeout, a 5xx, a 429). None takes "
+            "oak_config.yaml's service_retries if present, else 2; 0 fails fast"
+        ),
+    )
+    service_retry_backoff: Optional[float] = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Seconds to wait before the first retry, doubling for each further "
+            "one. None takes oak_config.yaml's service_retry_backoff if "
+            "present, else 1.0"
+        ),
+    )
 
     def get_cache_dir(self) -> Path:
         """Get the cache directory, creating it if needed.

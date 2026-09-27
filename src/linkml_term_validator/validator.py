@@ -51,6 +51,8 @@ class EnumValidator:
             oak_config_path=config.oak_config_path,
             offline=config.offline,
             not4curation_markers=config.not4curation_markers,
+            service_retries=config.service_retries,
+            service_retry_backoff=config.service_retry_backoff,
         )
         # The shared oak_config.yaml may carry the Not4Curation keys too, so the
         # CLI and the plugins read one file and agree (see #70).

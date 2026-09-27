@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 import requests_cache
 
+from linkml_term_validator.utils import oak_utils
+
 
 @pytest.fixture(scope="session", autouse=True)
 def patch_requests_cache(pytestconfig):
@@ -18,6 +20,25 @@ def patch_requests_cache(pytestconfig):
     requests_cache.install_cache(str(cache_file), backend="sqlite")
     yield
     requests_cache.uninstall_cache()
+
+
+@pytest.fixture(autouse=True)
+def instant_retry_backoff(monkeypatch):
+    """Make the service-retry backoff free for the whole suite.
+
+    A lookup that reports the ontology service unavailable is retried with an
+    exponential backoff (see ``RetryPolicy``), so the tests that simulate an
+    outage would otherwise spend the real 1s + 2s waiting it out. The retries
+    themselves still happen - only the sleeping is skipped - and a test that
+    cares about the delays sets its own policy.
+
+    This patches the module default, which is what every path that *resolves* a
+    policy reads: ``OntologyAccess`` (so also the plugins, ``EnumValidator`` and
+    the CLI) and a bare ``retry_on_service_unavailable(op)``. A test that builds
+    a ``RetryPolicy`` itself picks its own backoff, and one that wants no wait at
+    all passes ``sleep``.
+    """
+    monkeypatch.setattr(oak_utils, "DEFAULT_SERVICE_RETRY_BACKOFF", 0.0)
 
 
 @pytest.fixture
