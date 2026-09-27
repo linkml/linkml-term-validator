@@ -1364,6 +1364,16 @@
 <td>Resolve only from the cache; never build OAK adapters</td>
 </tr>
 <tr>
+<td><code>--retries</code></td>
+<td><code>2</code></td>
+<td>Extra attempts while the ontology service reports itself unavailable (timeout, 5xx, 429). <code>0</code> fails fast</td>
+</tr>
+<tr>
+<td><code>--retry-wait</code></td>
+<td><code>1.0</code></td>
+<td>Seconds before the first retry, doubling for each further one (a single wait is capped at 60s; a <code>Retry-After</code> header wins when it asks for longer)</td>
+</tr>
+<tr>
 <td><code>--check-not4curation / --no-check-not4curation</code></td>
 <td><code>--check-not4curation</code></td>
 <td>Flag terms their ontology marks as not for annotation (see <a href="../plugin-reference/#not4curation-check">Not4Curation check</a>)</td>
@@ -1463,6 +1473,16 @@ linkml-term-validator validate-schema schema.yaml --offline --cache-dir cache
 <td><code>--offline</code></td>
 <td><code>false</code></td>
 <td>Resolve only from the cache; never build OAK adapters</td>
+</tr>
+<tr>
+<td><code>--retries</code></td>
+<td><code>2</code></td>
+<td>Extra attempts while the ontology service reports itself unavailable (timeout, 5xx, 429). <code>0</code> fails fast</td>
+</tr>
+<tr>
+<td><code>--retry-wait</code></td>
+<td><code>1.0</code></td>
+<td>Seconds before the first retry, doubling for each further one (a single wait is capped at 60s; a <code>Retry-After</code> header wins when it asks for longer)</td>
 </tr>
 <tr>
 <td><code>--check-not4curation / --no-check-not4curation</code></td>
@@ -1630,6 +1650,16 @@ linkml-term-validator migrate-cache --refresh-labels --config oak_config.yaml
 <td>Resolve only from the cache; never build OAK adapters</td>
 </tr>
 <tr>
+<td><code>--retries</code></td>
+<td><code>2</code></td>
+<td>Extra attempts while the ontology service reports itself unavailable (timeout, 5xx, 429). <code>0</code> fails fast</td>
+</tr>
+<tr>
+<td><code>--retry-wait</code></td>
+<td><code>1.0</code></td>
+<td>Seconds before the first retry, doubling for each further one (a single wait is capped at 60s; a <code>Retry-After</code> header wins when it asks for longer)</td>
+</tr>
+<tr>
 <td><code>--check-not4curation / --no-check-not4curation</code></td>
 <td><code>--check-not4curation</code></td>
 <td>Flag terms their ontology marks as not for annotation (see <a href="../plugin-reference/#not4curation-check">Not4Curation check</a>)</td>
@@ -1669,7 +1699,7 @@ linkml-term-validator validate-text-file document.md \
 </tr>
 <tr>
 <td><code>2</code></td>
-<td>Unable to validate: the ontology service was unreachable (network outage, or a transient HTTP status — 5xx, 408 timeout, or 429 rate-limit), so terms could not be checked. This is distinct from invalid data — retry when the service is reachable, or use <code>--offline</code> to validate against the local cache only. Validation <em>fails fast</em>: the run aborts on the first outage rather than reporting every subsequent term as missing. Across a multi-file <code>validate-data</code> run this means one prefix's transient outage stops the whole run, including files that were fully resolvable from the local cache.</td>
+<td>Unable to validate: the ontology service was unreachable (network outage, or a transient HTTP status — 5xx, 408 timeout, or 429 rate-limit), so terms could not be checked. This is distinct from invalid data — retry when the service is reachable, or use <code>--offline</code> to validate against the local cache only. The lookup is retried first (<code>--retries</code>, default 2, with an exponential <code>--retry-wait</code>), so this code means the service stayed unavailable across every attempt, not that one request stalled. Once the attempts are spent validation <em>fails fast</em>: the run aborts on that outage rather than reporting every subsequent term as missing. Across a multi-file <code>validate-data</code> run this means one prefix's transient outage stops the whole run, including files that were fully resolvable from the local cache.</td>
 </tr>
 </tbody>
 </table>
