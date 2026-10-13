@@ -249,3 +249,12 @@ test that cares about the delays passes its own policy or `_sleep`. Materialize
 an adapter's result *inside* the classifying `try`: OAK traversals answer with
 generators, so a lazily raised timeout would otherwise escape unclassified and
 never be retried (PR #74 review).
+
+### Credentials in Error Text (#75)
+
+Adapter exceptions often embed the request URL, and OAK's OntoPortal
+(BioPortal) adapter puts the API key in it (`?apikey=...`). Any exception text
+that becomes a message, a validation result, or a log line must go through
+`redact_secrets()` first; it masks credential-like query parameters and URL
+`user:password@` parts. `OntologyServiceUnavailableError` already redacts its
+message (its `original` keeps the raw exception, so never print that directly).

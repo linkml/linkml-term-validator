@@ -637,3 +637,71 @@ def test_the_outage_message_claims_no_retry_when_there_was_none(runner, tmp_path
     assert result.exit_code == 2, result.output
     assert "after 1 attempt." in result.output
     assert "attempts" not in result.output
+
+
+# =============================================================================
+# Credentials never reach the output (#75)
+# =============================================================================
+
+FAKE_KEY = "0123abcd-fake-bioportal-key"
+
+
+def _bioportal_timeout() -> requests.exceptions.ConnectTimeout:
+    """The shape a stalled BioPortal lookup produces: the key is in the URL."""
+    return requests.exceptions.ConnectTimeout(
+        "HTTPSConnectionPool(host='data.bioontology.org', port=443): Max retries "
+        "exceeded with url: /ontologies/SNOMEDCT/classes/http%3A%2F%2Fpurl."
+        "bioontology.org%2Fontology%2FSNOMEDCT%2F22298006?display_context=false"
+        f"&apikey={FAKE_KEY} (Caused by ConnectTimeoutError(...))"
+    )
+
+
+class LeakyAdapter:
+    def label(self, curie: str):
+        raise _bioportal_timeout()
+
+
+def test_the_outage_error_masks_an_api_key_in_the_url():
+    original = _bioportal_timeout()
+    error = OntologyServiceUnavailableError("SNOMEDCT:22298006", original)
+
+    assert FAKE_KEY not in str(error)
+    assert "apikey=***" in str(error)
+    assert "data.bioontology.org" in str(error)
+    # The raw exception stays available to code that needs it.
+    assert error.original is original
+
+
+def test_retry_log_lines_mask_an_api_key(access_factory, caplog):
+    access = access_factory(LeakyAdapter())
+
+    with caplog.at_level("DEBUG"), pytest.raises(OntologyServiceUnavailableError):
+        access.get_label("SNOMEDCT:22298006")
+
+    assert "retrying" in caplog.text
+    assert FAKE_KEY not in caplog.text
+
+
+def test_the_cli_outage_message_masks_an_api_key(runner, tmp_path, monkeypatch):
+    monkeypatch.setattr(oak_utils, "get_adapter", lambda s: LeakyAdapter())
+
+    result = _validate_schema(runner, tmp_path)
+
+    assert result.exit_code == 2, result.output
+    assert "Unable to validate at this time" in result.output
+    assert "apikey=***" in result.output
+    assert FAKE_KEY not in result.output
+
+
+def test_a_failed_lookup_that_is_not_an_outage_logs_no_key(access_factory, caplog):
+    class BrokenAdapter:
+        def label(self, curie: str):
+            raise ValueError(f"bad response from https://x.org/term?apikey={FAKE_KEY}")
+
+    access = access_factory(BrokenAdapter())
+
+    with caplog.at_level("DEBUG"):
+        assert access.get_label("SNOMEDCT:22298006") is None
+
+    assert "apikey=***" in caplog.text
+    assert FAKE_KEY not in caplog.text

@@ -39,6 +39,7 @@ from linkml_term_validator.utils import (
     normalize_string,
     parse_not4curation_config,
     raise_if_service_unavailable,
+    redact_secrets,
 )
 
 logger = logging.getLogger(__name__)
@@ -868,7 +869,7 @@ class BaseOntologyPlugin(ValidationPlugin):
                     "Reachability check failed for %s from %s: %s",
                     value,
                     source_node,
-                    e,
+                    redact_secrets(str(e)),
                 )
                 continue
 

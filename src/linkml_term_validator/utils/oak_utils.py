@@ -36,6 +36,45 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
+# An adapter's exception text routinely embeds the request URL, and some
+# services take their credential in it: OAK's OntoPortal (BioPortal) adapter
+# sends ``?apikey=...``, so a timed-out lookup printed the key in plain text
+# (#75). Every exception we turn into a message or a log line goes through
+# redact_secrets() first. The parameter names are matched as a whole word so
+# that e.g. ``monkey=`` is left alone.
+_SECRET_PARAM_RE = re.compile(
+    r"(?<![A-Za-z0-9_])("
+    r"api[_-]?key|access[_-]?token|auth[_-]?token|refresh[_-]?token|id[_-]?token"
+    r"|client[_-]?secret|token|key|secret|password|passwd|pwd|signature|sig"
+    r")(=)[^&\s'\"<>()#]+",
+    re.IGNORECASE,
+)
+# ``scheme://user:password@host`` - the userinfo part of a URL.
+_URL_USERINFO_RE = re.compile(r"(?<=://)[^/\s@:'\"]+:[^/\s@'\"]+@")
+REDACTED = "***"
+
+
+def redact_secrets(text: str) -> str:
+    """Mask credentials that an exception message may carry in a URL.
+
+    Query parameters with credential-like names (``apikey``, ``token``,
+    ``password``, ...) keep their name but lose their value, and the
+    ``user:password@`` part of a URL is masked whole.
+
+    Examples:
+        >>> redact_secrets("url: /classes/X?display_context=false&apikey=abc-123 (Caused by")
+        'url: /classes/X?display_context=false&apikey=*** (Caused by'
+        >>> redact_secrets("https://alice:hunter2@example.org/x?Token=t0k&q=1")
+        'https://***@example.org/x?Token=***&q=1'
+        >>> redact_secrets("Read timed out. (read timeout=5)")
+        'Read timed out. (read timeout=5)'
+        >>> redact_secrets("?monkey=banana")
+        '?monkey=banana'
+    """
+    text = _SECRET_PARAM_RE.sub(rf"\1\2{REDACTED}", text)
+    return _URL_USERINFO_RE.sub(f"{REDACTED}@", text)
+
+
 class OntologyServiceUnavailableError(Exception):
     """Raised when an ontology service could not be reached to resolve a term.
 
@@ -54,7 +93,9 @@ class OntologyServiceUnavailableError(Exception):
         # Set by retry_on_service_unavailable when it gives up, so a caller can
         # report how many attempts were spent rather than guessing.
         self.attempts: Optional[int] = None
-        detail = f": {original}" if original is not None else ""
+        # The message is printed and logged, so it never carries a credential
+        # from the request URL; ``original`` keeps the raw exception.
+        detail = f": {redact_secrets(str(original))}" if original is not None else ""
         super().__init__(f"could not reach ontology service to resolve {curie}{detail}")
 
 
@@ -1020,12 +1061,12 @@ class OntologyAccess:
         """Log an adapter lookup failure, distinguishing 404 from transient errors."""
         response = getattr(exc, "response", None)
         if getattr(response, "status_code", None) == 404:
-            logger.debug("Term %s not found (HTTP 404): %s", curie, exc)
+            logger.debug("Term %s not found (HTTP 404): %s", curie, redact_secrets(str(exc)))
         else:
             logger.warning(
                 "Label lookup for %s failed unexpectedly (treated as not found): %s",
                 curie,
-                exc,
+                redact_secrets(str(exc)),
             )
 
     def get_unknown_prefixes(self) -> set[str]:
@@ -1094,7 +1135,9 @@ class OntologyAccess:
                 result = set(obsoletes())
             except Exception as e:  # noqa: BLE001 - adapters raise varied errors
                 raise_if_service_unavailable(f"{prefix}:*", e)
-                logger.debug("obsoletes() failed for prefix %s: %s", prefix, e)
+                logger.debug(
+                    "obsoletes() failed for prefix %s: %s", prefix, redact_secrets(str(e))
+                )
                 result = None
         self._obsolete_cache[prefix] = result
         return result
@@ -1219,7 +1262,11 @@ class OntologyAccess:
             return None
         except Exception as e:  # noqa: BLE001 - adapters raise varied errors
             raise_if_service_unavailable(curie, e)
-            logger.warning("Alias lookup for %s failed (term left unchecked): %s", curie, e)
+            logger.warning(
+                "Alias lookup for %s failed (term left unchecked): %s",
+                curie,
+                redact_secrets(str(e)),
+            )
             return None
         return [str(a) for a in (result or []) if a is not None]
 
