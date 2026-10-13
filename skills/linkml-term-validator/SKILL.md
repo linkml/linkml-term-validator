@@ -44,9 +44,9 @@ hooks, or establish required CI checks.
 
 Schema structure, term existence, canonical labels, enum membership, and
 scientific suitability are separate claims. Do not infer all of them from one
-green command. In dismech, arbitrary qualifier fields need additional checks;
-an ID/label pair can pass while disagreeing with the gene named elsewhere in
-the same record.
+green command. A free-form qualifier field that no binding covers needs its own
+check: its ID/label pair can pass while disagreeing with the gene named
+elsewhere in the same record.
 
 ## Correct the cause and close the loop
 
