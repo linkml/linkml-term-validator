@@ -118,5 +118,5 @@ name or claim, inspect definitions and source evidence before changing it.
 Never automatically canonicalize the label of an ID copied from an unverified
 research report. A corrected label can make the wrong biological entity
 self-consistent and conceal the mistake. Consult the
-[LTV documentation](https://linkml.io/linkml-term-validator/) for the installed
+[LTV documentation](https://linkml.github.io/linkml-term-validator/) for the installed
 release's plugin and binding options.
