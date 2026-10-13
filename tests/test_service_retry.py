@@ -796,3 +796,44 @@ def test_the_retry_warning_redacts_even_an_unredacted_error(caplog):
 
     assert "apikey=***" in caplog.text
     assert FAKE_KEY not in caplog.text
+
+
+class _OpaqueError(Exception):
+    """An error whose message is built from an attribute, not its args."""
+
+    def __str__(self):
+        return f"rejected https://data.bioontology.org/x?apikey={FAKE_KEY}"
+
+
+def test_the_outage_printer_redacts_what_it_prints(capsys):
+    from linkml_term_validator.cli import _fail_service_unavailable
+
+    class OpaqueOutage(OntologyServiceUnavailableError):
+        def __str__(self):
+            return f"stalled at /x?apikey={FAKE_KEY}"
+
+    _fail_service_unavailable(OpaqueOutage("SNOMEDCT:22298006"))
+
+    err = capsys.readouterr().err
+    assert "apikey=***" in err
+    assert FAKE_KEY not in err
+
+
+def test_main_redacts_an_unhandled_traceback(monkeypatch, capsys):
+    """The last-resort net catches what scrubbing cannot reach."""
+    from linkml_term_validator import cli
+
+    def boom():
+        raise _OpaqueError()
+
+    monkeypatch.setattr(cli, "app", boom)
+
+    with pytest.raises(SystemExit) as excinfo:
+        cli.main()
+
+    assert excinfo.value.code == 1
+    err = capsys.readouterr().err
+    assert "Traceback" in err
+    assert "_OpaqueError" in err
+    assert "apikey=***" in err
+    assert FAKE_KEY not in err

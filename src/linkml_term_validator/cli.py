@@ -9,6 +9,8 @@ For integration with LinkML's validator framework, see documentation.
 """
 
 import re
+import sys
+import traceback
 from enum import Enum
 from pathlib import Path
 from typing import Optional
@@ -24,7 +26,7 @@ from linkml_term_validator.plugins import (
     BindingValidationPlugin,
     DynamicEnumPlugin,
 )
-from linkml_term_validator.utils import OntologyServiceUnavailableError
+from linkml_term_validator.utils import OntologyServiceUnavailableError, redact_secrets
 from linkml_term_validator.validator import EnumValidator
 
 app = typer.Typer(
@@ -135,7 +137,7 @@ def _fail_service_unavailable(exc: OntologyServiceUnavailableError) -> typer.Exi
     tried = f" after {attempts} attempt{'s' if attempts != 1 else ''}" if attempts else ""
     typer.echo(
         f"\n🌐 Unable to validate at this time: ontology service unavailable{tried}.\n"
-        f"   {exc}\n"
+        f"   {redact_secrets(str(exc))}\n"
         "   Terms could not be checked; this is not a data error. Retry when the "
         "ontology service is reachable, raise --retries/--retry-wait to ride out a "
         "longer stall, or use --offline to validate against the local cache only.",
@@ -1243,8 +1245,18 @@ def validate_text_file(
 
 
 def main():
-    """Main entry point for the CLI."""
-    app()
+    """Main entry point for the CLI.
+
+    An error nothing else handled would print as a raw traceback, and an
+    adapter's error text can carry a credential from the request URL (#75).
+    The traceback is still printed in full, for debugging, but redacted.
+    """
+    try:
+        app()
+    except Exception as exc:  # noqa: BLE001 - last resort, re-reported below
+        text = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        sys.stderr.write(redact_secrets(text))
+        sys.exit(1)
 
 
 if __name__ == "__main__":
