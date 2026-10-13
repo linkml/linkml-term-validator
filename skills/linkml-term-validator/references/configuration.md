@@ -67,9 +67,14 @@ assuming old rows still describe the new constraints.
 
 For label caches, the built-in remedy is `migrate-cache`: it sorts and
 deduplicates each `<cache-dir>/<prefix>/terms.csv`, and `--refresh-labels`
-re-fetches labels so an ontology relabeling reaches the cache. Run it with
-`--dry-run` first and review the diff like any other data change. It does not
-touch dynamic-enum membership caches.
+re-fetches labels so an ontology relabeling reaches the cache. Run it with the
+project's `--config` and `--cache-dir`: without `--config` it falls back to
+`sqlite:obo:`, which can read labels from a different source than the gate
+uses or start a large download. Run it with `--dry-run` first and review the
+diff like any other data change; a dry run with `--refresh-labels` still makes
+every lookup. A term that no longer resolves keeps its old cached label
+without a message, so a refresh does not prove every cached term still
+exists. It does not touch dynamic-enum membership caches.
 
 ## Separate reported severity from the runner's exit rule
 
