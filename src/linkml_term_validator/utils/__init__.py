@@ -19,10 +19,10 @@ from linkml_term_validator.utils.oak_utils import (
     parse_retry_config,
     raise_if_service_unavailable,
     redact_secrets,
-    scrub_exception_secrets,
     resolve_retry_policy,
     retry_after_seconds,
     retry_on_service_unavailable,
+    scrub_exception_secrets,
 )
 
 __all__ = [
@@ -44,8 +44,8 @@ __all__ = [
     "parse_retry_config",
     "raise_if_service_unavailable",
     "redact_secrets",
-    "scrub_exception_secrets",
     "resolve_retry_policy",
     "retry_after_seconds",
     "retry_on_service_unavailable",
+    "scrub_exception_secrets",
 ]
