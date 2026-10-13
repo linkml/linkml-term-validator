@@ -40,6 +40,7 @@ from linkml_term_validator.utils import (
     parse_not4curation_config,
     raise_if_service_unavailable,
     redact_secrets,
+    scrub_exception_secrets,
 )
 
 logger = logging.getLogger(__name__)
@@ -933,7 +934,9 @@ class BaseOntologyPlugin(ValidationPlugin):
         # tolerate a single unreachable term catch the failure at their own call
         # site instead. A network outage is normalized to
         # OntologyServiceUnavailableError so it surfaces as "unable to validate"
-        # rather than a raw adapter traceback.
+        # rather than a raw adapter traceback; anything else propagates with
+        # any credential in its message masked (a wrong BioPortal key answers
+        # 401 with the key in the URL, #75).
         #
         # Materializing the result stays INSIDE the guard: OAK traversals often
         # answer with a generator, so the requests only run while the set is
@@ -946,7 +949,7 @@ class BaseOntologyPlugin(ValidationPlugin):
             raise
         except Exception as e:  # noqa: BLE001 - adapters raise varied errors
             raise_if_service_unavailable(start_curie, e)
-            raise
+            raise scrub_exception_secrets(e)
         if reflexive:
             values.add(start_curie)
         else:
@@ -1250,7 +1253,7 @@ class BaseOntologyPlugin(ValidationPlugin):
             raise
         except Exception as e:  # noqa: BLE001 - clients raise varied errors
             raise_if_service_unavailable(source_node, e)
-            raise
+            raise scrub_exception_secrets(e)
         if reflexive:
             values.add(source_node)
         else:

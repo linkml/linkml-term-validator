@@ -75,6 +75,29 @@ def redact_secrets(text: str) -> str:
     return _URL_USERINFO_RE.sub(f"{REDACTED}@", text)
 
 
+def scrub_exception_secrets(exc: BaseException) -> BaseException:
+    """Redact credentials from an exception's message, in place.
+
+    For an error that is re-raised as itself rather than reported by us: a
+    wrong BioPortal key answers 401, which is not an outage, so it escapes to a
+    traceback whose last line is ``401 Client Error: ... ?apikey=<KEY>``.
+    Only the string ``args`` are rewritten, so the exception keeps its type and
+    attributes (a caller can still read ``.response``).
+
+    Examples:
+        >>> err = ValueError("401 Client Error for url: /x?apikey=abc", 401)
+        >>> scrub_exception_secrets(err) is err
+        True
+        >>> err.args
+        ('401 Client Error for url: /x?apikey=***', 401)
+    """
+    try:
+        exc.args = tuple(redact_secrets(a) if isinstance(a, str) else a for a in exc.args)
+    except Exception:  # noqa: BLE001 - an exotic exception may refuse new args
+        pass
+    return exc
+
+
 class OntologyServiceUnavailableError(Exception):
     """Raised when an ontology service could not be reached to resolve a term.
 
@@ -937,7 +960,7 @@ class OntologyAccess:
             return get_adapter(adapter_string)
         except Exception as e:  # noqa: BLE001 - adapters raise varied errors
             raise_if_service_unavailable(f"{prefix}:*", e)
-            raise
+            raise scrub_exception_secrets(e)
 
     @staticmethod
     def _adapter_string_for_prefix(prefix: str, adapter_string: str) -> str | None:

@@ -705,3 +705,57 @@ def test_a_failed_lookup_that_is_not_an_outage_logs_no_key(access_factory, caplo
 
     assert "apikey=***" in caplog.text
     assert FAKE_KEY not in caplog.text
+
+
+def _unauthorized() -> requests.exceptions.HTTPError:
+    """What a wrong or expired BioPortal key gets back: not an outage."""
+    response = requests.Response()
+    response.status_code = 401
+    return requests.exceptions.HTTPError(
+        "401 Client Error: Unauthorized for url: https://data.bioontology.org/"
+        f"ontologies/SNOMEDCT/classes/X/descendants?apikey={FAKE_KEY}",
+        response=response,
+    )
+
+
+def test_a_rejected_key_escapes_without_the_key(runner, tmp_path, monkeypatch):
+    """A 401 is re-raised as itself, so it reaches a traceback; the key must not."""
+    import traceback
+
+    class RejectingAdapter:
+        def label(self, curie):
+            raise _unauthorized()
+
+        def descendants(self, curies, predicates=None, reflexive=False):
+            raise _unauthorized()
+
+        def ancestors(self, curies, predicates=None, reflexive=False):
+            raise _unauthorized()
+
+    monkeypatch.setattr(oak_utils, "get_adapter", lambda s: RejectingAdapter())
+    data_dir = Path(__file__).parent / "data"
+
+    result = runner.invoke(
+        app,
+        [
+            "validate-data",
+            str(data_dir / "dynamic_enum_valid_data.yaml"),
+            "--schema",
+            str(data_dir / "dynamic_enum_schema.yaml"),
+            "--target-class",
+            "Sample",
+            "--no-bindings",
+            "--cache-strategy",
+            "greedy",
+            "--no-cache",
+            "--cache-dir",
+            str(tmp_path / "cache"),
+        ],
+    )
+
+    assert isinstance(result.exception, requests.exceptions.HTTPError), result.output
+    assert result.exception.response.status_code == 401
+    printed = "".join(traceback.format_exception(result.exception))
+    assert "apikey=***" in printed
+    assert FAKE_KEY not in printed
+    assert FAKE_KEY not in result.output
