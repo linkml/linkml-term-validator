@@ -66,6 +66,7 @@ Check the installed release and exact entry point before changing policy.
 | --- | --- |
 | `validate-data` | `--fail-on any` (default) fails on every result; `error` fails on ERROR; `warn` includes WARN. `--strict` raises an `error` threshold to include warnings without enabling disabled checks. |
 | `validate-schema` | Uses its own `--strict` behavior for label and unresolved-term checks; it has no `--fail-on` option. Ordinary warnings can finish with exit 0. |
+| `validate` (auto-detect) | With `--schema`, validates data and follows the `validate-data` policy, including `--fail-on` and `--lenient`. Without it, validates a schema and follows the `validate-schema` policy; `--fail-on` has no effect there. |
 | `validate-text-file` | `--strict` makes unresolved CURIEs errors even for unconfigured prefixes; it is not the data command's severity threshold. |
 | `linkml-validate` with LTV plugins | Inspect both plugin result severity and the host runner's failure threshold. A printed warning need not fail the host command. |
 
