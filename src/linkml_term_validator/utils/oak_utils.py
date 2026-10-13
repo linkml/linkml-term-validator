@@ -40,39 +40,78 @@ T = TypeVar("T")
 # services take their credential in it: OAK's OntoPortal (BioPortal) adapter
 # sends ``?apikey=...``, so a timed-out lookup printed the key in plain text
 # (#75). Every exception we turn into a message or a log line goes through
-# redact_secrets() first. The parameter names are matched as a whole word so
-# that e.g. ``monkey=`` is left alone.
-_SECRET_PARAM_RE = re.compile(
-    r"(?<![A-Za-z0-9_])("
+# redact_secrets() first. Names are matched as a whole word so that e.g.
+# ``monkey=`` is left alone.
+_SECRET_NAMES = (
     r"api[_-]?key|access[_-]?token|auth[_-]?token|refresh[_-]?token|id[_-]?token"
     r"|client[_-]?secret|token|key|secret|password|passwd|pwd|signature|sig"
-    r")(=)[^&\s'\"<>()#]+",
-    re.IGNORECASE,
 )
-# ``scheme://user:password@host`` - the userinfo part of a URL.
-_URL_USERINFO_RE = re.compile(r"(?<=://)[^/\s@:'\"]+:[^/\s@'\"]+@")
+# Start of a name: not glued to a word, or right after a percent-encoded
+# ``?``/``&`` (a URL nested inside another URL's query).
+_NAME_START = r"(?:(?<![A-Za-z0-9_])|(?<=%3F)|(?<=%26))"
 REDACTED = "***"
+_SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    # ``Authorization: Bearer <token>``, ``Authorization: apikey token=<key>``
+    # (BioPortal's header form); the scheme word is kept.
+    (
+        re.compile(
+            r"(authorization[\"']?\s*[:=]\s*[\"']?)"
+            r"((?:bearer|basic|digest|token|apikey)\s+)?[^\s'\",;}]+",
+            re.IGNORECASE,
+        ),
+        rf"\1\2{REDACTED}",
+    ),
+    # A bare bearer token, e.g. quoted from a header elsewhere in a message.
+    (
+        re.compile(r"(?<![A-Za-z0-9_])(bearer\s+)[A-Za-z0-9._~+/-]{8,}=*", re.IGNORECASE),
+        rf"\1{REDACTED}",
+    ),
+    # Query or form parameters, plain (``apikey=``) or percent-encoded
+    # (``apikey%3D``); the value ends at ``&`` or ``%26``.
+    (
+        re.compile(
+            rf"{_NAME_START}({_SECRET_NAMES})(=|%3D)(?:(?!%26)[^&\s'\"<>()#])+",
+            re.IGNORECASE,
+        ),
+        rf"\1\2{REDACTED}",
+    ),
+    # Header or JSON/dict style: ``X-API-Key: abc``, ``"apikey": "abc"``.
+    (
+        re.compile(
+            rf"{_NAME_START}({_SECRET_NAMES})([\"']?\s*:\s*[\"']?)[^\s'\",;}}&]+",
+            re.IGNORECASE,
+        ),
+        rf"\1\2{REDACTED}",
+    ),
+    # The userinfo of a URL, ``user:password@`` or a bare ``token@``. It stops
+    # at ``?`` and ``#`` so an ``@`` in the query is not mistaken for one.
+    (re.compile(r"(?<=://)[^/\s@'\"?#]+@"), f"{REDACTED}@"),
+]
 
 
 def redact_secrets(text: str) -> str:
-    """Mask credentials that an exception message may carry in a URL.
+    """Mask credentials that an exception message may carry.
 
-    Query parameters with credential-like names (``apikey``, ``token``,
-    ``password``, ...) keep their name but lose their value, and the
-    ``user:password@`` part of a URL is masked whole.
+    Query parameters, headers, and JSON fields with credential-like names
+    (``apikey``, ``token``, ``password``, ...) keep their name but lose their
+    value; so does an ``Authorization`` header or a ``Bearer`` token. The
+    userinfo part of a URL (``user:password@``, ``token@``) is masked whole.
 
     Examples:
         >>> redact_secrets("url: /classes/X?display_context=false&apikey=abc-123 (Caused by")
         'url: /classes/X?display_context=false&apikey=*** (Caused by'
         >>> redact_secrets("https://alice:hunter2@example.org/x?Token=t0k&q=1")
         'https://***@example.org/x?Token=***&q=1'
+        >>> redact_secrets('{"apikey": "abc"}, Authorization: Bearer abcdefgh12')
+        '{"apikey": "***"}, Authorization: Bearer ***'
         >>> redact_secrets("Read timed out. (read timeout=5)")
         'Read timed out. (read timeout=5)'
         >>> redact_secrets("?monkey=banana")
         '?monkey=banana'
     """
-    text = _SECRET_PARAM_RE.sub(rf"\1\2{REDACTED}", text)
-    return _URL_USERINFO_RE.sub(f"{REDACTED}@", text)
+    for pattern, replacement in _SECRET_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
 
 
 def scrub_exception_secrets(exc: BaseException) -> BaseException:

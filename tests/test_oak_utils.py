@@ -446,6 +446,26 @@ def test_get_label_treats_non_connectivity_error_as_not_found(monkeypatch):
         ("Read timed out. (read timeout=5)", "Read timed out. (read timeout=5)"),
         # URL userinfo.
         ("https://alice:hunter2@example.org/x", "https://***@example.org/x"),
+        # A bare token as userinfo.
+        ("https://ghp_abc123@github.com/x", "https://***@github.com/x"),
+        # An @ in the query is not userinfo; the port and path are kept.
+        ("https://host:443?q=a@b", "https://host:443?q=a@b"),
+        # Percent-encoded, in a URL nested inside another URL's query.
+        (
+            "/proxy?url=https%3A%2F%2Fx.org%2Fy%3Fapikey%3DAAA%26q%3D1",
+            "/proxy?url=https%3A%2F%2Fx.org%2Fy%3Fapikey%3D***%26q%3D1",
+        ),
+        # Header and JSON/dict styles.
+        ("X-API-Key: AAA", "X-API-Key: ***"),
+        ('{"apikey": "AAA", "q": 1}', '{"apikey": "***", "q": 1}'),
+        ("{'token': 'AAA'}", "{'token': '***'}"),
+        ("Authorization: Bearer abc.def-123", "Authorization: Bearer ***"),
+        ("Authorization: apikey token=AAA", "Authorization: apikey ***"),
+        ("'Authorization': 'Basic dXNlcjpwYXNz'", "'Authorization': 'Basic ***'"),
+        ("sent Bearer abcdefgh12345 upstream", "sent Bearer *** upstream"),
+        # Not credentials, despite the shapes above.
+        ("KeyError: 'GO:0008150'", "KeyError: 'GO:0008150'"),
+        ("the bearer of bad news", "the bearer of bad news"),
         ("", ""),
     ],
 )
