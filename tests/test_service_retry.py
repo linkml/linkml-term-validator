@@ -837,3 +837,34 @@ def test_main_redacts_an_unhandled_traceback(monkeypatch, capsys):
     assert "_OpaqueError" in err
     assert "apikey=***" in err
     assert FAKE_KEY not in err
+
+
+def test_the_real_requests_wrapping_carries_no_key():
+    """requests raises ConnectionError(MaxRetryError(...)) from the urllib3 error.
+
+    The URL lives in the urllib3 error, which is both an arg of the requests
+    error and its context, so both routes through the chain must be scrubbed.
+    """
+    import traceback
+
+    import urllib3.exceptions
+
+    url = f"/ontologies/SNOMEDCT/classes/X?display_context=false&apikey={FAKE_KEY}"
+    try:
+        try:
+            raise urllib3.exceptions.MaxRetryError(
+                None, url, reason=urllib3.exceptions.ConnectTimeoutError("timed out")
+            )
+        except urllib3.exceptions.MaxRetryError as inner:
+            raise requests.exceptions.ConnectionError(inner) from inner
+    except requests.exceptions.ConnectionError as outer:
+        try:
+            raise_if_service_unavailable("SNOMEDCT:22298006", outer)
+        except OntologyServiceUnavailableError as error:
+            printed = "".join(traceback.format_exception(error))
+            message = str(error)
+
+    assert "Max retries exceeded" in printed
+    assert "apikey=***" in printed
+    assert FAKE_KEY not in printed
+    assert FAKE_KEY not in message
