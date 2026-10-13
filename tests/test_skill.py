@@ -90,12 +90,21 @@ def test_bash_block_flags_exist_on_their_command(doc):
     "doc", SKILL_DOCS, ids=lambda p: str(p.relative_to(SKILLS_DIR))
 )
 def test_cited_flags_exist(doc):
-    """Every `--flag` quoted in prose belongs to at least one subcommand."""
-    cited = set(re.findall(r"`[^`]*?(--[a-z][a-z0-9-]*)", _prose(doc)))
-    unknown = cited - ALL_OPTIONS
-    assert not unknown, (
-        f"{doc.name} cites flags no subcommand accepts: {sorted(unknown)}"
-    )
+    """Every `--flag` quoted in prose exists where the prose puts it.
+
+    A code span that opens with a subcommand (`validate-schema --strict`) is
+    checked against that subcommand. A bare flag (`--fail-on any`) names no
+    command, so it only has to exist on at least one.
+    """
+    problems = []
+    for span in re.findall(r"`([^`]*)`", _prose(doc)):
+        words = span.split()
+        command = COMMANDS.get(words[0]) if words else None
+        accepted = _options(command) if command else ALL_OPTIONS
+        for flag in re.findall(r"--[a-z][a-z0-9-]*", span):
+            if flag not in accepted:
+                problems.append(f"`{span}`: {flag}")
+    assert not problems, f"{doc.name} cites flags that do not exist there: {problems}"
 
 
 @pytest.mark.parametrize(
