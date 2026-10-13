@@ -518,13 +518,16 @@ def retry_on_service_unavailable(
                 # backoff, still clamped so an outlandish value cannot hang
                 # the run (an explicit larger backoff is never shortened).
                 delay = min(max(delay, asked_for), max(MAX_SERVICE_RETRY_DELAY, policy.backoff))
+            # The constructor already redacted the message, but redact here
+            # too: this line must stay clean if the error is ever built some
+            # other way (#75).
             logger.warning(
                 "Ontology service unavailable while %s (attempt %d of %d): %s; "
                 "retrying in %gs",
                 description,
                 attempt + 1,
                 policy.attempts,
-                exc,
+                redact_secrets(str(exc)),
                 delay,
             )
             sleep(delay)

@@ -774,3 +774,25 @@ def test_the_wrapped_cause_carries_no_key_either():
     assert "The above exception was the direct cause" in printed
     assert "apikey=***" in printed
     assert FAKE_KEY not in printed
+
+
+def test_the_retry_warning_redacts_even_an_unredacted_error(caplog):
+    """The warning does not rely on the constructor having redacted the text."""
+
+    class Prebuilt(OntologyServiceUnavailableError):
+        def __str__(self):
+            return f"stalled at /x?apikey={FAKE_KEY}"
+
+    attempts = []
+
+    def flaky():
+        attempts.append(1)
+        if len(attempts) < 2:
+            raise Prebuilt("SNOMEDCT:22298006")
+        return "ok"
+
+    with caplog.at_level("WARNING"):
+        assert retry_on_service_unavailable(flaky, sleep=lambda seconds: None) == "ok"
+
+    assert "apikey=***" in caplog.text
+    assert FAKE_KEY not in caplog.text
