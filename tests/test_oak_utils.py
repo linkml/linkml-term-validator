@@ -473,3 +473,20 @@ def test_redact_secrets(text, expected):
     from linkml_term_validator.utils import redact_secrets
 
     assert redact_secrets(text) == expected
+
+
+def test_scrub_exception_secrets_covers_oserror_fields_and_notes():
+    import sys
+    import traceback
+
+    from linkml_term_validator.utils import scrub_exception_secrets
+
+    err = OSError(110, "timed out: /x?apikey=AAA", "/y?token=BBB")
+    if sys.version_info >= (3, 11):
+        err.add_note("while fetching /z?apikey=CCC")
+    scrub_exception_secrets(err)
+
+    printed = "".join(traceback.format_exception(err))
+    for secret in ("AAA", "BBB", "CCC"):
+        assert secret not in printed
+    assert "apikey=***" in printed

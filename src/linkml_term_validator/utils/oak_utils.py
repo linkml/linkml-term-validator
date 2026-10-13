@@ -143,6 +143,9 @@ def scrub_exception_secrets(exc: BaseException) -> BaseException:
         ...     _ = scrub_exception_secrets(outer)
         ...     print(outer, "|", outer.__cause__)
         url: /x?apikey=*** | url: /x?apikey=***
+        >>> err = OSError(110, "timed out: /x?apikey=abc")
+        >>> str(scrub_exception_secrets(err))
+        '[Errno 110] timed out: /x?apikey=***'
     """
     pending: list[BaseException] = [exc]
     seen: set[int] = set()
@@ -156,6 +159,15 @@ def scrub_exception_secrets(exc: BaseException) -> BaseException:
                 link.args = tuple(
                     redact_secrets(a) if isinstance(a, str) else a for a in link.args
                 )
+                # An OSError built with errno/strerror prints those fields,
+                # not its args; a traceback also prints PEP 678 notes.
+                for attr in ("strerror", "filename", "filename2"):
+                    value = getattr(link, attr, None)
+                    if isinstance(value, str):
+                        setattr(link, attr, redact_secrets(value))
+                notes = getattr(link, "__notes__", None)
+                if isinstance(notes, list):
+                    notes[:] = [redact_secrets(n) if isinstance(n, str) else n for n in notes]
             except Exception:  # noqa: BLE001 - an exotic exception may refuse new args
                 pass
     return exc
