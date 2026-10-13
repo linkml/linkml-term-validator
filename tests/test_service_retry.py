@@ -669,7 +669,7 @@ def test_the_outage_error_masks_an_api_key_in_the_url():
     assert FAKE_KEY not in str(error)
     assert "apikey=***" in str(error)
     assert "data.bioontology.org" in str(error)
-    # The raw exception stays available to code that needs it.
+    # The same exception object stays available, scrubbed in place.
     assert error.original is original
 
 

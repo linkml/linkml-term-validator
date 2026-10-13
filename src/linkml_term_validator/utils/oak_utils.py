@@ -124,7 +124,9 @@ def scrub_exception_secrets(exc: BaseException) -> BaseException:
     argument (``requests`` wraps the urllib3 error that way), because a
     traceback prints every link. Only the string ``args`` are rewritten, so each
     exception keeps its type and attributes (a caller can still read
-    ``.response``).
+    ``.response``). That cuts both ways: structured attributes such as
+    ``.response.url`` and ``.request.url`` still hold the credential, so never
+    log them; the message is the only part made safe to print.
 
     Examples:
         >>> err = ValueError("401 Client Error for url: /x?apikey=abc", 401)
