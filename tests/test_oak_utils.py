@@ -419,3 +419,37 @@ def test_get_label_treats_non_connectivity_error_as_not_found(monkeypatch):
     access = OntologyAccess(cache_labels=False)
 
     assert access.get_label("GO:0008150") is None
+
+
+# =============================================================================
+# redact_secrets (#75)
+# =============================================================================
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        # Several credential parameters in one URL, among harmless ones.
+        (
+            "/x?apikey=AAA&display_context=false&token=BBB&page=2",
+            "/x?apikey=***&display_context=false&token=***&page=2",
+        ),
+        # Names match regardless of case and separator style.
+        ("/x?APIKEY=AAA", "/x?APIKEY=***"),
+        ("/x?Api-Key=AAA", "/x?Api-Key=***"),
+        ("/x?access_token=AAA", "/x?access_token=***"),
+        ("/x?client_secret=AAA&password=BBB", "/x?client_secret=***&password=***"),
+        # The value stops at the quote or paren that requests puts after a URL.
+        ("url: '/x?apikey=AAA' (Caused by", "url: '/x?apikey=***' (Caused by"),
+        # Whole words only: these are not credentials.
+        ("/x?monkey=1&keyword=2&tokens=3", "/x?monkey=1&keyword=2&tokens=3"),
+        ("Read timed out. (read timeout=5)", "Read timed out. (read timeout=5)"),
+        # URL userinfo.
+        ("https://alice:hunter2@example.org/x", "https://***@example.org/x"),
+        ("", ""),
+    ],
+)
+def test_redact_secrets(text, expected):
+    from linkml_term_validator.utils import redact_secrets
+
+    assert redact_secrets(text) == expected
