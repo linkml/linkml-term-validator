@@ -115,3 +115,17 @@ def test_cited_subcommands_exist(doc):
     assert cited <= COMMANDS.keys(), (
         f"{doc.name} cites unknown subcommands: {sorted(cited - COMMANDS.keys())}"
     )
+
+
+@pytest.mark.parametrize(
+    "doc", SKILL_DOCS, ids=lambda p: str(p.relative_to(SKILLS_DIR))
+)
+def test_docs_links_use_site_url(doc):
+    """Links to the project docs use mkdocs.yml's site_url."""
+    mkdocs = (SKILLS_DIR.parent / "mkdocs.yml").read_text()
+    match = re.search(r"^site_url:\s*(\S+)", mkdocs, re.MULTILINE)
+    assert match, "mkdocs.yml has no site_url"
+    site_url = match.group(1).rstrip("/")
+    links = re.findall(r"https?://[^\s)>]*linkml-term-validator/?[^\s)>]*", doc.read_text())
+    stray = [u for u in links if "github.com" not in u and not u.startswith(site_url)]
+    assert not stray, f"{doc.name} links docs outside {site_url}: {stray}"
