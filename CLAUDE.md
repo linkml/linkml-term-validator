@@ -256,5 +256,8 @@ Adapter exceptions often embed the request URL, and OAK's OntoPortal
 (BioPortal) adapter puts the API key in it (`?apikey=...`). Any exception text
 that becomes a message, a validation result, or a log line must go through
 `redact_secrets()` first; it masks credential-like query parameters and URL
-`user:password@` parts. `OntologyServiceUnavailableError` already redacts its
-message (its `original` keeps the raw exception, so never print that directly).
+`user:password@` parts. An error re-raised as itself (a wrong key answers 401,
+which is not an outage) goes through `scrub_exception_secrets()`, which rewrites
+the string args of it and every error it wraps, keeping their types, so a
+traceback is clean too. `OntologyServiceUnavailableError` does both for its
+message and its `original` (= `__cause__`).

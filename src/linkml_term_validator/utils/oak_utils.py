@@ -76,13 +76,16 @@ def redact_secrets(text: str) -> str:
 
 
 def scrub_exception_secrets(exc: BaseException) -> BaseException:
-    """Redact credentials from an exception's message, in place.
+    """Redact credentials from an exception and the errors it wraps, in place.
 
     For an error that is re-raised as itself rather than reported by us: a
     wrong BioPortal key answers 401, which is not an outage, so it escapes to a
     traceback whose last line is ``401 Client Error: ... ?apikey=<KEY>``.
-    Only the string ``args`` are rewritten, so the exception keeps its type and
-    attributes (a caller can still read ``.response``).
+    The whole cause/context chain is scrubbed, as is any exception passed as an
+    argument (``requests`` wraps the urllib3 error that way), because a
+    traceback prints every link. Only the string ``args`` are rewritten, so each
+    exception keeps its type and attributes (a caller can still read
+    ``.response``).
 
     Examples:
         >>> err = ValueError("401 Client Error for url: /x?apikey=abc", 401)
@@ -90,11 +93,30 @@ def scrub_exception_secrets(exc: BaseException) -> BaseException:
         True
         >>> err.args
         ('401 Client Error for url: /x?apikey=***', 401)
+        >>> try:
+        ...     try:
+        ...         raise OSError("url: /x?apikey=abc")
+        ...     except OSError as inner:
+        ...         raise RuntimeError(inner) from inner
+        ... except RuntimeError as outer:
+        ...     _ = scrub_exception_secrets(outer)
+        ...     print(outer, "|", outer.__cause__)
+        url: /x?apikey=*** | url: /x?apikey=***
     """
-    try:
-        exc.args = tuple(redact_secrets(a) if isinstance(a, str) else a for a in exc.args)
-    except Exception:  # noqa: BLE001 - an exotic exception may refuse new args
-        pass
+    pending: list[BaseException] = [exc]
+    seen: set[int] = set()
+    while pending:
+        for link in _exception_chain(pending.pop()):
+            if id(link) in seen:
+                continue
+            seen.add(id(link))
+            pending.extend(a for a in link.args if isinstance(a, BaseException))
+            try:
+                link.args = tuple(
+                    redact_secrets(a) if isinstance(a, str) else a for a in link.args
+                )
+            except Exception:  # noqa: BLE001 - an exotic exception may refuse new args
+                pass
     return exc
 
 
@@ -116,8 +138,11 @@ class OntologyServiceUnavailableError(Exception):
         # Set by retry_on_service_unavailable when it gives up, so a caller can
         # report how many attempts were spent rather than guessing.
         self.attempts: Optional[int] = None
-        # The message is printed and logged, so it never carries a credential
-        # from the request URL; ``original`` keeps the raw exception.
+        # The message is printed and logged, and ``original`` is raised as
+        # this error's cause, so a traceback or ``logger.exception`` prints it
+        # too: neither may carry a credential from the request URL.
+        if original is not None:
+            scrub_exception_secrets(original)
         detail = f": {redact_secrets(str(original))}" if original is not None else ""
         super().__init__(f"could not reach ontology service to resolve {curie}{detail}")
 

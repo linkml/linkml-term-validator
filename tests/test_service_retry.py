@@ -25,6 +25,7 @@ from linkml_term_validator.utils import (
     RetryPolicy,
     oak_utils,
     parse_retry_config,
+    raise_if_service_unavailable,
     resolve_retry_policy,
     retry_on_service_unavailable,
 )
@@ -759,3 +760,17 @@ def test_a_rejected_key_escapes_without_the_key(runner, tmp_path, monkeypatch):
     assert "apikey=***" in printed
     assert FAKE_KEY not in printed
     assert FAKE_KEY not in result.output
+
+
+def test_the_wrapped_cause_carries_no_key_either():
+    """A library caller's traceback or logger.exception prints __cause__ too."""
+    import traceback
+
+    try:
+        raise_if_service_unavailable("SNOMEDCT:22298006", _bioportal_timeout())
+    except OntologyServiceUnavailableError as error:
+        printed = "".join(traceback.format_exception(error))
+
+    assert "The above exception was the direct cause" in printed
+    assert "apikey=***" in printed
+    assert FAKE_KEY not in printed
