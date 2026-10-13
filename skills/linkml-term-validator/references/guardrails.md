@@ -89,6 +89,16 @@ Confirm bounded runtime, expected cache writes, and visible incomplete checks.
 
 ## Example: dismech
 
+The takeaways, which hold even if the links below stop resolving:
+
+- Call LTV through a project wrapper that pins the release, so hook, CI, and
+  local runs share one contract.
+- Block on schema and term failures before an edit lands; keep advisory
+  findings visible but non-blocking until policy says otherwise.
+- Stage coverage: check new terms online in pull requests, then run cached,
+  offline checks in the merge queue. The offline stage only re-checks terms
+  the online stage already brought into the cache.
+
 At [dismech's inspected revision](https://github.com/monarch-initiative/dismech/tree/6bd2810f2f896fd9aa05f8223f7f50caebe457b3),
 the [recipes](https://github.com/monarch-initiative/dismech/blob/6bd2810f2f896fd9aa05f8223f7f50caebe457b3/project.justfile)
 run term validation with `--labels`, target class `Disease`, and the explicit
