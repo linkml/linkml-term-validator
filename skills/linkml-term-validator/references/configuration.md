@@ -21,9 +21,16 @@ or additional validator according to the project's schema policy.
 ## Configure ontology access
 
 Pass the project's config explicitly with `--config` (`-c` in LTV).
-The default `sqlite:obo:` adapter can download databases; `ols:` uses a remote
-service; `simpleobo:` reads a local file. Choose sources for their required
-capabilities and version, not merely to silence an unavailable service.
+The default `sqlite:obo:` adapter downloads a prebuilt database per ontology
+prefix on first use; `ols:` uses a remote service; `simpleobo:` reads a local
+file. Choose sources for their required capabilities and version, not merely
+to silence an unavailable service.
+
+A `sqlite:obo:` download can take minutes and run to gigabytes (ChEBI is over
+4 GB unpacked). OAK keeps these databases in its own data directory
+(`~/.data/oaklib`, or `$OAKLIB_HOME`/`$PYSTOW_HOME`), not in LTV's
+`--cache-dir`. In CI, persist both between runs, or every job pays the
+download again.
 
 For a small local ontology at `ontologies/test.obo`:
 
