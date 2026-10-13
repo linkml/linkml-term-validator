@@ -490,3 +490,22 @@ def test_scrub_exception_secrets_covers_oserror_fields_and_notes():
     for secret in ("AAA", "BBB", "CCC"):
         assert secret not in printed
     assert "apikey=***" in printed
+
+
+def test_a_failed_scrub_is_logged_without_the_message(caplog):
+    from linkml_term_validator.utils import scrub_exception_secrets
+
+    class Stubborn(Exception):
+        @property
+        def args(self):
+            return ("/x?apikey=AAA",)
+
+        @args.setter
+        def args(self, value):
+            raise TypeError("read-only")
+
+    with caplog.at_level("DEBUG"):
+        scrub_exception_secrets(Stubborn())
+
+    assert "Could not redact a Stubborn in place" in caplog.text
+    assert "AAA" not in caplog.text

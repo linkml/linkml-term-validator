@@ -172,7 +172,8 @@ def scrub_exception_secrets(exc: BaseException) -> BaseException:
                 if isinstance(notes, list):
                     notes[:] = [redact_secrets(n) if isinstance(n, str) else n for n in notes]
             except Exception:  # noqa: BLE001 - an exotic exception may refuse new args
-                pass
+                # Name the type only: the message is what failed to be cleaned.
+                logger.debug("Could not redact a %s in place", type(link).__name__)
     return exc
 
 
