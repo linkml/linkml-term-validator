@@ -25,6 +25,7 @@ from linkml_term_validator.utils import (
     RetryPolicy,
     oak_utils,
     parse_retry_config,
+    raise_if_service_unavailable,
     resolve_retry_policy,
     retry_on_service_unavailable,
 )
@@ -637,3 +638,233 @@ def test_the_outage_message_claims_no_retry_when_there_was_none(runner, tmp_path
     assert result.exit_code == 2, result.output
     assert "after 1 attempt." in result.output
     assert "attempts" not in result.output
+
+
+# =============================================================================
+# Credentials never reach the output (#75)
+# =============================================================================
+
+FAKE_KEY = "0123abcd-fake-bioportal-key"
+
+
+def _bioportal_timeout() -> requests.exceptions.ConnectTimeout:
+    """The shape a stalled BioPortal lookup produces: the key is in the URL."""
+    return requests.exceptions.ConnectTimeout(
+        "HTTPSConnectionPool(host='data.bioontology.org', port=443): Max retries "
+        "exceeded with url: /ontologies/SNOMEDCT/classes/http%3A%2F%2Fpurl."
+        "bioontology.org%2Fontology%2FSNOMEDCT%2F22298006?display_context=false"
+        f"&apikey={FAKE_KEY} (Caused by ConnectTimeoutError(...))"
+    )
+
+
+class LeakyAdapter:
+    def label(self, curie: str):
+        raise _bioportal_timeout()
+
+
+def test_the_outage_error_masks_an_api_key_in_the_url():
+    original = _bioportal_timeout()
+    error = OntologyServiceUnavailableError("SNOMEDCT:22298006", original)
+
+    assert FAKE_KEY not in str(error)
+    assert "apikey=***" in str(error)
+    assert "data.bioontology.org" in str(error)
+    # The same exception object stays available, scrubbed in place.
+    assert error.original is original
+
+
+def test_retry_log_lines_mask_an_api_key(access_factory, caplog):
+    access = access_factory(LeakyAdapter())
+
+    with caplog.at_level("DEBUG"), pytest.raises(OntologyServiceUnavailableError):
+        access.get_label("SNOMEDCT:22298006")
+
+    assert "retrying" in caplog.text
+    assert FAKE_KEY not in caplog.text
+
+
+def test_the_cli_outage_message_masks_an_api_key(runner, tmp_path, monkeypatch):
+    monkeypatch.setattr(oak_utils, "get_adapter", lambda s: LeakyAdapter())
+
+    result = _validate_schema(runner, tmp_path)
+
+    assert result.exit_code == 2, result.output
+    assert "Unable to validate at this time" in result.output
+    assert "apikey=***" in result.output
+    assert FAKE_KEY not in result.output
+
+
+def test_a_failed_lookup_that_is_not_an_outage_logs_no_key(access_factory, caplog):
+    class BrokenAdapter:
+        def label(self, curie: str):
+            raise ValueError(f"bad response from https://x.org/term?apikey={FAKE_KEY}")
+
+    access = access_factory(BrokenAdapter())
+
+    with caplog.at_level("DEBUG"):
+        assert access.get_label("SNOMEDCT:22298006") is None
+
+    assert "apikey=***" in caplog.text
+    assert FAKE_KEY not in caplog.text
+
+
+def _unauthorized() -> requests.exceptions.HTTPError:
+    """What a wrong or expired BioPortal key gets back: not an outage."""
+    response = requests.Response()
+    response.status_code = 401
+    return requests.exceptions.HTTPError(
+        "401 Client Error: Unauthorized for url: https://data.bioontology.org/"
+        f"ontologies/SNOMEDCT/classes/X/descendants?apikey={FAKE_KEY}",
+        response=response,
+    )
+
+
+def test_a_rejected_key_escapes_without_the_key(runner, tmp_path, monkeypatch):
+    """A 401 is re-raised as itself, so it reaches a traceback; the key must not."""
+    import traceback
+
+    class RejectingAdapter:
+        def label(self, curie):
+            raise _unauthorized()
+
+        def descendants(self, curies, predicates=None, reflexive=False):
+            raise _unauthorized()
+
+        def ancestors(self, curies, predicates=None, reflexive=False):
+            raise _unauthorized()
+
+    monkeypatch.setattr(oak_utils, "get_adapter", lambda s: RejectingAdapter())
+    data_dir = Path(__file__).parent / "data"
+
+    result = runner.invoke(
+        app,
+        [
+            "validate-data",
+            str(data_dir / "dynamic_enum_valid_data.yaml"),
+            "--schema",
+            str(data_dir / "dynamic_enum_schema.yaml"),
+            "--target-class",
+            "Sample",
+            "--no-bindings",
+            "--cache-strategy",
+            "greedy",
+            "--no-cache",
+            "--cache-dir",
+            str(tmp_path / "cache"),
+        ],
+    )
+
+    assert isinstance(result.exception, requests.exceptions.HTTPError), result.output
+    assert result.exception.response.status_code == 401
+    printed = "".join(traceback.format_exception(result.exception))
+    assert "apikey=***" in printed
+    assert FAKE_KEY not in printed
+    assert FAKE_KEY not in result.output
+
+
+def test_the_wrapped_cause_carries_no_key_either():
+    """A library caller's traceback or logger.exception prints __cause__ too."""
+    import traceback
+
+    try:
+        raise_if_service_unavailable("SNOMEDCT:22298006", _bioportal_timeout())
+    except OntologyServiceUnavailableError as error:
+        printed = "".join(traceback.format_exception(error))
+
+    assert "The above exception was the direct cause" in printed
+    assert "apikey=***" in printed
+    assert FAKE_KEY not in printed
+
+
+def test_the_retry_warning_redacts_even_an_unredacted_error(caplog):
+    """The warning does not rely on the constructor having redacted the text."""
+
+    class Prebuilt(OntologyServiceUnavailableError):
+        def __str__(self):
+            return f"stalled at /x?apikey={FAKE_KEY}"
+
+    attempts = []
+
+    def flaky():
+        attempts.append(1)
+        if len(attempts) < 2:
+            raise Prebuilt("SNOMEDCT:22298006")
+        return "ok"
+
+    with caplog.at_level("WARNING"):
+        assert retry_on_service_unavailable(flaky, sleep=lambda seconds: None) == "ok"
+
+    assert "apikey=***" in caplog.text
+    assert FAKE_KEY not in caplog.text
+
+
+class _OpaqueError(Exception):
+    """An error whose message is built from an attribute, not its args."""
+
+    def __str__(self):
+        return f"rejected https://data.bioontology.org/x?apikey={FAKE_KEY}"
+
+
+def test_the_outage_printer_redacts_what_it_prints(capsys):
+    from linkml_term_validator.cli import _fail_service_unavailable
+
+    class OpaqueOutage(OntologyServiceUnavailableError):
+        def __str__(self):
+            return f"stalled at /x?apikey={FAKE_KEY}"
+
+    _fail_service_unavailable(OpaqueOutage("SNOMEDCT:22298006"))
+
+    err = capsys.readouterr().err
+    assert "apikey=***" in err
+    assert FAKE_KEY not in err
+
+
+def test_main_redacts_an_unhandled_traceback(monkeypatch, capsys):
+    """The last-resort net catches what scrubbing cannot reach."""
+    from linkml_term_validator import cli
+
+    def boom():
+        raise _OpaqueError()
+
+    monkeypatch.setattr(cli, "app", boom)
+
+    with pytest.raises(SystemExit) as excinfo:
+        cli.main()
+
+    assert excinfo.value.code == 1
+    err = capsys.readouterr().err
+    assert "Traceback" in err
+    assert "_OpaqueError" in err
+    assert "apikey=***" in err
+    assert FAKE_KEY not in err
+
+
+def test_the_real_requests_wrapping_carries_no_key():
+    """requests raises ConnectionError(MaxRetryError(...)) from the urllib3 error.
+
+    The URL lives in the urllib3 error, which is both an arg of the requests
+    error and its context, so both routes through the chain must be scrubbed.
+    """
+    import traceback
+
+    import urllib3.exceptions
+
+    url = f"/ontologies/SNOMEDCT/classes/X?display_context=false&apikey={FAKE_KEY}"
+    try:
+        try:
+            raise urllib3.exceptions.MaxRetryError(
+                None, url, reason=urllib3.exceptions.ConnectTimeoutError("timed out")
+            )
+        except urllib3.exceptions.MaxRetryError as inner:
+            raise requests.exceptions.ConnectionError(inner) from inner
+    except requests.exceptions.ConnectionError as outer:
+        try:
+            raise_if_service_unavailable("SNOMEDCT:22298006", outer)
+        except OntologyServiceUnavailableError as error:
+            printed = "".join(traceback.format_exception(error))
+            message = str(error)
+
+    assert "Max retries exceeded" in printed
+    assert "apikey=***" in printed
+    assert FAKE_KEY not in printed
+    assert FAKE_KEY not in message

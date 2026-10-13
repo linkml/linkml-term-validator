@@ -36,6 +36,147 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
+# An adapter's exception text routinely embeds the request URL, and some
+# services take their credential in it: OAK's OntoPortal (BioPortal) adapter
+# sends ``?apikey=...``, so a timed-out lookup printed the key in plain text
+# (#75). Every exception we turn into a message or a log line goes through
+# redact_secrets() first. Names are matched as a whole word so that e.g.
+# ``monkey=`` is left alone.
+_SECRET_NAMES = (
+    r"api[_-]?key|access[_-]?token|auth[_-]?token|refresh[_-]?token|id[_-]?token"
+    r"|client[_-]?secret|token|key|secret|password|passwd|pwd|signature|sig"
+)
+# Start of a name: not glued to a word, or right after a percent-encoded
+# ``?``/``&`` (a URL nested inside another URL's query).
+_NAME_START = r"(?:(?<![A-Za-z0-9_])|(?<=%3F)|(?<=%26))"
+REDACTED = "***"
+_SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    # ``Authorization: Bearer <token>``, ``Authorization: apikey token=<key>``
+    # (BioPortal's header form); the scheme word is kept.
+    (
+        re.compile(
+            r"(authorization[\"']?\s*[:=]\s*[\"']?)"
+            r"((?:bearer|basic|digest|token|apikey)\s+)?[^\s'\",;}]+",
+            re.IGNORECASE,
+        ),
+        rf"\1\2{REDACTED}",
+    ),
+    # A bare bearer token, e.g. quoted from a header elsewhere in a message.
+    (
+        re.compile(r"(?<![A-Za-z0-9_])(bearer\s+)[A-Za-z0-9._~+/-]{8,}=*", re.IGNORECASE),
+        rf"\1{REDACTED}",
+    ),
+    # Query or form parameters, plain (``apikey=``) or percent-encoded
+    # (``apikey%3D``); the value ends at ``&`` or ``%26``.
+    (
+        re.compile(
+            rf"{_NAME_START}({_SECRET_NAMES})(=|%3D)(?:(?!%26)[^&\s'\"<>()#])+",
+            re.IGNORECASE,
+        ),
+        rf"\1\2{REDACTED}",
+    ),
+    # Header or JSON/dict style: ``X-API-Key: abc``, ``"apikey": "abc"``.
+    # With names as broad as ``key`` this also masks plain prose such as
+    # ``Missing key: foo``. That is on purpose: it only runs on error and log
+    # text, where a masked word costs little and a leaked key costs a lot.
+    (
+        re.compile(
+            rf"{_NAME_START}({_SECRET_NAMES})([\"']?\s*:\s*[\"']?)[^\s'\",;}}&]+",
+            re.IGNORECASE,
+        ),
+        rf"\1\2{REDACTED}",
+    ),
+    # The userinfo of a URL, ``user:password@`` or a bare ``token@``. It stops
+    # at ``?`` and ``#`` so an ``@`` in the query is not mistaken for one.
+    (re.compile(r"(?<=://)[^/\s@'\"?#]+@"), f"{REDACTED}@"),
+]
+
+
+def redact_secrets(text: str) -> str:
+    """Mask credentials that an exception message may carry.
+
+    Query parameters, headers, and JSON fields with credential-like names
+    (``apikey``, ``token``, ``password``, ...) keep their name but lose their
+    value; so does an ``Authorization`` header or a ``Bearer`` token. The
+    userinfo part of a URL (``user:password@``, ``token@``) is masked whole.
+
+    Examples:
+        >>> redact_secrets("url: /classes/X?display_context=false&apikey=abc-123 (Caused by")
+        'url: /classes/X?display_context=false&apikey=*** (Caused by'
+        >>> redact_secrets("https://alice:hunter2@example.org/x?Token=t0k&q=1")
+        'https://***@example.org/x?Token=***&q=1'
+        >>> redact_secrets('{"apikey": "abc"}, Authorization: Bearer abcdefgh12')
+        '{"apikey": "***"}, Authorization: Bearer ***'
+        >>> redact_secrets("Read timed out. (read timeout=5)")
+        'Read timed out. (read timeout=5)'
+        >>> redact_secrets("?monkey=banana")
+        '?monkey=banana'
+    """
+    for pattern, replacement in _SECRET_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+def scrub_exception_secrets(exc: BaseException) -> BaseException:
+    """Redact credentials from an exception and the errors it wraps, in place.
+
+    For an error that is re-raised as itself rather than reported by us: a
+    wrong BioPortal key answers 401, which is not an outage, so it escapes to a
+    traceback whose last line is ``401 Client Error: ... ?apikey=<KEY>``.
+    The whole cause/context chain is scrubbed, as is any exception passed as an
+    argument (``requests`` wraps the urllib3 error that way), because a
+    traceback prints every link. Only the string ``args`` are rewritten, so each
+    exception keeps its type and attributes (a caller can still read
+    ``.response``). That cuts both ways: structured attributes such as
+    ``.response.url`` and ``.request.url`` still hold the credential, so never
+    log them; the message is the only part made safe to print.
+
+    Examples:
+        >>> err = ValueError("401 Client Error for url: /x?apikey=abc", 401)
+        >>> scrub_exception_secrets(err) is err
+        True
+        >>> err.args
+        ('401 Client Error for url: /x?apikey=***', 401)
+        >>> try:
+        ...     try:
+        ...         raise OSError("url: /x?apikey=abc")
+        ...     except OSError as inner:
+        ...         raise RuntimeError(inner) from inner
+        ... except RuntimeError as outer:
+        ...     _ = scrub_exception_secrets(outer)
+        ...     print(outer, "|", outer.__cause__)
+        url: /x?apikey=*** | url: /x?apikey=***
+        >>> err = OSError(110, "timed out: /x?apikey=abc")
+        >>> str(scrub_exception_secrets(err))
+        '[Errno 110] timed out: /x?apikey=***'
+    """
+    pending: list[BaseException] = [exc]
+    seen: set[int] = set()
+    while pending:
+        for link in _exception_chain(pending.pop()):
+            if id(link) in seen:
+                continue
+            seen.add(id(link))
+            pending.extend(a for a in link.args if isinstance(a, BaseException))
+            try:
+                link.args = tuple(
+                    redact_secrets(a) if isinstance(a, str) else a for a in link.args
+                )
+                # An OSError built with errno/strerror prints those fields,
+                # not its args; a traceback also prints PEP 678 notes.
+                for attr in ("strerror", "filename", "filename2"):
+                    value = getattr(link, attr, None)
+                    if isinstance(value, str):
+                        setattr(link, attr, redact_secrets(value))
+                notes = getattr(link, "__notes__", None)
+                if isinstance(notes, list):
+                    notes[:] = [redact_secrets(n) if isinstance(n, str) else n for n in notes]
+            except Exception:  # noqa: BLE001 - an exotic exception may refuse new args
+                # Name the type only: the message is what failed to be cleaned.
+                logger.debug("Could not redact a %s in place", type(link).__name__)
+    return exc
+
+
 class OntologyServiceUnavailableError(Exception):
     """Raised when an ontology service could not be reached to resolve a term.
 
@@ -54,7 +195,12 @@ class OntologyServiceUnavailableError(Exception):
         # Set by retry_on_service_unavailable when it gives up, so a caller can
         # report how many attempts were spent rather than guessing.
         self.attempts: Optional[int] = None
-        detail = f": {original}" if original is not None else ""
+        # The message is printed and logged, and ``original`` is raised as
+        # this error's cause, so a traceback or ``logger.exception`` prints it
+        # too: neither may carry a credential from the request URL.
+        if original is not None:
+            scrub_exception_secrets(original)
+        detail = f": {redact_secrets(str(original))}" if original is not None else ""
         super().__init__(f"could not reach ontology service to resolve {curie}{detail}")
 
 
@@ -390,13 +536,16 @@ def retry_on_service_unavailable(
                 # backoff, still clamped so an outlandish value cannot hang
                 # the run (an explicit larger backoff is never shortened).
                 delay = min(max(delay, asked_for), max(MAX_SERVICE_RETRY_DELAY, policy.backoff))
+            # The constructor already redacted the message, but redact here
+            # too: this line must stay clean if the error is ever built some
+            # other way (#75).
             logger.warning(
                 "Ontology service unavailable while %s (attempt %d of %d): %s; "
                 "retrying in %gs",
                 description,
                 attempt + 1,
                 policy.attempts,
-                exc,
+                redact_secrets(str(exc)),
                 delay,
             )
             sleep(delay)
@@ -896,7 +1045,7 @@ class OntologyAccess:
             return get_adapter(adapter_string)
         except Exception as e:  # noqa: BLE001 - adapters raise varied errors
             raise_if_service_unavailable(f"{prefix}:*", e)
-            raise
+            raise scrub_exception_secrets(e)
 
     @staticmethod
     def _adapter_string_for_prefix(prefix: str, adapter_string: str) -> str | None:
@@ -1020,12 +1169,12 @@ class OntologyAccess:
         """Log an adapter lookup failure, distinguishing 404 from transient errors."""
         response = getattr(exc, "response", None)
         if getattr(response, "status_code", None) == 404:
-            logger.debug("Term %s not found (HTTP 404): %s", curie, exc)
+            logger.debug("Term %s not found (HTTP 404): %s", curie, redact_secrets(str(exc)))
         else:
             logger.warning(
                 "Label lookup for %s failed unexpectedly (treated as not found): %s",
                 curie,
-                exc,
+                redact_secrets(str(exc)),
             )
 
     def get_unknown_prefixes(self) -> set[str]:
@@ -1094,7 +1243,9 @@ class OntologyAccess:
                 result = set(obsoletes())
             except Exception as e:  # noqa: BLE001 - adapters raise varied errors
                 raise_if_service_unavailable(f"{prefix}:*", e)
-                logger.debug("obsoletes() failed for prefix %s: %s", prefix, e)
+                logger.debug(
+                    "obsoletes() failed for prefix %s: %s", prefix, redact_secrets(str(e))
+                )
                 result = None
         self._obsolete_cache[prefix] = result
         return result
@@ -1219,7 +1370,11 @@ class OntologyAccess:
             return None
         except Exception as e:  # noqa: BLE001 - adapters raise varied errors
             raise_if_service_unavailable(curie, e)
-            logger.warning("Alias lookup for %s failed (term left unchecked): %s", curie, e)
+            logger.warning(
+                "Alias lookup for %s failed (term left unchecked): %s",
+                curie,
+                redact_secrets(str(e)),
+            )
             return None
         return [str(a) for a in (result or []) if a is not None]
 

@@ -419,3 +419,93 @@ def test_get_label_treats_non_connectivity_error_as_not_found(monkeypatch):
     access = OntologyAccess(cache_labels=False)
 
     assert access.get_label("GO:0008150") is None
+
+
+# =============================================================================
+# redact_secrets (#75)
+# =============================================================================
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        # Several credential parameters in one URL, among harmless ones.
+        (
+            "/x?apikey=AAA&display_context=false&token=BBB&page=2",
+            "/x?apikey=***&display_context=false&token=***&page=2",
+        ),
+        # Names match regardless of case and separator style.
+        ("/x?APIKEY=AAA", "/x?APIKEY=***"),
+        ("/x?Api-Key=AAA", "/x?Api-Key=***"),
+        ("/x?access_token=AAA", "/x?access_token=***"),
+        ("/x?client_secret=AAA&password=BBB", "/x?client_secret=***&password=***"),
+        # The value stops at the quote or paren that requests puts after a URL.
+        ("url: '/x?apikey=AAA' (Caused by", "url: '/x?apikey=***' (Caused by"),
+        # Whole words only: these are not credentials.
+        ("/x?monkey=1&keyword=2&tokens=3", "/x?monkey=1&keyword=2&tokens=3"),
+        ("Read timed out. (read timeout=5)", "Read timed out. (read timeout=5)"),
+        # URL userinfo.
+        ("https://alice:hunter2@example.org/x", "https://***@example.org/x"),
+        # A bare token as userinfo.
+        ("https://ghp_abc123@github.com/x", "https://***@github.com/x"),
+        # An @ in the query is not userinfo; the port and path are kept.
+        ("https://host:443?q=a@b", "https://host:443?q=a@b"),
+        # Percent-encoded, in a URL nested inside another URL's query.
+        (
+            "/proxy?url=https%3A%2F%2Fx.org%2Fy%3Fapikey%3DAAA%26q%3D1",
+            "/proxy?url=https%3A%2F%2Fx.org%2Fy%3Fapikey%3D***%26q%3D1",
+        ),
+        # Header and JSON/dict styles.
+        ("X-API-Key: AAA", "X-API-Key: ***"),
+        ('{"apikey": "AAA", "q": 1}', '{"apikey": "***", "q": 1}'),
+        ("{'token': 'AAA'}", "{'token': '***'}"),
+        ("Authorization: Bearer abc.def-123", "Authorization: Bearer ***"),
+        ("Authorization: apikey token=AAA", "Authorization: apikey ***"),
+        ("'Authorization': 'Basic dXNlcjpwYXNz'", "'Authorization': 'Basic ***'"),
+        ("sent Bearer abcdefgh12345 upstream", "sent Bearer *** upstream"),
+        # Not credentials, despite the shapes above.
+        ("KeyError: 'GO:0008150'", "KeyError: 'GO:0008150'"),
+        ("the bearer of bad news", "the bearer of bad news"),
+        ("", ""),
+    ],
+)
+def test_redact_secrets(text, expected):
+    from linkml_term_validator.utils import redact_secrets
+
+    assert redact_secrets(text) == expected
+
+
+def test_scrub_exception_secrets_covers_oserror_fields_and_notes():
+    import sys
+    import traceback
+
+    from linkml_term_validator.utils import scrub_exception_secrets
+
+    err = OSError(110, "timed out: /x?apikey=AAA", "/y?token=BBB")
+    if sys.version_info >= (3, 11):
+        err.add_note("while fetching /z?apikey=CCC")
+    scrub_exception_secrets(err)
+
+    printed = "".join(traceback.format_exception(err))
+    for secret in ("AAA", "BBB", "CCC"):
+        assert secret not in printed
+    assert "apikey=***" in printed
+
+
+def test_a_failed_scrub_is_logged_without_the_message(caplog):
+    from linkml_term_validator.utils import scrub_exception_secrets
+
+    class Stubborn(Exception):
+        @property
+        def args(self):
+            return ("/x?apikey=AAA",)
+
+        @args.setter
+        def args(self, value):
+            raise TypeError("read-only")
+
+    with caplog.at_level("DEBUG"):
+        scrub_exception_secrets(Stubborn())
+
+    assert "Could not redact a Stubborn in place" in caplog.text
+    assert "AAA" not in caplog.text
