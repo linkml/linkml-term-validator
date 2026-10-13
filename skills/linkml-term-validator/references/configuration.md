@@ -58,6 +58,12 @@ A refreshed label alone does not resolve a missing ancestor relationship.
 After schema, ontology, or adapter changes, recheck cache validity rather than
 assuming old rows still describe the new constraints.
 
+For label caches, the built-in remedy is `migrate-cache`: it sorts and
+deduplicates each `<cache-dir>/<prefix>/terms.csv`, and `--refresh-labels`
+re-fetches labels so an ontology relabeling reaches the cache. Run it with
+`--dry-run` first and review the diff like any other data change. It does not
+touch dynamic-enum membership caches.
+
 ## Separate reported severity from the runner's exit rule
 
 Check the installed release and exact entry point before changing policy.
