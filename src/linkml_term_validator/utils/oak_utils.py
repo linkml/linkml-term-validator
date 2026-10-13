@@ -76,6 +76,9 @@ _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
         rf"\1\2{REDACTED}",
     ),
     # Header or JSON/dict style: ``X-API-Key: abc``, ``"apikey": "abc"``.
+    # With names as broad as ``key`` this also masks plain prose such as
+    # ``Missing key: foo``. That is on purpose: it only runs on error and log
+    # text, where a masked word costs little and a leaked key costs a lot.
     (
         re.compile(
             rf"{_NAME_START}({_SECRET_NAMES})([\"']?\s*:\s*[\"']?)[^\s'\",;}}&]+",
