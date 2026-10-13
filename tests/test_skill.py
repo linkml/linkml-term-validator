@@ -54,8 +54,10 @@ def _ltv_invocations(doc: Path) -> list[list[str]]:
     for block in re.findall(r"```bash\n(.*?)```", doc.read_text(), re.DOTALL):
         for line in block.replace("\\\n", " ").splitlines():
             tokens = shlex.split(line, comments=True)
-            if "linkml-term-validator" in tokens:
-                invocations.append(tokens[tokens.index("linkml-term-validator") + 1 :])
+            # Match pinned forms too, e.g. ``uvx linkml-term-validator@1.2.3``.
+            programs = [t.split("@", 1)[0] for t in tokens]
+            if "linkml-term-validator" in programs:
+                invocations.append(tokens[programs.index("linkml-term-validator") + 1 :])
     return invocations
 
 
