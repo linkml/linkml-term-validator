@@ -332,9 +332,12 @@ def validate_schema(
         raise typer.Exit(code=1)
     elif result.warning_count() > 0:
         typer.echo(f"\n⚠️  Validation completed with {result.warning_count()} warning(s)")
-    else:
-        if not verbose:
-            typer.echo("✅")
+    elif not verbose:
+        # Verbose already closed with print_summary's line. A meaning with no
+        # adapter to check it is not a pass, so the bare ✅ is not printed (#77).
+        typer.echo(
+            "✅" if not result.total_meanings_unchecked else result.clean_run_message()
+        )
 
 
 @app.command()
@@ -1202,12 +1205,16 @@ def validate_text_file(
     except OntologyServiceUnavailableError as exc:
         raise _fail_service_unavailable(exc) from exc
 
+    unchecked_terms = validator.get_unchecked_terms()
+
     # Print results
     if verbose:
         valid_curies = {issue.value_name for issue in issues}
         for curie, label, location in pairs:
             if curie in valid_curies:
                 pass  # will be shown in error block below
+            elif curie in unchecked_terms:
+                typer.echo(f"  ℹ️  {location} {curie} \"{label}\" (not checked: no adapter)")
             else:
                 typer.echo(f"  ✅ {location} {curie} \"{label}\"")
 
@@ -1237,11 +1244,18 @@ def validate_text_file(
             err=True,
         )
         raise typer.Exit(code=1)
+
+    lead = "\n" if verbose else ""
+    unchecked = sum(1 for curie, _, _ in pairs if curie in unchecked_terms)
+    if unchecked:
+        # Terms with no adapter to ask were not validated, so "all validated"
+        # would be a false pass (#77). Still exit 0: nothing was found wrong.
+        typer.echo(
+            f"{lead}⚠️  No errors, but {unchecked} of {total} CURIE(s) "
+            "could not be checked"
+        )
     else:
-        if not verbose:
-            typer.echo(f"✅ All {total} CURIE(s) validated successfully")
-        else:
-            typer.echo(f"\n✅ All {total} CURIE(s) validated successfully")
+        typer.echo(f"{lead}✅ All {total} CURIE(s) validated successfully")
 
 
 def main():

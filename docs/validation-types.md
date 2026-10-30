@@ -243,7 +243,7 @@ Validation results are reported with different severity levels:
 
 - **ERROR** - Serious issue that should block data/schema acceptance
   - Configured prefix with label mismatch
-  - Missing term from configured ontology
+  - Term not found in the adapter that was searched (configured or auto-created)
   - Dynamic enum constraint violation
   - Binding constraint violation
   - Binding label mismatch, and a malformed binding label
@@ -253,7 +253,8 @@ Validation results are reported with different severity levels:
   - Unconfigured prefix with label mismatch (when verbose)
 
 - **INFO** - Informational message
-  - Unconfigured prefix encountered
+  - No adapter for the prefix, so the term could not be checked (counted as
+    "not checked", never as validated)
   - Unknown prefix summary
 
 These are defaults, not fixed rules. Each problem the plugins report has an

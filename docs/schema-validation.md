@@ -90,9 +90,22 @@ This means `BIOLOGICAL_PROCESS`, `biological process`, and `Biological Process` 
 | Severity | Condition |
 |----------|-----------|
 | **ERROR** | Label mismatch for a configured prefix (in strict mode: any prefix) |
-| **ERROR** | Term does not exist in a configured ontology |
+| **ERROR** | Term not found in the adapter that was searched, configured prefix or not |
 | **WARN** | Label mismatch for an unconfigured prefix |
-| **INFO** | Unconfigured prefix encountered |
+| **INFO** | No adapter for the prefix, so the term could not be checked (in strict mode: ERROR) |
+
+A term that an adapter was searched for and does not contain is reported as
+not found, naming that adapter, even when the adapter was the auto-created
+`sqlite:obo:<prefix>` one. A term can be defined in a different ontology than
+its prefix suggests: BFO relations such as `BFO:0000050` (part of) live in RO,
+so `sqlite:obo:bfo` does not have them. Map the prefix to the right ontology in
+`oak_config.yaml` (`BFO: sqlite:obo:ro`).
+
+A term with no adapter to ask is neither valid nor invalid. It is counted under
+"Meanings not checked" rather than "Meanings validated", listed under
+`--verbose`, and the run ends with "No errors, but N meaning(s) could not be
+checked" instead of "No issues found". The exit code stays 0; use `--strict` to
+fail on such terms.
 
 ### Configured vs Unconfigured Prefixes
 
@@ -103,7 +116,7 @@ A **configured prefix** is one explicitly mapped in your `oak_config.yaml`:
 ontology_adapters:
   GO: sqlite:obo:go    # GO is configured
   CL: sqlite:obo:cl    # CL is configured
-  # HP is NOT configured - will use default adapter
+  # HP is NOT configured - no adapter, so HP terms are not checked
 ```
 
 Errors for configured prefixes are always raised. For unconfigured prefixes, mismatches are warnings (unless `--strict` is used).

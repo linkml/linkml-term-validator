@@ -820,7 +820,14 @@ class OntologyAccess:
         # In-memory caches and state
         self._label_cache: dict[str, Optional[str]] = {}
         self._adapter_cache: dict[str, object | None] = {}
+        # The adapter string each prefix's adapter was built from, so a "not
+        # found" can say where the term was looked for.
+        self._adapter_strings: dict[str, str] = {}
         self._unknown_prefixes: set[str] = set()
+        # CURIEs an adapter was asked about and had no label for, mapped to a
+        # description of that adapter. Tells "the term does not exist there"
+        # apart from "there was nothing to ask" (#77).
+        self._not_found_in: dict[str, str] = {}
         # Per-prefix obsolete-entity sets (for adapters where a whole-ontology
         # ``obsoletes()`` scan is cheap); None means "could not determine".
         self._obsolete_cache: dict[str, Optional[set[str]]] = {}
@@ -1025,6 +1032,7 @@ class OntologyAccess:
             )
             self._configure_adapter_for_prefix(adapter, prefix)
             self._adapter_cache[prefix] = adapter
+            self._adapter_strings[prefix] = adapter_string
             return adapter
 
         self._adapter_cache[prefix] = None
@@ -1126,11 +1134,29 @@ class OntologyAccess:
             f"resolving the label for {curie}",
         )
         self._label_cache[curie] = label
+        if label is None:
+            self._not_found_in[curie] = redact_secrets(
+                self._adapter_strings.get(prefix, f"the {prefix} adapter")
+            )
 
         if label and self.cache_labels:
             self.save_to_cache(prefix, curie, label)
 
         return label
+
+    def not_found_in(self, curie: str) -> Optional[str]:
+        """Describe the adapter that was searched for ``curie`` without a match.
+
+        Returns None when no adapter was consulted (no adapter for the prefix,
+        offline mode, or the term has not been looked up), so a caller can tell
+        a term that does not exist from one that could not be checked.
+
+        Examples:
+            >>> access = OntologyAccess(cache_labels=False)
+            >>> access.not_found_in("GO:0008150") is None  # not looked up yet
+            True
+        """
+        return self._not_found_in.get(curie)
 
     def _lookup_adapter_label(self, adapter: object, curie: str) -> Optional[str]:
         """Resolve a label through an adapter, classifying the failure modes.

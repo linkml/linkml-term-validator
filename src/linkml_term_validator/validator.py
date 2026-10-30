@@ -54,6 +54,8 @@ class EnumValidator:
             service_retries=config.service_retries,
             service_retry_backoff=config.service_retry_backoff,
         )
+        # Terms left unchecked because no adapter could be consulted (#77).
+        self._unchecked_terms: set[str] = set()
         # The shared oak_config.yaml may carry the Not4Curation keys too, so the
         # CLI and the plugins read one file and agree (see #70).
         self._load_not4curation_config(self.ontology.loaded_config)
@@ -325,24 +327,54 @@ class EnumValidator:
 
         return aliases
 
-    def _unresolved_is_error(self, prefix: Optional[str]) -> bool:
+    def _unresolved_is_error(self, term: str, prefix: Optional[str]) -> bool:
         """Whether a term that could not be resolved should be an error.
 
-        Offline mode always errors (no lookup is permitted, so an incomplete
-        cache must never pass silently), as does strict mode or a configured
-        prefix; an unconfigured prefix without either is downgraded instead.
+        A term an adapter was searched for and does not have is an error
+        whether or not its prefix is configured: an auto-created
+        ``sqlite:obo:<prefix>`` adapter that lacks the term is a definitive
+        "not found", not a skipped check (#77). Offline mode always errors (no
+        lookup is permitted, so an incomplete cache must never pass silently),
+        as does strict mode or a configured prefix. Only a term there was no
+        adapter to ask about is downgraded.
         """
         return (
-            bool(prefix and self._is_prefix_configured(prefix))
+            self.ontology.not_found_in(term) is not None
+            or bool(prefix and self._is_prefix_configured(prefix))
             or self.config.strict_mode
             or self.config.offline
         )
 
-    def _unresolved_error_message(self, term: str, online_message: str) -> str:
-        """Build the error message for an unresolved term (offline-aware)."""
+    def _unresolved_error_message(
+        self, term: str, prefix: Optional[str], fallback_message: str
+    ) -> str:
+        """Build the error message for an unresolved term.
+
+        Names the adapter that was searched when there was one. For a prefix
+        with no oak_config entry it also suggests mapping one, since a term
+        can be defined in a different ontology than its prefix suggests (BFO
+        relations such as ``BFO:0000050`` live in RO).
+        """
         if self.config.offline:
             return f"Term {term} not found in offline cache"
-        return online_message
+        searched = self.ontology.not_found_in(term)
+        if searched is None:
+            return fallback_message
+        message = f"Term {term} not found in {searched}"
+        if prefix and not self._is_prefix_configured(prefix):
+            message += (
+                f" (if it is defined in another ontology, map {prefix} to that "
+                "ontology's adapter in oak_config.yaml)"
+            )
+        return message
+
+    def get_unchecked_terms(self) -> set[str]:
+        """CURIEs that could not be checked because no adapter was available (a copy).
+
+        These are the terms reported at INFO rather than ERROR. They are
+        neither valid nor invalid, so a run that has any is not a clean pass.
+        """
+        return set(self._unchecked_terms)
 
     def validate_enum(
         self, enum_def: EnumDefinition, enum_name: str
@@ -370,14 +402,16 @@ class EnumValidator:
 
             if actual_label is None:
                 prefix = self._get_prefix(meaning)
-                if self._unresolved_is_error(prefix):
+                if self._unresolved_is_error(meaning, prefix):
                     issues.append(
                         ValidationIssue(
                             enum_name=enum_name,
                             value_name=value_name,
                             severity=SeverityLevel.ERROR,
                             message=self._unresolved_error_message(
-                                meaning, f"Could not retrieve label for {meaning}"
+                                meaning,
+                                prefix,
+                                f"Could not retrieve label for {meaning}",
                             ),
                             meaning=meaning,
                             expected_label=None,
@@ -385,6 +419,7 @@ class EnumValidator:
                         )
                     )
                 else:
+                    self._unchecked_terms.add(meaning)
                     issues.append(
                         ValidationIssue(
                             enum_name=enum_name,
@@ -486,6 +521,10 @@ class EnumValidator:
 
             issues = self.validate_enum(enum_def, enum_name)
             result.issues.extend(issues)
+            # INFO is only emitted for a meaning with no adapter to check it.
+            result.total_meanings_unchecked += sum(
+                1 for issue in issues if issue.severity == SeverityLevel.INFO
+            )
 
         # A term whose synonyms could not be read was not vetted for a
         # Not4Curation marker. Carry that forward so a degraded run is
@@ -503,8 +542,10 @@ class EnumValidator:
         For each pair:
         - If the CURIE resolves to a label, checks it matches the expected label.
         - If the CURIE cannot be resolved:
-          - Configured prefix or strict_mode → ERROR
-          - Unconfigured prefix without strict_mode → silently skipped
+          - An adapter was searched, the prefix is configured, or
+            strict_mode/offline is set → ERROR
+          - Otherwise (no adapter to ask) → no issue, but recorded in
+            :meth:`get_unchecked_terms`
 
         Args:
             pairs: List of (curie, expected_label, location) tuples where location
@@ -527,21 +568,23 @@ class EnumValidator:
 
             if actual_label is None:
                 prefix = self._get_prefix(curie)
-                if self._unresolved_is_error(prefix):
+                if self._unresolved_is_error(curie, prefix):
                     issues.append(
                         ValidationIssue(
                             enum_name=location,
                             value_name=curie,
                             severity=SeverityLevel.ERROR,
                             message=self._unresolved_error_message(
-                                curie, f"Unresolvable CURIE: {curie}"
+                                curie, prefix, f"Unresolvable CURIE: {curie}"
                             ),
                             meaning=curie,
                             expected_label=expected_label,
                             actual_label=None,
                         )
                     )
-                # else: unconfigured prefix without strict mode — silently skip
+                else:
+                    # No adapter to ask: not an issue, but not a pass either.
+                    self._unchecked_terms.add(curie)
                 continue
 
             # An obsolete term resolves to a label, so flag it explicitly rather
