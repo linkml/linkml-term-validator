@@ -250,6 +250,21 @@ an adapter's result *inside* the classifying `try`: OAK traversals answer with
 generators, so a lazily raised timeout would otherwise escape unclassified and
 never be retried (PR #74 review).
 
+### Grammar-Based Codes (`plugins/expressions/`)
+
+UCUM, SMILES, InChI and InChIKey have no term list to look up, so
+`ExpressionValidationPlugin` parses them. A slot opts in with an
+`expression_grammar` annotation, on itself or on its range type's ancestry.
+Grammars live in `grammars.py`: built-ins plus the
+`linkml_term_validator.grammars` entry point group (which cannot shadow a
+built-in). Parsers are optional extras (`ucum` = ucumvert, Python >= 3.11 only;
+`chem` = RDKit; `expressions` = both) imported only on first use. A parser that
+will not import is `expression_grammar_unavailable` at ERROR, reported once per
+grammar per source: never fold an unchecked value into a pass. The plugin does
+not subclass `BaseOntologyPlugin` (it needs no ontology) and takes only
+`severity_overrides`. Tests that need a parser skip when it is missing, so the
+Python 3.10 CI job skips the UCUM ones.
+
 ### Credentials in Error Text (#75)
 
 Adapter exceptions often embed the request URL, and OAK's OntoPortal

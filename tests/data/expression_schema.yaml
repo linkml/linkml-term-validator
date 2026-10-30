@@ -1,0 +1,51 @@
+id: https://example.org/expression-test
+name: expression_test
+description: Test schema with slots in grammar-based code systems (UCUM, SMILES, InChI)
+prefixes:
+  linkml: https://w3id.org/linkml/
+  ex: https://example.org/
+default_prefix: ex
+imports:
+  - linkml:types
+
+types:
+  UcumCode:
+    typeof: string
+    description: A unit written in UCUM case-sensitive syntax
+    annotations:
+      expression_grammar: ucum
+
+classes:
+  Sample:
+    tree_root: true
+    attributes:
+      id:
+        identifier: true
+      unit:
+        range: UcumCode
+      smiles:
+        annotations:
+          expression_grammar: smiles
+      alt_smiles:
+        multivalued: true
+        annotations:
+          expression_grammar: smiles
+      inchi:
+        annotations:
+          expression_grammar: inchi
+      inchikey:
+        annotations:
+          expression_grammar: inchikey
+      notes:
+        description: Free text, not checked
+      measurements:
+        range: Measurement
+        multivalued: true
+        inlined_as_list: true
+
+  Measurement:
+    attributes:
+      value:
+        range: float
+      unit:
+        range: UcumCode

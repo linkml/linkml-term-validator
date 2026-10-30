@@ -1,0 +1,14 @@
+id: ex:ethanol
+unit: mg/dL
+smiles: CCO
+alt_smiles:
+  - OCC
+  - C(C)O
+inchi: InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3
+inchikey: LFQSCWFLJHTTHZ-UHFFFAOYSA-N
+notes: "not a unit: //"
+measurements:
+  - value: 5.0
+    unit: mmol/L
+  - value: 98.6
+    unit: "[degF]"

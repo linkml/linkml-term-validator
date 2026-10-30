@@ -285,7 +285,7 @@ PLUGIN_SOURCE_DIR = Path(__file__).parent.parent / "src" / "linkml_term_validato
 @pytest.mark.parametrize("mode", list(ErrorMode), ids=lambda m: m.value)
 def test_every_error_mode_is_actually_emitted(mode):
     """An ErrorMode with no emission site is dead config that silently does nothing."""
-    sources = "".join(path.read_text() for path in PLUGIN_SOURCE_DIR.glob("*.py"))
+    sources = "".join(path.read_text() for path in PLUGIN_SOURCE_DIR.rglob("*.py"))
     assert f'type="{mode.value}"' in sources, (
         f"ErrorMode.{mode.name} is documented as configurable but nothing emits it"
     )
@@ -455,7 +455,7 @@ def test_no_emission_site_bypasses_severity_for():
     severity bound to a local a few lines earlier.
     """
     offenders = []
-    for path in sorted(PLUGIN_SOURCE_DIR.glob("*.py")):
+    for path in sorted(PLUGIN_SOURCE_DIR.rglob("*.py")):
         for lineno, line in enumerate(path.read_text().splitlines(), 1):
             stripped = line.strip()
             if not stripped.startswith("severity="):

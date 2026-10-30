@@ -9,7 +9,7 @@ A collection of [LinkML ValidationPlugin](https://linkml.io/linkml/code/validato
 
 ## Features
 
-* ✅ Three composable validation plugins for LinkML validator framework
+* ✅ Composable validation plugins for LinkML validator framework
 * ✅ Validates `meaning` fields in `permissible_values` in LinkML schemas
 * ✅ Validates data against dynamic enums (reachable_from, matches, concepts)
 * ✅ Validates binding constraints on nested object fields
@@ -19,6 +19,7 @@ A collection of [LinkML ValidationPlugin](https://linkml.io/linkml/code/validato
 * ✅ Standalone CLI + LinkML validator integration
 * ✅ Tracks unknown ontology prefixes
 * ✅ Flags obsolete terms, and terms their ontology marks `Not4Curation` / `not_recommended_for_annotation`
+* ✅ Parses grammar-based codes (UCUM units, SMILES, InChI, InChIKey) on slots annotated with `expression_grammar` ([docs](https://linkml.github.io/linkml-term-validator/expression-validation/))
 
 ## Installation
 
@@ -30,6 +31,14 @@ Or with `uv`:
 
 ```bash
 uv add linkml-term-validator
+```
+
+The parsers for grammar-based codes are optional extras:
+
+```bash
+pip install 'linkml-term-validator[ucum]'         # UCUM units (Python >= 3.11)
+pip install 'linkml-term-validator[chem]'         # SMILES and InChI (RDKit)
+pip install 'linkml-term-validator[expressions]'  # both
 ```
 
 

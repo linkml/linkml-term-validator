@@ -40,6 +40,7 @@ nav:
       - Schema Validation: schema-validation.md
       - Data Validation (Dynamic Enums): data-validation.md
       - Binding Validation: binding-validation.md
+      - Grammar-Based Codes (UCUM, SMILES, InChI): expression-validation.md
       - CLI Reference: cli-reference.md
       - Plugin Reference: plugin-reference.md
   - Explanation:

@@ -23,8 +23,10 @@ from typing_extensions import Annotated
 
 from linkml_term_validator.models import CacheStrategy, ValidationConfig
 from linkml_term_validator.plugins import (
+    BaseOntologyPlugin,
     BindingValidationPlugin,
     DynamicEnumPlugin,
+    ExpressionValidationPlugin,
 )
 from linkml_term_validator.utils import OntologyServiceUnavailableError, redact_secrets
 from linkml_term_validator.validator import EnumValidator
@@ -376,6 +378,16 @@ def validate_data(
             help="Validate against dynamic enums",
         ),
     ] = True,
+    validate_expressions: Annotated[
+        bool,
+        typer.Option(
+            "--expressions/--no-expressions",
+            help=(
+                "Parse values of slots annotated with expression_grammar "
+                "(ucum, smiles, inchi, inchikey) against their grammar"
+            ),
+        ),
+    ] = True,
     validate_labels: Annotated[
         bool,
         typer.Option(
@@ -484,11 +496,13 @@ def validate_data(
     service_retries: RetriesOption = None,
     service_retry_backoff: RetryWaitOption = None,
 ):
-    """Validate data against dynamic enums and binding constraints.
+    """Validate data against dynamic enums, binding constraints and grammars.
 
     Validates data instances against:
     - Dynamic enum definitions (reachable_from, matches, concepts)
     - Binding constraints on nested object fields
+    - Grammar-based code systems (UCUM, SMILES, InChI, InChIKey) on slots
+      annotated with expression_grammar
 
     Accepts multiple data files - each is validated independently.
 
@@ -566,8 +580,14 @@ def validate_data(
             )
         )
 
+    if validate_expressions:
+        plugins.append(ExpressionValidationPlugin())
+
     if not plugins:
-        typer.echo("⚠️  No validation enabled. Use --bindings or --dynamic-enums", err=True)
+        typer.echo(
+            "⚠️  No validation enabled. Use --bindings, --dynamic-enums or --expressions",
+            err=True,
+        )
         raise typer.Exit(code=1)
 
     # Create validator with plugins
@@ -646,7 +666,8 @@ def validate_data(
     # Not4Curation marker. Say so; a clean exit must not imply they were.
     unchecked: set[str] = set()
     for plugin in plugins:
-        unchecked |= plugin.get_not4curation_unchecked()
+        if isinstance(plugin, BaseOntologyPlugin):
+            unchecked |= plugin.get_not4curation_unchecked()
     _echo_not4curation_unchecked(unchecked, offline)
 
     if failed_files:
@@ -806,6 +827,7 @@ def validate_all(
             target_class=None,
             validate_bindings=True,
             validate_dynamic_enums=True,
+            validate_expressions=True,
             validate_labels=True,
             lenient=lenient,
             adapter=adapter,

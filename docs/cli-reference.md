@@ -58,6 +58,7 @@ linkml-term-validator validate-data [OPTIONS] DATA_PATHS...
 | `--target-class`, `-t` | none | Target class for validation |
 | `--bindings / --no-bindings` | `--bindings` | Enable or disable binding validation |
 | `--dynamic-enums / --no-dynamic-enums` | `--dynamic-enums` | Enable or disable dynamic enum validation |
+| `--expressions / --no-expressions` | `--expressions` | Enable or disable parsing of slots annotated with `expression_grammar` (UCUM, SMILES, InChI, InChIKey); see [Grammar-Based Codes](expression-validation.md) |
 | `--labels / --no-labels` | `--labels` | Enable or disable ontology label checks in bindings |
 | `--lenient / --no-lenient` | `--no-lenient` | Do not fail binding existence checks when term IDs are not found |
 | `--adapter`, `-a` | `sqlite:obo:` | Default OAK adapter string |

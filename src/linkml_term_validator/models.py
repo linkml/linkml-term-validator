@@ -105,6 +105,19 @@ class ErrorMode(str, Enum):
     PERMISSIBLE_VALUE_NOT4CURATION = ("permissible_value_not4curation", "ERROR")
     """A permissible value's ``meaning`` is a term its ontology marks as not for annotation."""
 
+    EXPRESSION_INVALID = ("expression_invalid", "ERROR")
+    """A value does not parse under its slot's grammar (UCUM, SMILES, InChI...)."""
+
+    EXPRESSION_GRAMMAR_UNKNOWN = ("expression_grammar_unknown", "ERROR")
+    """A slot's ``expression_grammar`` annotation names no known grammar."""
+
+    EXPRESSION_GRAMMAR_UNAVAILABLE = ("expression_grammar_unavailable", "ERROR")
+    """A grammar's parser is not installed, so its values went unchecked.
+
+    ERROR by default: a check that could not run is not a pass. Install the
+    extra the message names, or demote this mode if the gap is deliberate.
+    """
+
     PERMISSIBLE_VALUE_LABEL_MISMATCH = ("permissible_value_label_mismatch", "WARN")
     """A permissible value's title/description disagrees with the ontology.
 

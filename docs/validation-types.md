@@ -219,6 +219,16 @@ linkml-term-validator validate-data data.yaml --schema schema.yaml
 linkml-term-validator validate-data data.yaml --schema schema.yaml --no-labels
 ```
 
+## Grammar-Based Code Validation
+
+**Plugin**: `ExpressionValidationPlugin`
+
+Validates values in code systems defined by a grammar rather than a list:
+UCUM units (`mg/dL`), SMILES, InChI and InChIKey. There is nothing to look up,
+so each value is parsed. A slot opts in with an `expression_grammar`
+annotation; the parsers come from optional extras. See
+[Grammar-Based Codes](expression-validation.md).
+
 ## Label Matching
 
 When validating `meaning` fields, the validator compares the ontology's canonical label against multiple expected sources:

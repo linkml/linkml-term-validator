@@ -58,6 +58,9 @@ The available error modes, and the severity each is reported at by default:
 | `permissible_value_obsolete` | `ERROR` | `PermissibleValueMeaningPlugin` |
 | `permissible_value_not4curation` | `ERROR` | `PermissibleValueMeaningPlugin` |
 | `permissible_value_label_mismatch` | `WARN` (`ERROR` under `strict_mode`) | `PermissibleValueMeaningPlugin` |
+| `expression_invalid` | `ERROR` | `ExpressionValidationPlugin` |
+| `expression_grammar_unknown` | `ERROR` | `ExpressionValidationPlugin` |
+| `expression_grammar_unavailable` | `ERROR` | `ExpressionValidationPlugin` |
 
 Keys and values accept either strings or the `ErrorMode` / `Severity` enum
 members; severities are case-insensitive and `WARNING` is accepted as an alias
@@ -75,7 +78,8 @@ severity_overrides:
   binding_label_mismatch: WARN
 ```
 
-Constructor arguments win over the config file. For
+Constructor arguments win over the config file. `ExpressionValidationPlugin`
+reads no config file, so its overrides go to the constructor. For
 `permissible_value_label_mismatch`, an explicit override wins over `strict_mode`.
 
 ### Not4Curation check
@@ -294,6 +298,25 @@ The plugin:
 - Uses slots with `implements: [rdfs:label]` or `slot_uri: rdfs:label` as label fields
 - Falls back to a field named `label` when no label property is declared
 
+## ExpressionValidationPlugin
+
+Validates values written in a grammar-based code system (UCUM units, SMILES,
+InChI, InChIKey) by parsing them. A slot opts in with an `expression_grammar`
+annotation on the slot or on its range type. The parsers are optional extras
+(`linkml-term-validator[ucum]`, `[chem]`, or `[expressions]` for both); a
+missing parser is reported as `expression_grammar_unavailable`, never passed.
+
+```python
+from linkml_term_validator.plugins import ExpressionValidationPlugin
+
+plugin = ExpressionValidationPlugin(
+    severity_overrides={"expression_invalid": "WARN"},
+)
+```
+
+It needs no ontology access, so `severity_overrides` is its only option; it
+does not read `oak_config.yaml`. See [Grammar-Based Codes](expression-validation.md).
+
 ## Composition
 
 Use both data plugins when a schema has direct dynamic enum slots and nested binding objects:
@@ -312,7 +335,7 @@ validator = Validator(schema="schema.yaml", validation_plugins=plugins)
 report = validator.validate_source(YamlLoader("data.yaml"), target_class="Sample")
 ```
 
-The CLI `validate-data` command creates this composition by default. Disable either part with `--no-dynamic-enums` or `--no-bindings`.
+The CLI `validate-data` command creates this composition by default, plus `ExpressionValidationPlugin`. Disable any part with `--no-dynamic-enums`, `--no-bindings` or `--no-expressions`.
 
 ## linkml-validate Configuration
 
@@ -337,6 +360,8 @@ plugins:
     validate_labels: true
     cache_dir: cache
     cache_strategy: progressive
+
+  "linkml_term_validator.plugins.ExpressionValidationPlugin": {}
 ```
 
 ```bash

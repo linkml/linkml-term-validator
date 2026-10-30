@@ -25,6 +25,13 @@ dependencies = [
   "ruamel-yaml>=0.18.15",
 ]
 
+# Parsers for grammar-based code systems (see plugins/expressions). Imported
+# only when a schema annotates a slot with that grammar.
+[project.optional-dependencies]
+ucum = ["ucumvert>=0.3.2; python_version >= '3.11'"]
+chem = ["rdkit>=2024.3.1"]
+expressions = ["ucumvert>=0.3.2; python_version >= '3.11'", "rdkit>=2024.3.1"]
+
 [dependency-groups]
 dev = [
     "linkml>=1.9.3",
@@ -36,6 +43,8 @@ dev = [
     "jupyter>=1.0.0",
     "papermill>=2.4.0",
     "requests-cache>=1.0.0",
+    "ucumvert>=0.3.2; python_version >= '3.11'",
+    "rdkit>=2024.3.1",
 ]
 
 [project.scripts]

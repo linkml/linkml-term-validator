@@ -1,0 +1,13 @@
+id: ex:broken
+unit: mg//dL
+smiles: C(C
+alt_smiles:
+  - CCO
+  - N(C)(C)(C)(C)C
+inchi: InChI=1S/C2H6O/c1-2-9/h3H
+inchikey: LFQSCWFLJHTTHZ-UHFFFAOYSA
+measurements:
+  - value: 5.0
+    unit: mmol/L
+  - value: 1.0
+    unit: furlongs
