@@ -828,6 +828,9 @@ class OntologyAccess:
         # description of that adapter. Tells "the term does not exist there"
         # apart from "there was nothing to ask" (#77).
         self._not_found_in: dict[str, str] = {}
+        # CURIEs whose lookup raised a non-outage error other than "no such
+        # term" (e.g. a 401), mapped the same way. Existence is unknown.
+        self._lookup_failed_in: dict[str, str] = {}
         # Per-prefix obsolete-entity sets (for adapters where a whole-ontology
         # ``obsoletes()`` scan is cheap); None means "could not determine".
         self._obsolete_cache: dict[str, Optional[set[str]]] = {}
@@ -1127,17 +1130,22 @@ class OntologyAccess:
         # problem (connection/timeout failure, or an HTTP 5xx) is NOT a missing
         # term - we could not determine anything - so it is re-raised as
         # OntologyServiceUnavailableError to fail fast rather than mislabeling
-        # every term as invalid data. Anything else is logged loudly and treated
-        # as not found (preserving prior behavior for unexpected adapter errors).
-        label = self.retry_service_call(
+        # every term as invalid data. Anything else (a 401 from a wrong API key,
+        # a parse error) is logged loudly and yields no label, but is recorded
+        # as a failed lookup, not as a missing term: the term may well exist.
+        label, definitive = self.retry_service_call(
             lambda: self._lookup_adapter_label(adapter, curie),
             f"resolving the label for {curie}",
         )
         self._label_cache[curie] = label
         if label is None:
-            self._not_found_in[curie] = redact_secrets(
+            searched = redact_secrets(
                 self._adapter_strings.get(prefix, f"the {prefix} adapter")
             )
+            if definitive:
+                self._not_found_in[curie] = searched
+            else:
+                self._lookup_failed_in[curie] = searched
 
         if label and self.cache_labels:
             self.save_to_cache(prefix, curie, label)
@@ -1149,7 +1157,9 @@ class OntologyAccess:
 
         Returns None when no adapter was consulted (no adapter for the prefix,
         offline mode, or the term has not been looked up), so a caller can tell
-        a term that does not exist from one that could not be checked.
+        a term that does not exist from one that could not be checked. A
+        lookup that failed is not a definitive miss either: see
+        :meth:`lookup_failed_in`.
 
         Examples:
             >>> access = OntologyAccess(cache_labels=False)
@@ -1158,21 +1168,42 @@ class OntologyAccess:
         """
         return self._not_found_in.get(curie)
 
-    def _lookup_adapter_label(self, adapter: object, curie: str) -> Optional[str]:
+    def lookup_failed_in(self, curie: str) -> Optional[str]:
+        """Describe the adapter whose lookup of ``curie`` failed with an error.
+
+        Set when the adapter raised something that is neither an outage nor a
+        "no such term" answer (for example a 401 from a wrong API key, or a
+        parse error), so whether the term exists is unknown.
+
+        Examples:
+            >>> access = OntologyAccess(cache_labels=False)
+            >>> access.lookup_failed_in("GO:0008150") is None  # not looked up yet
+            True
+        """
+        return self._lookup_failed_in.get(curie)
+
+    def _lookup_adapter_label(
+        self, adapter: object, curie: str
+    ) -> tuple[Optional[str], bool]:
         """Resolve a label through an adapter, classifying the failure modes.
 
         Separated from :meth:`get_label` so it can be re-run by the retry
         policy: a service problem propagates (and is retried), while any other
-        adapter error stays a logged "not found".
+        adapter error is logged and yields no label.
+
+        Returns:
+            ``(label, definitive)``. ``definitive`` is False only when the
+            label is None because the lookup raised something other than a
+            "no such term" answer, so the term's existence is unknown.
         """
         try:
-            return self._get_adapter_label(adapter, curie)
+            return self._get_adapter_label(adapter, curie), True
         except OntologyServiceUnavailableError:
             raise
         except Exception as e:  # noqa: BLE001 - adapters raise varied errors
             raise_if_service_unavailable(curie, e)
             self._log_lookup_failure(curie, e)
-            return None
+            return None, self._is_term_not_found_error(e)
 
     def _get_adapter_label(self, adapter: object, curie: str) -> Optional[str]:
         """Get a label from an adapter, including OLS4 response compatibility."""
@@ -1191,14 +1222,23 @@ class OntologyAccess:
         return label if isinstance(label, str) else None
 
     @staticmethod
-    def _log_lookup_failure(curie: str, exc: Exception) -> None:
-        """Log an adapter lookup failure, distinguishing 404 from transient errors."""
+    def _is_term_not_found_error(exc: Exception) -> bool:
+        """Whether an adapter error is a definitive "no such term" (HTTP 404/410).
+
+        Remote adapters such as OLS answer a missing IRI with 404 rather than
+        returning None. Any other error says nothing about the term.
+        """
         response = getattr(exc, "response", None)
-        if getattr(response, "status_code", None) == 404:
-            logger.debug("Term %s not found (HTTP 404): %s", curie, redact_secrets(str(exc)))
+        return getattr(response, "status_code", None) in (404, 410)
+
+    @classmethod
+    def _log_lookup_failure(cls, curie: str, exc: Exception) -> None:
+        """Log an adapter lookup failure, distinguishing "not found" from errors."""
+        if cls._is_term_not_found_error(exc):
+            logger.debug("Term %s not found: %s", curie, redact_secrets(str(exc)))
         else:
             logger.warning(
-                "Label lookup for %s failed unexpectedly (treated as not found): %s",
+                "Label lookup for %s failed unexpectedly: %s",
                 curie,
                 redact_secrets(str(exc)),
             )

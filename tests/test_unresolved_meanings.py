@@ -23,10 +23,12 @@ built and searched.
 from pathlib import Path
 
 import pytest
+import requests
 from typer.testing import CliRunner
 
 from linkml_term_validator.cli import app
 from linkml_term_validator.models import SeverityLevel, ValidationConfig
+from linkml_term_validator.utils import oak_utils
 from linkml_term_validator.validator import EnumValidator
 
 TEST_ONTOLOGY = "simpleobo:tests/data/test_ontology.obo"
@@ -71,6 +73,22 @@ def _validator(**config) -> EnumValidator:
     return EnumValidator(ValidationConfig(cache_labels=False, **config))
 
 
+def _http_error(status_code: int) -> requests.exceptions.HTTPError:
+    response = requests.Response()
+    response.status_code = status_code
+    return requests.exceptions.HTTPError(f"{status_code} Error", response=response)
+
+
+def _failing_adapter(monkeypatch, exc: Exception) -> None:
+    """Make every adapter's label lookup raise ``exc`` (not an outage)."""
+
+    class FailingAdapter:
+        def label(self, curie):
+            raise exc
+
+    monkeypatch.setattr(oak_utils, "get_adapter", lambda s: FailingAdapter())
+
+
 # ---------------------------------------------------------------------------
 # EnumValidator
 # ---------------------------------------------------------------------------
@@ -98,6 +116,39 @@ def test_missing_term_in_configured_adapter_is_error(tmp_path):
     errors = [i for i in result.issues if i.is_error()]
     assert len(errors) == 1
     assert errors[0].message == f"Term {FAKE_TERM} not found in {TEST_ONTOLOGY}"
+
+
+@pytest.mark.parametrize(
+    "exc", [_http_error(401), _http_error(403), ValueError("malformed response")]
+)
+def test_failed_lookup_is_error_but_not_called_missing(monkeypatch, tmp_path, exc):
+    """A lookup that raised (a wrong API key, a parse error) fails closed, but
+    must not tell the user to fix a CURIE that may well exist."""
+    _failing_adapter(monkeypatch, exc)
+    validator = _validator(oak_adapter_string=TEST_ONTOLOGY)
+    result = validator.validate_schema(_schema(tmp_path, FAKE_TERM))
+
+    errors = [i for i in result.issues if i.is_error()]
+    # Both meanings were looked up, and both lookups failed.
+    assert {e.meaning for e in errors} == {"TEST:0000001", FAKE_TERM}
+    for error in errors:
+        assert error.message == (
+            f"Could not retrieve label for {error.meaning} from {TEST_ONTOLOGY}: "
+            "the lookup failed with an error (see the logged warning)"
+        )
+        assert "not found" not in error.message
+    assert result.total_meanings_unchecked == 0
+
+
+@pytest.mark.parametrize("status", [404, 410])
+def test_http_not_found_is_reported_missing(monkeypatch, tmp_path, status):
+    _failing_adapter(monkeypatch, _http_error(status))
+    validator = _validator(oak_adapter_string=TEST_ONTOLOGY)
+    result = validator.validate_schema(_schema(tmp_path, FAKE_TERM))
+
+    messages = [i.message for i in result.issues if i.is_error()]
+    assert len(messages) == 2
+    assert all(m.startswith("Term TEST:") and " not found in " in m for m in messages)
 
 
 def test_term_without_adapter_is_unchecked_not_error(tmp_path):
@@ -249,6 +300,25 @@ def test_cli_text_file_unchecked_is_not_all_validated(runner, tmp_path):
     assert f'{NO_ADAPTER_TERM} "something" (not checked: no adapter)' in result.output
     assert "All 2 CURIE(s) validated successfully" not in result.output
     assert "No errors, but 1 of 2 CURIE(s) could not be checked" in result.output
+
+
+def test_cli_failed_lookup_fails_with_lookup_message(runner, monkeypatch, tmp_path):
+    _failing_adapter(monkeypatch, _http_error(401))
+    result = runner.invoke(
+        app,
+        [
+            "validate-schema",
+            str(_schema(tmp_path, FAKE_TERM)),
+            "--adapter",
+            TEST_ONTOLOGY,
+            "--no-cache",
+        ],
+    )
+
+    assert result.exit_code == 1, result.output
+    assert f"Could not retrieve label for {FAKE_TERM}" in result.output
+    assert "the lookup failed with an error" in result.output
+    assert "not found in" not in result.output
 
 
 def test_cli_text_file_missing_term_in_auto_adapter_fails(runner, tmp_path):

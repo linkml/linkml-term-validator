@@ -335,11 +335,14 @@ class EnumValidator:
         ``sqlite:obo:<prefix>`` adapter that lacks the term is a definitive
         "not found", not a skipped check (#77). Offline mode always errors (no
         lookup is permitted, so an incomplete cache must never pass silently),
-        as does strict mode or a configured prefix. Only a term there was no
-        adapter to ask about is downgraded.
+        as does strict mode or a configured prefix. A lookup that failed with
+        an error fails closed too: an adapter exists but could not answer,
+        which the user needs to fix. Only a term there was no adapter to ask
+        about is downgraded.
         """
         return (
             self.ontology.not_found_in(term) is not None
+            or self.ontology.lookup_failed_in(term) is not None
             or bool(prefix and self._is_prefix_configured(prefix))
             or self.config.strict_mode
             or self.config.offline
@@ -353,10 +356,17 @@ class EnumValidator:
         Names the adapter that was searched when there was one. For a prefix
         with no oak_config entry it also suggests mapping one, since a term
         can be defined in a different ontology than its prefix suggests (BFO
-        relations such as ``BFO:0000050`` live in RO).
+        relations such as ``BFO:0000050`` live in RO). A failed lookup says so
+        rather than claiming the term is missing, since it may well exist.
         """
         if self.config.offline:
             return f"Term {term} not found in offline cache"
+        failed = self.ontology.lookup_failed_in(term)
+        if failed is not None:
+            return (
+                f"Could not retrieve label for {term} from {failed}: the lookup "
+                "failed with an error (see the logged warning)"
+            )
         searched = self.ontology.not_found_in(term)
         if searched is None:
             return fallback_message

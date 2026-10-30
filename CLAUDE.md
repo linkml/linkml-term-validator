@@ -270,7 +270,10 @@ auto-created `sqlite:obo:<prefix>` adapter had been built and searched, and the
 run closed with "No issues found". `OntologyAccess.get_label()` now records the
 adapter it searched without a match, and `not_found_in(curie)` returns it. A
 term missing from that adapter is an ERROR ("not found in <adapter>"),
-configured prefix or not. INFO is kept only for a term with no adapter to ask
+configured prefix or not. Only a clean `None` or an HTTP 404/410 counts as
+missing; any other swallowed adapter error (a 401 from a wrong API key, a
+parse error) goes to `lookup_failed_in(curie)` instead and is an ERROR that
+says the lookup failed, never that the term does not exist. INFO is kept only for a term with no adapter to ask
 (oak_config.yaml loaded but not listing the prefix); such terms are tracked by
 `EnumValidator.get_unchecked_terms()` and `ValidationResult.total_meanings_unchecked`,
 never counted as validated, and the CLI ends with "No errors, but N ... could

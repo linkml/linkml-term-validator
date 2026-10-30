@@ -394,9 +394,15 @@ def test_get_label_raises_service_unavailable_on_transient_http(monkeypatch, sta
         access.get_label("GO:0008150")
 
 
-@pytest.mark.parametrize("status", [400, 403, 404, 410])
-def test_get_label_treats_definitive_4xx_as_not_found(monkeypatch, status):
-    """A definitive 4xx (not 408/429) is a normal "term not found" (returns None)."""
+@pytest.mark.parametrize(
+    "status,term_missing", [(400, False), (401, False), (403, False), (404, True), (410, True)]
+)
+def test_get_label_definitive_4xx_yields_no_label(monkeypatch, status, term_missing):
+    """A definitive 4xx (not 408/429) yields no label rather than an outage.
+
+    Only 404/410 say the term does not exist. Any other 4xx (a 401 from a
+    wrong API key, say) is a failed lookup: the term may exist (#77 review).
+    """
 
     class NotFoundAdapter:
         def label(self, curie):
@@ -406,10 +412,17 @@ def test_get_label_treats_definitive_4xx_as_not_found(monkeypatch, status):
     access = OntologyAccess(cache_labels=False)
 
     assert access.get_label("GO:9999999") is None
+    if term_missing:
+        assert access.not_found_in("GO:9999999") == "sqlite:obo:go"
+        assert access.lookup_failed_in("GO:9999999") is None
+    else:
+        assert access.not_found_in("GO:9999999") is None
+        assert access.lookup_failed_in("GO:9999999") == "sqlite:obo:go"
 
 
-def test_get_label_treats_non_connectivity_error_as_not_found(monkeypatch):
-    """An unexpected (non-network) adapter error is still treated as not found."""
+def test_get_label_non_connectivity_error_is_a_failed_lookup(monkeypatch):
+    """An unexpected (non-network) adapter error yields no label, recorded as a
+    failed lookup rather than a missing term."""
 
     class BadAdapter:
         def label(self, curie):
@@ -419,6 +432,23 @@ def test_get_label_treats_non_connectivity_error_as_not_found(monkeypatch):
     access = OntologyAccess(cache_labels=False)
 
     assert access.get_label("GO:0008150") is None
+    assert access.lookup_failed_in("GO:0008150") == "sqlite:obo:go"
+    assert access.not_found_in("GO:0008150") is None
+
+
+def test_get_label_clean_none_is_not_found(monkeypatch):
+    """An adapter that answers None without raising has no such term."""
+
+    class EmptyAdapter:
+        def label(self, curie):
+            return None
+
+    monkeypatch.setattr(oak_utils, "get_adapter", lambda s: EmptyAdapter())
+    access = OntologyAccess(cache_labels=False)
+
+    assert access.get_label("GO:9999999") is None
+    assert access.not_found_in("GO:9999999") == "sqlite:obo:go"
+    assert access.lookup_failed_in("GO:9999999") is None
 
 
 # =============================================================================
