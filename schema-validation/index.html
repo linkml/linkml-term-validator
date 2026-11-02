@@ -1821,7 +1821,7 @@ linkml-term-validator validate-schema --adapter &quot;ols:&quot; schema.yaml
 </tr>
 <tr>
 <td><strong>ERROR</strong></td>
-<td>Term does not exist in a configured ontology</td>
+<td>Term not found in the adapter that was searched, configured prefix or not</td>
 </tr>
 <tr>
 <td><strong>WARN</strong></td>
@@ -1829,17 +1829,28 @@ linkml-term-validator validate-schema --adapter &quot;ols:&quot; schema.yaml
 </tr>
 <tr>
 <td><strong>INFO</strong></td>
-<td>Unconfigured prefix encountered</td>
+<td>No adapter for the prefix, so the term could not be checked (in strict mode: ERROR)</td>
 </tr>
 </tbody>
 </table>
+<p>A term that an adapter was searched for and does not contain is reported as
+not found, naming that adapter, even when the adapter was the auto-created
+<code>sqlite:obo:&lt;prefix&gt;</code> one. A term can be defined in a different ontology than
+its prefix suggests: BFO relations such as <code>BFO:0000050</code> (part of) live in RO,
+so <code>sqlite:obo:bfo</code> does not have them. Map the prefix to the right ontology in
+<code>oak_config.yaml</code> (<code>BFO: sqlite:obo:ro</code>).</p>
+<p>A term with no adapter to ask is neither valid nor invalid. It is counted under
+"Meanings not checked" rather than "Meanings validated", listed under
+<code>--verbose</code>, and the run ends with "No errors, but N meaning(s) could not be
+checked" instead of "No issues found". The exit code stays 0; use <code>--strict</code> to
+fail on such terms.</p>
 <h3 id="configured-vs-unconfigured-prefixes">Configured vs Unconfigured Prefixes</h3>
 <p>A <strong>configured prefix</strong> is one explicitly mapped in your <code>oak_config.yaml</code>:</p>
 <pre><code class="language-yaml"># oak_config.yaml
 ontology_adapters:
   GO: sqlite:obo:go    # GO is configured
   CL: sqlite:obo:cl    # CL is configured
-  # HP is NOT configured - will use default adapter
+  # HP is NOT configured - no adapter, so HP terms are not checked
 </code></pre>
 <p>Errors for configured prefixes are always raised. For unconfigured prefixes, mismatches are warnings (unless <code>--strict</code> is used).</p>
 <h2 id="examples">Examples</h2>

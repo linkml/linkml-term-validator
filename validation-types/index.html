@@ -1838,7 +1838,7 @@ linkml-term-validator validate-data data.yaml --schema schema.yaml --no-labels
 <ul>
 <li><strong>ERROR</strong> - Serious issue that should block data/schema acceptance</li>
 <li>Configured prefix with label mismatch</li>
-<li>Missing term from configured ontology</li>
+<li>Term not found in the adapter that was searched (configured or auto-created)</li>
 <li>Dynamic enum constraint violation</li>
 <li>Binding constraint violation</li>
 <li>
@@ -1854,7 +1854,8 @@ linkml-term-validator validate-data data.yaml --schema schema.yaml --no-labels
 <li>
 <p><strong>INFO</strong> - Informational message</p>
 </li>
-<li>Unconfigured prefix encountered</li>
+<li>No adapter for the prefix, so the term could not be checked (counted as
+    "not checked", never as validated)</li>
 <li>Unknown prefix summary</li>
 </ul>
 <p>These are defaults, not fixed rules. Each problem the plugins report has an
