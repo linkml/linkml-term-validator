@@ -189,7 +189,16 @@ class ValidationResult(BaseModel):
     )
     total_enums_checked: int = Field(default=0, description="Number of enums validated")
     total_values_checked: int = Field(default=0, description="Number of permissible values checked")
-    total_meanings_checked: int = Field(default=0, description="Number of meanings validated")
+    total_meanings_checked: int = Field(
+        default=0, description="Number of permissible values with a meaning"
+    )
+    total_meanings_unchecked: int = Field(
+        default=0,
+        description=(
+            "Meanings that could not be checked because no adapter was "
+            "available for their prefix. Not valid: unknown."
+        ),
+    )
     not4curation_unchecked: list[str] = Field(
         default_factory=list,
         description=(
@@ -270,7 +279,15 @@ class ValidationResult(BaseModel):
         print(f"{'=' * 60}")
         print(f"Enums checked: {self.total_enums_checked}")
         print(f"Values checked: {self.total_values_checked}")
-        print(f"Meanings validated: {self.total_meanings_checked}")
+        print(
+            "Meanings validated: "
+            f"{self.total_meanings_checked - self.total_meanings_unchecked}"
+        )
+        if self.total_meanings_unchecked:
+            print(
+                "Meanings not checked (no adapter for prefix): "
+                f"{self.total_meanings_unchecked}"
+            )
         if self.not4curation_unchecked:
             print(
                 "Not4Curation check skipped (no synonym data): "
@@ -298,8 +315,36 @@ class ValidationResult(BaseModel):
                 print(f"  {issue.enum_name}.{issue.value_name}: {issue.message}")
             print()
 
+        infos = [i for i in self.issues if i.severity == SeverityLevel.INFO]
+        if infos and verbose:
+            print(f"ℹ️  INFO ({len(infos)}):")
+            for issue in infos:
+                print(f"  {issue.enum_name}.{issue.value_name}: {issue.message}")
+            print()
+
         if not errors and not warnings:
-            print("✅ No issues found!")
+            print(self.clean_run_message())
+
+    def clean_run_message(self) -> str:
+        """The closing line for a run with no errors or warnings.
+
+        A meaning that could not be checked is not a pass, so "no issues"
+        is only claimed when every meaning was actually checked (#77).
+
+        Examples:
+            >>> result = ValidationResult(schema_path=Path("test.yaml"))
+            >>> result.clean_run_message()
+            '✅ No issues found!'
+            >>> result.total_meanings_unchecked = 2
+            >>> result.clean_run_message()
+            '⚠️  No errors, but 2 meaning(s) could not be checked'
+        """
+        if self.total_meanings_unchecked:
+            return (
+                "⚠️  No errors, but "
+                f"{self.total_meanings_unchecked} meaning(s) could not be checked"
+            )
+        return "✅ No issues found!"
 
 
 class ValidationConfig(BaseModel):

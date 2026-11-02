@@ -261,3 +261,22 @@ which is not an outage) goes through `scrub_exception_secrets()`, which rewrites
 the string args of it and every error it wraps, keeping their types, so a
 traceback is clean too. `OntologyServiceUnavailableError` does both for its
 message and its `original` (= `__cause__`).
+
+### Unresolved Meanings (#77)
+
+`EnumValidator` (behind `validate-schema` and `validate-text-file`) used to
+report every unresolved term under an unconfigured prefix as INFO, even when an
+auto-created `sqlite:obo:<prefix>` adapter had been built and searched, and the
+run closed with "No issues found". `OntologyAccess.get_label()` now records the
+adapter it searched without a match, and `not_found_in(curie)` returns it. A
+term missing from that adapter is an ERROR ("not found in <adapter>"),
+configured prefix or not. Only a clean `None` or an HTTP 404/410 counts as
+missing; any other swallowed adapter error (a 401 from a wrong API key, a
+parse error) goes to `lookup_failed_in(curie)` instead and is an ERROR that
+says the lookup failed, never that the term does not exist. INFO is kept only for a term with no adapter to ask
+(oak_config.yaml loaded but not listing the prefix); such terms are tracked by
+`EnumValidator.get_unchecked_terms()` and `ValidationResult.total_meanings_unchecked`,
+never counted as validated, and the CLI ends with "No errors, but N ... could
+not be checked" instead of ✅ (exit code stays 0; `--strict` makes them errors).
+`PermissibleValueMeaningPlugin` already reports every unresolved meaning at
+ERROR and needed no change.
