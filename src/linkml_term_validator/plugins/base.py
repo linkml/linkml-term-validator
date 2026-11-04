@@ -33,6 +33,7 @@ from linkml_runtime.linkml_model import EnumDefinition
 from linkml_term_validator.cache_utils import atomic_write_csv, locked_cache_file
 from linkml_term_validator.models import CacheStrategy, ErrorMode, ValidationConfig
 from linkml_term_validator.utils import (
+    ConfigurationError,
     OntologyAccess,
     OntologyServiceUnavailableError,
     get_prefix,
@@ -118,7 +119,7 @@ class BaseOntologyPlugin(ValidationPlugin):
         """
         # Convert string to enum if needed
         if isinstance(cache_strategy, str):
-            cache_strategy = CacheStrategy(cache_strategy)
+            cache_strategy = self._parse_cache_strategy(cache_strategy)
 
         self.severity_overrides = self._normalize_severity_overrides(severity_overrides)
 
@@ -193,13 +194,13 @@ class BaseOntologyPlugin(ValidationPlugin):
             Mapping of ErrorMode value -> Severity
 
         Raises:
-            ValueError: If the input is not a mapping, a key is not an
+            ConfigurationError: If the input is not a mapping, a key is not an
                 ErrorMode, or a value is not a Severity
         """
         if not overrides:
             return {}
         if not isinstance(overrides, Mapping):
-            raise ValueError(
+            raise ConfigurationError(
                 f"severity_overrides must be a mapping of error mode to severity, "
                 f"got {type(overrides).__name__}: {overrides!r}"
             )
@@ -213,7 +214,7 @@ class BaseOntologyPlugin(ValidationPlugin):
                 mode = ErrorMode(mode_value)
             except ValueError:
                 valid = ", ".join(sorted(m.value for m in ErrorMode))
-                raise ValueError(
+                raise ConfigurationError(
                     f"Unknown severity_overrides key: {raw_mode!r}. Valid keys are: {valid}"
                 ) from None
 
@@ -226,7 +227,7 @@ class BaseOntologyPlugin(ValidationPlugin):
                 severity = Severity(severity_value)
             except ValueError:
                 valid = ", ".join(s.value for s in Severity)
-                raise ValueError(
+                raise ConfigurationError(
                     f"Unknown severity for '{mode.value}': {raw_severity!r}. "
                     f"Valid severities are: {valid}"
                 ) from None
@@ -272,7 +273,7 @@ class BaseOntologyPlugin(ValidationPlugin):
             config: Parsed oak_config.yaml contents
         """
         if "cache_strategy" in config:
-            self.config.cache_strategy = CacheStrategy(config["cache_strategy"])
+            self.config.cache_strategy = self._parse_cache_strategy(config["cache_strategy"])
         if "cache_enum_expansions" in config:
             self.config.cache_enum_expansions = self._parse_bool_config_value(
                 config["cache_enum_expansions"], "cache_enum_expansions"
@@ -309,7 +310,20 @@ class BaseOntologyPlugin(ValidationPlugin):
                 return True
             if normalized == "false":
                 return False
-        raise ValueError(f"{field_name} must be a boolean or 'true'/'false', got: {value!r}")
+        raise ConfigurationError(
+            f"{field_name} must be a boolean or 'true'/'false', got: {value!r}"
+        )
+
+    @staticmethod
+    def _parse_cache_strategy(value: Any) -> CacheStrategy:
+        """Parse a cache strategy, naming the valid values when it is unknown."""
+        try:
+            return CacheStrategy(value)
+        except ValueError:
+            valid = ", ".join(s.value for s in CacheStrategy)
+            raise ConfigurationError(
+                f"cache_strategy must be one of: {valid}, got: {value!r}"
+            ) from None
 
     # =========================================================================
     # Ontology-access delegation (see linkml_term_validator.utils.OntologyAccess)

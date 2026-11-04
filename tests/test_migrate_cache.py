@@ -107,7 +107,9 @@ def test_migrate_dry_run(tmp_path):
 def test_migrate_no_cache_dir(tmp_path):
     """Should fail gracefully if cache dir doesn't exist."""
     result = runner.invoke(app, ["migrate-cache", "--cache-dir", str(tmp_path / "nonexistent")])
-    assert result.exit_code == 1
+    # A missing cache directory is a setup error (3), not a failed migration.
+    assert result.exit_code == 3
+    assert "Cache directory not found" in result.output
 
 
 def test_migrate_already_sorted(tmp_path):

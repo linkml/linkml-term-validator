@@ -11,6 +11,8 @@ For integration with LinkML's validator framework, see documentation.
 import re
 import sys
 import traceback
+from collections.abc import Iterator
+from contextlib import contextmanager
 from enum import Enum
 from pathlib import Path
 from typing import Optional
@@ -27,6 +29,7 @@ from linkml_term_validator.plugins import (
     DynamicEnumPlugin,
 )
 from linkml_term_validator.utils import (
+    ConfigurationError,
     OntologyAdapterUnavailableError,
     OntologyServiceUnavailableError,
     redact_secrets,
@@ -44,10 +47,11 @@ app = typer.Typer(
 # ontology-service outage apart from invalid data.
 EXIT_SERVICE_UNAVAILABLE = 2
 
-# Exit code for "could not validate this prefix with its adapter": the adapter
-# cannot be built or loaded, and retrying won't help (#78). Distinct from 1
-# (invalid data) and 2 (a transient outage worth retrying).
-EXIT_ADAPTER_UNAVAILABLE = 3
+# Exit code for "cannot validate as set up": invalid configuration or input, or
+# an adapter that cannot be built or loaded (#78). Someone has to fix the setup
+# before validation can run, so retrying won't help. Distinct from 1 (the data
+# failed validation) and 2 (a transient outage worth retrying).
+EXIT_SETUP_ERROR = 3
 
 
 class FailOn(str, Enum):
@@ -168,7 +172,34 @@ def _fail_adapter_unavailable(exc: OntologyAdapterUnavailableError) -> typer.Exi
         "   Terms could not be checked; this is not a data error.",
         err=True,
     )
-    return typer.Exit(code=EXIT_ADAPTER_UNAVAILABLE)
+    return typer.Exit(code=EXIT_SETUP_ERROR)
+
+
+def _fail_setup_error(message: str) -> typer.Exit:
+    """Report invalid configuration or input, with the setup-error exit code.
+
+    The data was never judged, so this must not look like a validation failure.
+    """
+    typer.echo(f"⛔ {message}", err=True)
+    return typer.Exit(code=EXIT_SETUP_ERROR)
+
+
+@contextmanager
+def _exit_on_unusable_setup() -> Iterator[None]:
+    """Turn the errors that stop validation from running into their exit codes.
+
+    The one place that maps them, so every command agrees: an outage is 2;
+    an unusable adapter or invalid configuration is 3. Wrap both building the
+    validator or plugins (where configuration is read) and running them.
+    """
+    try:
+        yield
+    except OntologyServiceUnavailableError as exc:
+        raise _fail_service_unavailable(exc) from exc
+    except OntologyAdapterUnavailableError as exc:
+        raise _fail_adapter_unavailable(exc) from exc
+    except ConfigurationError as exc:
+        raise _fail_setup_error(f"Invalid configuration: {exc}") from exc
 
 
 # How many unchecked CURIEs to list by name before collapsing to a count.
@@ -346,13 +377,9 @@ def validate_schema(
         service_retry_backoff=service_retry_backoff,
     )
 
-    validator = EnumValidator(validation_config)
-    try:
+    with _exit_on_unusable_setup():
+        validator = EnumValidator(validation_config)
         result = validator.validate_schema(schema_path)
-    except OntologyServiceUnavailableError as exc:
-        raise _fail_service_unavailable(exc) from exc
-    except OntologyAdapterUnavailableError as exc:
-        raise _fail_adapter_unavailable(exc) from exc
 
     if verbose or result.has_errors() or result.has_warnings():
         result.print_summary(verbose=verbose)
@@ -559,11 +586,16 @@ def validate_data(
     # Verify all data files exist
     for data_path in data_paths:
         if not data_path.exists():
-            typer.echo(f"❌ File not found: {data_path}", err=True)
-            raise typer.Exit(code=1)
+            raise _fail_setup_error(f"File not found: {data_path}")
 
     # Parse cache strategy
-    strategy = CacheStrategy(cache_strategy)
+    try:
+        strategy = CacheStrategy(cache_strategy)
+    except ValueError:
+        valid = ", ".join(s.value for s in CacheStrategy)
+        raise _fail_setup_error(
+            f"--cache-strategy must be one of: {valid}, got: {cache_strategy!r}"
+        ) from None
 
     # --strict can only tighten the threshold, never loosen it. The requested
     # value is kept so messages can say what the user typed.
@@ -573,45 +605,46 @@ def validate_data(
     # Build plugin list based on options
     plugins = []
 
-    if validate_dynamic_enums:
-        plugins.append(
-            DynamicEnumPlugin(
-                oak_adapter_string=adapter,
-                cache_labels=not no_cache,
-                cache_dir=cache_dir,
-                oak_config_path=config,
-                cache_enum_expansions=cache_enum_expansions and not no_cache,
-                saturate_enum_caches=saturate_enum_caches and not no_cache,
-                cache_strategy=strategy,
-                offline=offline,
-                check_not4curation=check_not4curation,
-                service_retries=service_retries,
-                service_retry_backoff=service_retry_backoff,
+    # Building a plugin reads oak_config.yaml, so a bad config surfaces here.
+    with _exit_on_unusable_setup():
+        if validate_dynamic_enums:
+            plugins.append(
+                DynamicEnumPlugin(
+                    oak_adapter_string=adapter,
+                    cache_labels=not no_cache,
+                    cache_dir=cache_dir,
+                    oak_config_path=config,
+                    cache_enum_expansions=cache_enum_expansions and not no_cache,
+                    saturate_enum_caches=saturate_enum_caches and not no_cache,
+                    cache_strategy=strategy,
+                    offline=offline,
+                    check_not4curation=check_not4curation,
+                    service_retries=service_retries,
+                    service_retry_backoff=service_retry_backoff,
+                )
             )
-        )
 
-    if validate_bindings:
-        plugins.append(
-            BindingValidationPlugin(
-                oak_adapter_string=adapter,
-                validate_labels=validate_labels,
-                strict=not lenient,
-                cache_labels=not no_cache,
-                cache_dir=cache_dir,
-                oak_config_path=config,
-                cache_enum_expansions=cache_enum_expansions and not no_cache,
-                saturate_enum_caches=saturate_enum_caches and not no_cache,
-                cache_strategy=strategy,
-                offline=offline,
-                check_not4curation=check_not4curation,
-                service_retries=service_retries,
-                service_retry_backoff=service_retry_backoff,
+        if validate_bindings:
+            plugins.append(
+                BindingValidationPlugin(
+                    oak_adapter_string=adapter,
+                    validate_labels=validate_labels,
+                    strict=not lenient,
+                    cache_labels=not no_cache,
+                    cache_dir=cache_dir,
+                    oak_config_path=config,
+                    cache_enum_expansions=cache_enum_expansions and not no_cache,
+                    saturate_enum_caches=saturate_enum_caches and not no_cache,
+                    cache_strategy=strategy,
+                    offline=offline,
+                    check_not4curation=check_not4curation,
+                    service_retries=service_retries,
+                    service_retry_backoff=service_retry_backoff,
+                )
             )
-        )
 
     if not plugins:
-        typer.echo("⚠️  No validation enabled. Use --bindings or --dynamic-enums", err=True)
-        raise typer.Exit(code=1)
+        raise _fail_setup_error("No validation enabled. Use --bindings or --dynamic-enums")
 
     # Create validator with plugins
     validator = Validator(
@@ -626,12 +659,8 @@ def validate_data(
 
     for data_path in data_paths:
         loader = default_loader_for_file(data_path)
-        try:
+        with _exit_on_unusable_setup():
             report = validator.validate_source(loader, target_class=target_class)
-        except OntologyServiceUnavailableError as exc:
-            raise _fail_service_unavailable(exc) from exc
-        except OntologyAdapterUnavailableError as exc:
-            raise _fail_adapter_unavailable(exc) from exc
 
         if len(report.results) == 0:
             if len(data_paths) > 1:
@@ -953,8 +982,7 @@ def migrate_cache(
     from linkml_term_validator.plugins.dynamic_enum_plugin import DynamicEnumPlugin
 
     if not cache_dir.exists():
-        typer.echo(f"Cache directory not found: {cache_dir}", err=True)
-        raise typer.Exit(code=1)
+        raise _fail_setup_error(f"Cache directory not found: {cache_dir}")
 
     # Find all terms.csv files
     terms_files = sorted(cache_dir.glob("*/terms.csv"))
@@ -965,12 +993,13 @@ def migrate_cache(
     # Create a plugin instance for label lookups if refreshing
     plugin = None
     if refresh_labels:
-        plugin = DynamicEnumPlugin(
-            oak_adapter_string=adapter,
-            cache_labels=False,  # Don't write cache during migration
-            cache_dir=cache_dir,
-            oak_config_path=config,
-        )
+        with _exit_on_unusable_setup():
+            plugin = DynamicEnumPlugin(
+                oak_adapter_string=adapter,
+                cache_labels=False,  # Don't write cache during migration
+                cache_dir=cache_dir,
+                oak_config_path=config,
+            )
 
     total_files = 0
     total_updated = 0
@@ -1010,12 +1039,8 @@ def migrate_cache(
         if refresh_labels and plugin and not sort_only:
             for curie in list(entries.keys()):
                 old_label = entries[curie]["label"]
-                try:
+                with _exit_on_unusable_setup():
                     new_label = plugin.get_ontology_label(curie)
-                except OntologyServiceUnavailableError as exc:
-                    raise _fail_service_unavailable(exc) from exc
-                except OntologyAdapterUnavailableError as exc:
-                    raise _fail_adapter_unavailable(exc) from exc
                 if new_label and new_label != old_label:
                     relabeled += 1
                     if dry_run:
@@ -1202,19 +1227,15 @@ def validate_text_file(
     try:
         pattern = re.compile(regex)
     except re.error as exc:
-        typer.echo(f"❌ Invalid regex pattern: {exc}", err=True)
-        raise typer.Exit(code=1)
+        raise _fail_setup_error(f"Invalid regex pattern: {exc}") from exc
 
     # Validate group indices against the pattern
     num_groups = pattern.groups
     for grp_name, grp_idx in [("--curie-group", curie_group), ("--label-group", label_group)]:
         if grp_idx < 1 or grp_idx > num_groups:
-            typer.echo(
-                f"❌ {grp_name} {grp_idx} is out of range "
-                f"(pattern has {num_groups} group(s))",
-                err=True,
+            raise _fail_setup_error(
+                f"{grp_name} {grp_idx} is out of range (pattern has {num_groups} group(s))"
             )
-            raise typer.Exit(code=1)
 
     # Extract (curie, label, location) triples from the file
     text = file_path.read_text(encoding="utf-8")
@@ -1242,14 +1263,9 @@ def validate_text_file(
         service_retries=service_retries,
         service_retry_backoff=service_retry_backoff,
     )
-    validator = EnumValidator(validation_config)
-
-    try:
+    with _exit_on_unusable_setup():
+        validator = EnumValidator(validation_config)
         issues = validator.validate_curie_label_pairs(pairs)
-    except OntologyServiceUnavailableError as exc:
-        raise _fail_service_unavailable(exc) from exc
-    except OntologyAdapterUnavailableError as exc:
-        raise _fail_adapter_unavailable(exc) from exc
 
     unchecked_terms = validator.get_unchecked_terms()
 

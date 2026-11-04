@@ -28,7 +28,7 @@ import requests
 from oaklib import get_adapter as oak_get_adapter
 from typer.testing import CliRunner
 
-from linkml_term_validator.cli import EXIT_ADAPTER_UNAVAILABLE, EXIT_SERVICE_UNAVAILABLE, app
+from linkml_term_validator.cli import EXIT_SETUP_ERROR, EXIT_SERVICE_UNAVAILABLE, app
 from linkml_term_validator.utils import (
     OntologyAccess,
     OntologyAdapterUnavailableError,
@@ -400,7 +400,7 @@ def test_cli_broken_copy_exits_3_without_traceback(
 
     result = _validate_schema(runner, schema)
 
-    assert result.exit_code == EXIT_ADAPTER_UNAVAILABLE == 3, result.output
+    assert result.exit_code == EXIT_SETUP_ERROR == 3, result.output
     assert "Unable to validate dcterms terms: no usable adapter." in result.output
     assert f"Delete {fake_cache_path / 'dcterms.db'}" in result.output
     assert "Traceback" not in result.output
@@ -417,7 +417,7 @@ def test_cli_configured_prefix_without_database_exits_3(
 
     result = _validate_schema(runner, schema, "--config", str(config))
 
-    assert result.exit_code == EXIT_ADAPTER_UNAVAILABLE, result.output
+    assert result.exit_code == EXIT_SETUP_ERROR, result.output
     assert "oak_config.yaml maps dcterms to sqlite:obo:dcterms" in result.output
 
 
@@ -459,5 +459,5 @@ def test_cli_validate_data_broken_copy_exits_3(
         ],
     )
 
-    assert result.exit_code == EXIT_ADAPTER_UNAVAILABLE, result.output
+    assert result.exit_code == EXIT_SETUP_ERROR, result.output
     assert "Unable to validate TEST terms" in result.output

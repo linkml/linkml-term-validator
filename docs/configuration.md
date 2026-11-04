@@ -53,6 +53,12 @@ behavior. A single wait is capped at 60s, so a generous `service_retries`
 cannot stall a run for minutes, and a `Retry-After` header on a rate-limited
 response (HTTP 429) overrides the backoff when the service asks for longer.
 
+The file is checked before anything is validated. A `--config` path that does
+not exist, a file that is not valid YAML, or an invalid value for any of these
+keys (an unknown `cache_strategy` or `severity_overrides` key, a negative
+`service_retries`) stops the run with exit code 3 and a message naming the
+problem. Python callers get a `ConfigurationError`, a `ValueError` subclass.
+
 ### Using the Config File
 
 **CLI:**

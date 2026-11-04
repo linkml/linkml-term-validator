@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any, Optional, TypeVar
 
 from oaklib import get_adapter
-from ruamel.yaml import YAML
+from ruamel.yaml import YAML, YAMLError
 
 from linkml_term_validator.cache_utils import atomic_write_csv, locked_cache_file
 
@@ -235,6 +235,17 @@ class OntologyAdapterUnavailableError(Exception):
         super().__init__(redact_secrets(reason))
 
 
+class ConfigurationError(ValueError):
+    """The validator's configuration is invalid, so validation cannot start.
+
+    Raised for an ``oak_config.yaml`` that is missing, unreadable or has an
+    invalid value, and for an invalid value passed to a constructor. A
+    ``ValueError`` subclass, so existing ``except ValueError`` handlers keep
+    working. The CLI reports it with exit code 3: the data was never judged,
+    and retrying without a fix will not help.
+    """
+
+
 # Well-defined exception TYPES that mean "the ontology service could not be
 # reached", matched by isinstance (never by class name). OAK's OLS adapter goes
 # label() -> client.get_term() -> requests.get()/raise_for_status(), so a network
@@ -357,7 +368,7 @@ class RetryPolicy:
         >>> RetryPolicy(retries=-1)
         Traceback (most recent call last):
         ...
-        ValueError: service_retries must be >= 0, got: -1
+        linkml_term_validator.utils.oak_utils.ConfigurationError: service_retries must be >= 0, got: -1
     """
 
     retries: int = DEFAULT_SERVICE_RETRIES
@@ -365,9 +376,9 @@ class RetryPolicy:
 
     def __post_init__(self) -> None:
         if self.retries < 0:
-            raise ValueError(f"service_retries must be >= 0, got: {self.retries}")
+            raise ConfigurationError(f"service_retries must be >= 0, got: {self.retries}")
         if self.backoff < 0:
-            raise ValueError(f"service_retry_backoff must be >= 0, got: {self.backoff}")
+            raise ConfigurationError(f"service_retry_backoff must be >= 0, got: {self.backoff}")
 
     @property
     def attempts(self) -> int:
@@ -406,7 +417,7 @@ def parse_retry_config(
         key is absent.
 
     Raises:
-        ValueError: If ``service_retries`` is not a non-negative integer or
+        ConfigurationError: If ``service_retries`` is not a non-negative integer or
             ``service_retry_backoff`` is not a non-negative number.
 
     Examples:
@@ -419,7 +430,7 @@ def parse_retry_config(
         >>> parse_retry_config({"service_retries": "lots"})
         Traceback (most recent call last):
         ...
-        ValueError: service_retries must be a non-negative integer, got: 'lots'
+        linkml_term_validator.utils.oak_utils.ConfigurationError: service_retries must be a non-negative integer, got: 'lots'
     """
     if not config:
         return None, None
@@ -429,7 +440,9 @@ def parse_retry_config(
         raw = config["service_retries"]
         # bool is an int subclass; ``service_retries: true`` is a typo, not 1.
         if isinstance(raw, bool) or not isinstance(raw, int) or raw < 0:
-            raise ValueError(f"service_retries must be a non-negative integer, got: {raw!r}")
+            raise ConfigurationError(
+                f"service_retries must be a non-negative integer, got: {raw!r}"
+            )
         retries = raw
 
     backoff: Optional[float] = None
@@ -440,7 +453,7 @@ def parse_retry_config(
             or not isinstance(raw_backoff, (int, float))
             or raw_backoff < 0
         ):
-            raise ValueError(
+            raise ConfigurationError(
                 f"service_retry_backoff must be a non-negative number, got: {raw_backoff!r}"
             )
         backoff = float(raw_backoff)
@@ -645,7 +658,7 @@ def normalize_not4curation_markers(markers: Optional[Iterable[str]]) -> tuple[st
         >>> normalize_not4curation_markers(["", "  "])
         Traceback (most recent call last):
         ...
-        ValueError: not4curation_markers must contain at least one non-empty marker (use check_not4curation=False to disable the check)
+        linkml_term_validator.utils.oak_utils.ConfigurationError: not4curation_markers must contain at least one non-empty marker (use check_not4curation=False to disable the check)
     """
     if markers is None:
         return DEFAULT_NOT4CURATION_MARKERS
@@ -655,7 +668,7 @@ def normalize_not4curation_markers(markers: Optional[Iterable[str]]) -> tuple[st
         dict.fromkeys(m for m in (normalize_marker_text(str(x)) for x in markers) if m)
     )
     if not normalized:
-        raise ValueError(
+        raise ConfigurationError(
             "not4curation_markers must contain at least one non-empty marker "
             "(use check_not4curation=False to disable the check)"
         )
@@ -678,7 +691,7 @@ def parse_not4curation_config(
         its key is absent.
 
     Raises:
-        ValueError: If ``check_not4curation`` is not a boolean (or the strings
+        ConfigurationError: If ``check_not4curation`` is not a boolean (or the strings
             ``"true"``/``"false"``), or ``not4curation_markers`` is not a
             string or list of strings.
 
@@ -692,7 +705,7 @@ def parse_not4curation_config(
         >>> parse_not4curation_config({"check_not4curation": "yes"})
         Traceback (most recent call last):
         ...
-        ValueError: check_not4curation must be a boolean or 'true'/'false', got: 'yes'
+        linkml_term_validator.utils.oak_utils.ConfigurationError: check_not4curation must be a boolean or 'true'/'false', got: 'yes'
     """
     if not config:
         return None, None
@@ -705,7 +718,7 @@ def parse_not4curation_config(
         elif isinstance(raw, str) and raw.strip().lower() in {"true", "false"}:
             check = raw.strip().lower() == "true"
         else:
-            raise ValueError(
+            raise ConfigurationError(
                 f"check_not4curation must be a boolean or 'true'/'false', got: {raw!r}"
             )
 
@@ -715,7 +728,7 @@ def parse_not4curation_config(
         if isinstance(raw_markers, str):
             raw_markers = [raw_markers]
         if not isinstance(raw_markers, list) or not all(isinstance(m, str) for m in raw_markers):
-            raise ValueError(
+            raise ConfigurationError(
                 "not4curation_markers must be a string or a list of strings, "
                 f"got {type(raw_markers).__name__}: {raw_markers!r}"
             )
@@ -1021,9 +1034,9 @@ class OntologyAccess:
 
         # ontology_adapters mapping plus the full parsed config (so callers can
         # read additional keys without re-reading the file).
-        self.oak_config: dict[str, str] = {}
+        self.oak_config: dict[str, Optional[str]] = {}
         self.loaded_config: dict[str, Any] = {}
-        if self.oak_config_path and self.oak_config_path.exists():
+        if self.oak_config_path is not None:
             self._load_oak_config()
 
         # Resolved after the config file is read, so an explicit argument can
@@ -1048,15 +1061,49 @@ class OntologyAccess:
         )
 
     def _load_oak_config(self) -> None:
-        """Load the ``ontology_adapters`` mapping from oak_config.yaml."""
+        """Load the ``ontology_adapters`` mapping from oak_config.yaml.
+
+        A path that was given but does not exist is an error, not a silent
+        fallback to the default adapter: a mistyped ``--config`` used to run
+        the whole validation without the user's configuration.
+
+        Raises:
+            ConfigurationError: The file is missing or unreadable, is not
+                valid YAML, or does not have the expected shape.
+        """
         if self.oak_config_path is None:
             return
+        path = self.oak_config_path
+        if not path.is_file():
+            raise ConfigurationError(f"OAK config file not found: {path}")
         yaml = YAML(typ="safe")
-        with open(self.oak_config_path) as f:
-            config = yaml.load(f)
-        self.loaded_config = config or {}
-        if "ontology_adapters" in self.loaded_config:
-            self.oak_config = self.loaded_config["ontology_adapters"]
+        try:
+            with open(path) as f:
+                config = yaml.load(f)
+        except OSError as e:
+            raise ConfigurationError(f"Could not read OAK config file {path}: {e}") from e
+        except YAMLError as e:
+            raise ConfigurationError(f"OAK config file {path} is not valid YAML: {e}") from e
+        if config is None:
+            config = {}
+        if not isinstance(config, Mapping):
+            raise ConfigurationError(
+                f"OAK config file {path} must be a mapping of settings, "
+                f"got {type(config).__name__}"
+            )
+        self.loaded_config = dict(config)
+        adapters = self.loaded_config.get("ontology_adapters")
+        if adapters is None:
+            return
+        if not isinstance(adapters, Mapping) or not all(
+            isinstance(prefix, str) and (adapter is None or isinstance(adapter, str))
+            for prefix, adapter in adapters.items()
+        ):
+            raise ConfigurationError(
+                f"ontology_adapters in {path} must map each prefix to an adapter "
+                "string (or an empty value to skip the prefix)"
+            )
+        self.oak_config = dict(adapters)
 
     # =========================================================================
     # Prefix helpers

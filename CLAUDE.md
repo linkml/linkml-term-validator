@@ -296,6 +296,20 @@ prefix: no adapter, `get_no_semsql_prefixes()`, terms "not checked" (INFO,
 exit 0 unless `--strict`). No database + prefix configured in oak_config.yaml,
 or a broken copy of a database that exists: `OntologyAdapterUnavailableError`,
 kept per prefix and re-raised (never retried, not an outage), CLI exit code 3
-(`EXIT_ADAPTER_UNAVAILABLE`) naming the file to delete or the entry to fix.
+(`EXIT_SETUP_ERROR`) naming the file to delete or the entry to fix.
 Never write or delete in oaklib's pystow cache: it is shared with other tools;
 `semsql_cache_path()` only names the file.
+
+### Exit Codes
+
+`0` passed; `1` the data or schema failed validation; `2` an ontology service
+outage (retried first; Click also uses 2 for usage errors); `3`
+(`EXIT_SETUP_ERROR`) validation could not run as set up and someone has to fix
+it: invalid input, invalid configuration, or an unusable adapter (#78). Never
+use 1 for anything but a validation failure. Map errors to codes in one place,
+`_exit_on_unusable_setup()` in `cli.py`, and wrap both building the validator
+or plugins (where oak_config.yaml is read) and running them. Configuration
+problems raise `ConfigurationError` (a `ValueError` subclass, so library
+callers are unaffected) at our own parse sites only; never catch a bare
+`ValueError` as a setup error, since that would relabel bugs. A `--config` /
+`oak_config_path` that does not exist is an error, never a silent fallback.
