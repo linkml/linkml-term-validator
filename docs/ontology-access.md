@@ -21,7 +21,35 @@ Without configuration, the validator uses `sqlite:obo:` as the default adapter, 
 - `CHEBI:15377` → uses `sqlite:obo:chebi`
 - `UBERON:0000468` → uses `sqlite:obo:uberon`
 
-This works for any OBO ontology that has been downloaded via OAK.
+This works for any ontology the semantic-sql project publishes a database for.
+
+### Prefixes without a semantic-sql database
+
+`sqlite:obo:<prefix>` only exists for ontologies that semantic-sql builds. A
+generic namespace such as `dcterms`, `schema` or `skos` has none, and nothing in
+a prefix says which kind it is. When a database fails to download or load, the
+validator asks the semantic-sql server (a single HEAD request, nothing
+downloaded) whether a database exists for that prefix:
+
+- **No database, prefix not in `oak_config.yaml`:** expected for a generic
+  namespace. The prefix gets no adapter, and its terms are reported as not
+  checked rather than as errors. They are listed as
+  `dcterms (no semantic-sql database)` under "Unknown prefixes", are never
+  counted as validated, and the run exits 0 unless `--strict` is set. Under
+  `linkml-validate`, `PermissibleValueMeaningPlugin` reports every meaning it
+  could not resolve at `ERROR`, these included, but with the message "Could not
+  validate dcterms:title: the semantic-sql server has no database for dcterms"
+  rather than "not found".
+- **No database, prefix mapped to `sqlite:obo:` in `oak_config.yaml`:** a
+  configuration error. The run stops with exit code 3 and suggests another
+  adapter.
+- **The database exists, but the cached copy is broken** (an interrupted or
+  failed download): the run stops with exit code 3 and names the cached file to
+  delete so it downloads again.
+
+The validator never deletes files in OAK's cache, which other tools share. To
+check a generic namespace's terms, map its prefix to an adapter that has them in
+`oak_config.yaml`.
 
 ## Per-Prefix Configuration
 

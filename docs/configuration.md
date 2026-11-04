@@ -53,6 +53,12 @@ behavior. A single wait is capped at 60s, so a generous `service_retries`
 cannot stall a run for minutes, and a `Retry-After` header on a rate-limited
 response (HTTP 429) overrides the backoff when the service asks for longer.
 
+The file is checked before anything is validated. A `--config` path that does
+not exist, a file that is not valid YAML, or an invalid value for any of these
+keys (an unknown `cache_strategy` or `severity_overrides` key, a negative
+`service_retries`) stops the run with exit code 3 and a message naming the
+problem. Python callers get a `ConfigurationError`, a `ValueError` subclass.
+
 ### Using the Config File
 
 **CLI:**
@@ -223,7 +229,10 @@ The validator automatically creates per-prefix adapters based on the prefix in t
 - `UBERON:0000468` → uses `sqlite:obo:uberon`
 - `CL:0000540` → uses `sqlite:obo:cl`
 
-This works for any OBO ontology that OAK knows about.
+This works for any ontology the semantic-sql project publishes a database for.
+A prefix without one (a generic namespace such as `dcterms` or `schema`) is
+reported as not checked rather than as an error; see
+[Prefixes without a semantic-sql database](ontology-access.md#prefixes-without-a-semantic-sql-database).
 
 When you set a different default adapter with `--adapter` or the Python API
 (for example `--adapter "ols:"` or `oak_adapter_string="ubergraph:"`), that

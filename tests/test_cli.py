@@ -585,7 +585,8 @@ def test_validate_text_file_invalid_regex(runner, tmp_path):
         ],
     )
 
-    assert result.exit_code == 1
+    # Bad input is a setup error (3), not a validation failure (1).
+    assert result.exit_code == 3
     assert "Invalid regex" in result.output or "invalid regex" in result.output.lower()
 
 
