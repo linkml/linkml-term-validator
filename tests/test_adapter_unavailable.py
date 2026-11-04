@@ -25,10 +25,16 @@ from pathlib import Path
 
 import pytest
 import requests
+from linkml.validator.report import Severity  # type: ignore[import-untyped]
+from linkml.validator.validation_context import (  # type: ignore[import-untyped]
+    ValidationContext,
+)
+from linkml_runtime import SchemaView
 from oaklib import get_adapter as oak_get_adapter
 from typer.testing import CliRunner
 
 from linkml_term_validator.cli import EXIT_SETUP_ERROR, EXIT_SERVICE_UNAVAILABLE, app
+from linkml_term_validator.plugins import PermissibleValueMeaningPlugin
 from linkml_term_validator.utils import (
     OntologyAccess,
     OntologyAdapterUnavailableError,
@@ -327,6 +333,54 @@ def test_semsql_database_exists_raises_outage(monkeypatch, failure):
 
     with pytest.raises(OntologyServiceUnavailableError):
         semsql_database_exists("ro")
+
+
+# ---------------------------------------------------------------------------
+# PermissibleValueMeaningPlugin (linkml-validate)
+# ---------------------------------------------------------------------------
+
+
+def _meaning_results(schema_text: str, tmp_path: Path) -> dict:
+    """Run the plugin over a schema; return {meaning: result} for unresolved meanings."""
+    schema_path = tmp_path / "schema.yaml"
+    # The plugin checks the schema itself; the context just needs some class.
+    schema_path.write_text(schema_text + "classes:\n  Holder: {}\n")
+    plugin = PermissibleValueMeaningPlugin(cache_labels=False)
+    schema_view = SchemaView(str(schema_path))
+    context = ValidationContext(schema=schema_view.schema, target_class="Holder")
+    plugin.pre_process(context)
+    return {
+        r.instance["meaning"]: r
+        for r in plugin.process({}, context)
+        if r.type == "permissible_value_meaning"
+    }
+
+
+def test_plugin_says_not_checked_for_no_database_prefix(
+    monkeypatch, calls, fake_cache_path, tmp_path
+):
+    """The plugin keeps its severity but must not call an unlooked-up term "not found"."""
+    _patch(monkeypatch, calls, {"sqlite:obo:dcterms": _bad_gzip()}, {"dcterms": False})
+
+    results = _meaning_results(SCHEMA, tmp_path)
+
+    result = results["dcterms:title"]
+    assert result.severity == Severity.ERROR
+    assert result.message == (
+        "Could not validate dcterms:title: the semantic-sql server has no database "
+        "for dcterms (map dcterms to another adapter in oak_config.yaml)"
+    )
+    assert "not found" not in result.message
+
+
+def test_plugin_still_says_not_found_for_missing_term(
+    monkeypatch, calls, fake_cache_path, tmp_path
+):
+    _patch(monkeypatch, calls, {"sqlite:obo:dcterms": _bad_gzip()}, {"dcterms": False})
+
+    results = _meaning_results(SCHEMA.replace("TEST:0000001", "TEST:0000999"), tmp_path)
+
+    assert results["TEST:0000999"].message == "Ontology term 'TEST:0000999' not found"
 
 
 # ---------------------------------------------------------------------------

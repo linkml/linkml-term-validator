@@ -610,6 +610,23 @@ def obsolete_term_message(curie: str) -> str:
     return f"Ontology term {curie} is obsolete"
 
 
+def no_semsql_database_message(curie: str, prefix: str) -> str:
+    """Return the message for a term whose prefix has no semantic-sql database.
+
+    The term was never looked up, so it must not be reported as "not found"
+    (#78). Shared across the plugins and the standalone validator so every
+    site emits the same phrasing.
+
+    Examples:
+        >>> no_semsql_database_message("dcterms:title", "dcterms")
+        'Could not validate dcterms:title: the semantic-sql server has no database for dcterms (map dcterms to another adapter in oak_config.yaml)'
+    """
+    return (
+        f"Could not validate {curie}: the semantic-sql server has no database "
+        f"for {prefix} (map {prefix} to another adapter in oak_config.yaml)"
+    )
+
+
 # Markers an ontology puts in a *synonym* to say "this term is kept for the
 # hierarchy; do not annotate with it". Such a term is not obsolete - it carries
 # no deprecation axiom - so it passes every existence, label, and reachability

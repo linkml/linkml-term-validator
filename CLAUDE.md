@@ -298,7 +298,9 @@ or a broken copy of a database that exists: `OntologyAdapterUnavailableError`,
 kept per prefix and re-raised (never retried, not an outage), CLI exit code 3
 (`EXIT_SETUP_ERROR`) naming the file to delete or the entry to fix.
 Never write or delete in oaklib's pystow cache: it is shared with other tools;
-`semsql_cache_path()` only names the file.
+`semsql_cache_path()` only names the file. `PermissibleValueMeaningPlugin`
+keeps its ERROR for such terms but uses `no_semsql_database_message()`, the
+same text as `EnumValidator`'s `--strict` error, never "not found".
 
 ### Exit Codes
 

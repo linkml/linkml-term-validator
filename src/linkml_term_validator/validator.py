@@ -15,6 +15,7 @@ from linkml_term_validator.models import (
 from linkml_term_validator.utils import (
     OntologyAccess,
     get_prefix,
+    no_semsql_database_message,
     normalize_string,
     not4curation_message,
     obsolete_term_message,
@@ -369,12 +370,8 @@ class EnumValidator:
             )
         searched = self.ontology.not_found_in(term)
         if searched is None:
-            if prefix in self.ontology.get_no_semsql_prefixes():
-                return (
-                    f"Could not validate {term}: the semantic-sql server has no "
-                    f"database for {prefix} (map {prefix} to another adapter in "
-                    "oak_config.yaml)"
-                )
+            if prefix is not None and prefix in self.ontology.get_no_semsql_prefixes():
+                return no_semsql_database_message(term, prefix)
             return fallback_message
         message = f"Term {term} not found in {searched}"
         if prefix and not self._is_prefix_configured(prefix):

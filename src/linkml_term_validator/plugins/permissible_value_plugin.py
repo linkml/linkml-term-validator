@@ -10,7 +10,11 @@ from linkml_runtime.linkml_model import PermissibleValue
 
 from linkml_term_validator.models import ErrorMode
 from linkml_term_validator.plugins.base import BaseOntologyPlugin, SeverityOverrides
-from linkml_term_validator.utils import not4curation_message, obsolete_term_message
+from linkml_term_validator.utils import (
+    no_semsql_database_message,
+    not4curation_message,
+    obsolete_term_message,
+)
 
 
 class PermissibleValueMeaningPlugin(BaseOntologyPlugin):
@@ -142,11 +146,19 @@ class PermissibleValueMeaningPlugin(BaseOntologyPlugin):
         ontology_label = self.get_ontology_label(meaning)
 
         if ontology_label is None:
-            # Term not found in ontology
+            # A prefix the semantic-sql server has no database for was never
+            # looked up, so it must not be reported as "not found" (#78). It
+            # stays at the same severity: this plugin fails on every meaning
+            # it could not resolve.
+            prefix = self._get_prefix(meaning)
+            if prefix is not None and prefix in self.ontology.get_no_semsql_prefixes():
+                message = no_semsql_database_message(meaning, prefix)
+            else:
+                message = f"Ontology term '{meaning}' not found"
             yield ValidationResult(
                 type="permissible_value_meaning",
                 severity=self.severity_for(ErrorMode.PERMISSIBLE_VALUE_MEANING),
-                message=f"Ontology term '{meaning}' not found",
+                message=message,
                 instance={"enum": enum_name, "value": pv_name, "meaning": meaning},
                 instantiates=enum_name,
                 context=[f"enum: {enum_name}", f"value: {pv_name}"],
