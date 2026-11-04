@@ -369,6 +369,12 @@ class EnumValidator:
             )
         searched = self.ontology.not_found_in(term)
         if searched is None:
+            if prefix in self.ontology.get_no_semsql_prefixes():
+                return (
+                    f"Could not validate {term}: the semantic-sql server has no "
+                    f"database for {prefix} (map {prefix} to another adapter in "
+                    "oak_config.yaml)"
+                )
             return fallback_message
         message = f"Term {term} not found in {searched}"
         if prefix and not self._is_prefix_configured(prefix):
@@ -377,6 +383,16 @@ class EnumValidator:
                 "ontology's adapter in oak_config.yaml)"
             )
         return message
+
+    def _unchecked_message(self, term: str, prefix: Optional[str]) -> str:
+        """Say why a term with no adapter to ask could not be validated."""
+        if prefix in self.ontology.get_no_semsql_prefixes():
+            return f"No semantic-sql database for {prefix}, could not validate {term}"
+        return f"Unconfigured prefix, could not validate {term}"
+
+    def get_no_semsql_prefixes(self) -> set[str]:
+        """Unconfigured prefixes skipped because the semantic-sql server has no database for them."""
+        return self.ontology.get_no_semsql_prefixes()
 
     def get_unchecked_terms(self) -> set[str]:
         """CURIEs that could not be checked because no adapter was available (a copy).
@@ -435,7 +451,7 @@ class EnumValidator:
                             enum_name=enum_name,
                             value_name=value_name,
                             severity=SeverityLevel.INFO,
-                            message=f"Unconfigured prefix, could not validate {meaning}",
+                            message=self._unchecked_message(meaning, prefix),
                             meaning=meaning,
                             expected_label=None,
                             actual_label=None,

@@ -16,10 +16,13 @@ Example:
 """
 
 import csv
+import gzip
 import logging
 import re
 import socket
 import time
+import urllib.error
+import zlib
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -202,6 +205,34 @@ class OntologyServiceUnavailableError(Exception):
             scrub_exception_secrets(original)
         detail = f": {redact_secrets(str(original))}" if original is not None else ""
         super().__init__(f"could not reach ontology service to resolve {curie}{detail}")
+
+
+class OntologyAdapterUnavailableError(Exception):
+    """An adapter for a prefix cannot be built or loaded, and retrying won't help.
+
+    Raised for a ``sqlite:obo:`` database that the semantic-sql server has
+    but whose cached copy is broken (an interrupted or failed download), and
+    for a prefix that oak_config.yaml explicitly maps to a ``sqlite:obo:``
+    database the server does not have (#78). Either way every term under the
+    prefix is unverifiable until the user acts, so the run stops with a
+    message saying what to do. Deliberately not an
+    :class:`OntologyServiceUnavailableError`: that one is retried, and this is
+    not transient.
+    """
+
+    def __init__(
+        self,
+        prefix: str,
+        adapter_string: str,
+        reason: str,
+        original: Optional[BaseException] = None,
+    ):
+        self.prefix = prefix
+        self.adapter_string = adapter_string
+        self.original = original
+        if original is not None:
+            scrub_exception_secrets(original)
+        super().__init__(redact_secrets(reason))
 
 
 # Well-defined exception TYPES that mean "the ontology service could not be
@@ -756,6 +787,140 @@ def normalize_string(s: str) -> str:
     return normalized.strip()
 
 
+# =============================================================================
+# semantic-sql databases (sqlite:obo:<slug>)
+# =============================================================================
+
+# The semantic-sql server only has databases for the ontologies it builds. A
+# generic namespace (dcterms, schema, skos) has none, and nothing in the prefix
+# says which kind it is, so a failed download is classified by asking the
+# server whether the database exists (#78).
+
+SEMSQL_ADAPTER_PREFIX = "sqlite:obo:"
+
+# What decompressing a bad ``<slug>.db.gz`` raises: the server's error page
+# saved as the download (cthoyt/pystow#184), or a truncated file.
+_BROKEN_DOWNLOAD_EXC_TUPLE = (gzip.BadGzipFile, EOFError, zlib.error)
+
+
+def semsql_slug(adapter_string: str) -> Optional[str]:
+    """Return the ontology slug of a ``sqlite:obo:<slug>`` adapter string, else None.
+
+    Examples:
+        >>> semsql_slug("sqlite:obo:ro")
+        'ro'
+        >>> semsql_slug("sqlite:obo:") is None
+        True
+        >>> semsql_slug("ols:ro") is None
+        True
+    """
+    if not adapter_string.startswith(SEMSQL_ADAPTER_PREFIX):
+        return None
+    return adapter_string[len(SEMSQL_ADAPTER_PREFIX) :] or None
+
+
+def semsql_database_url(slug: str) -> str:
+    """URL oaklib downloads the ``sqlite:obo:<slug>`` database from.
+
+    Built from oaklib's own base URL, so a mirror set through
+    ``OAKLIB_SEMSQL_SQLITE_URL_BASE`` is honored.
+    """
+    from oaklib.constants import SEMSQL_SQLITE_URL_BASE
+
+    return f"{SEMSQL_SQLITE_URL_BASE.rstrip('/')}/{slug}.db.gz"
+
+
+def semsql_cache_path(slug: str) -> Path:
+    """Where oaklib keeps the decompressed ``sqlite:obo:<slug>`` database.
+
+    Used only to name the file in a message; this package never writes or
+    deletes in oaklib's cache, which other tools share.
+    """
+    from oaklib.constants import OAKLIB_MODULE
+
+    return Path(OAKLIB_MODULE.base) / f"{slug}.db"
+
+
+def http_status_of(exc: BaseException) -> Optional[int]:
+    """The HTTP status carried by an exception or any error it wraps, if any.
+
+    Reads a ``requests`` error's ``response.status_code`` and a
+    ``urllib.error.HTTPError``'s ``code``.
+
+    Examples:
+        >>> import requests
+        >>> response = requests.Response()
+        >>> response.status_code = 404
+        >>> http_status_of(requests.exceptions.HTTPError(response=response))
+        404
+        >>> http_status_of(ValueError("no status")) is None
+        True
+    """
+    for link in _exception_chain(exc):
+        status = getattr(getattr(link, "response", None), "status_code", None)
+        if status is None and isinstance(link, urllib.error.HTTPError):
+            status = link.code
+        if isinstance(status, int):
+            return status
+    return None
+
+
+def semsql_database_exists(slug: str, timeout: float = 30) -> Optional[bool]:
+    """Ask the semantic-sql server whether it has a database for ``slug``.
+
+    Sends a HEAD request, so nothing is downloaded. Returns True for a 2xx,
+    False for a 404/410, and None for any other answer. An outage (no
+    connection, a timeout, a 5xx/408/429) raises
+    :class:`OntologyServiceUnavailableError`, so callers can retry it.
+    """
+    import requests
+
+    from oaklib.constants import SEMSQL_SQLITE_DOWNLOAD_KWARGS
+
+    headers = dict(SEMSQL_SQLITE_DOWNLOAD_KWARGS.get("headers") or {})
+    try:
+        response = requests.head(
+            semsql_database_url(slug),
+            headers=headers,
+            timeout=timeout,
+            allow_redirects=True,
+        )
+        response.raise_for_status()
+    except Exception as e:  # noqa: BLE001 - classified below
+        raise_if_service_unavailable(f"{slug}.db", e)
+        status = http_status_of(e)
+        if status in (404, 410):
+            return False
+        logger.warning(
+            "Could not tell whether the semantic-sql server has a %s database: %s",
+            slug,
+            redact_secrets(str(e)),
+        )
+        return None
+    return True
+
+
+def semsql_database_is_usable(adapter: object) -> bool:
+    """Whether a built ``sqlite:obo:`` adapter's database has semantic-sql tables.
+
+    oaklib reuses any cached file, so a 0-byte database left by a failed
+    download (cthoyt/pystow#184) builds an adapter that fails on its first
+    query instead. An adapter without a SQLAlchemy engine is not checked.
+    """
+    engine = getattr(adapter, "engine", None)
+    if engine is None:
+        return True
+    try:
+        with engine.connect() as connection:
+            row = connection.exec_driver_sql(
+                "SELECT 1 FROM sqlite_master WHERE name = 'statements'"
+            ).first()
+    except Exception as e:  # noqa: BLE001 - a truncated file raises varied errors
+        logger.debug("semantic-sql database check failed: %s", redact_secrets(str(e)))
+        return False
+    return row is not None
+
+
 class OntologyAccess:
     """Resolve ontology labels through OAK adapters with multi-level caching.
 
@@ -823,6 +988,14 @@ class OntologyAccess:
         # The adapter string each prefix's adapter was built from, so a "not
         # found" can say where the term was looked for.
         self._adapter_strings: dict[str, str] = {}
+        # A prefix whose adapter cannot be built or loaded fails the same way
+        # for every term, so the error is kept and re-raised rather than
+        # re-attempting the download per CURIE (#78).
+        self._adapter_errors: dict[str, OntologyAdapterUnavailableError] = {}
+        # Unconfigured prefixes the semantic-sql server has no database for
+        # (generic namespaces such as dcterms). They get no adapter: their
+        # terms are "not checked", not errors.
+        self._no_semsql_prefixes: set[str] = set()
         self._unknown_prefixes: set[str] = set()
         # CURIEs an adapter was asked about and had no label for, mapped to a
         # description of that adapter. Tells "the term does not exist there"
@@ -1012,6 +1185,8 @@ class OntologyAccess:
 
         if prefix in self._adapter_cache:
             return self._adapter_cache[prefix]
+        if prefix in self._adapter_errors:
+            raise self._adapter_errors[prefix]
 
         adapter_string = None
 
@@ -1029,17 +1204,139 @@ class OntologyAccess:
             adapter_string = self._adapter_string_for_prefix(prefix, self.oak_adapter_string)
 
         if adapter_string:
+            built = self._build_checked_adapter(adapter_string, prefix)
+            if built is not None:
+                self._configure_adapter_for_prefix(built, prefix)
+                self._adapter_strings[prefix] = adapter_string
+            self._adapter_cache[prefix] = built
+            return built
+
+        self._adapter_cache[prefix] = None
+        return None
+
+    def get_no_semsql_prefixes(self) -> set[str]:
+        """Unconfigured prefixes skipped because no semantic-sql database exists (a copy)."""
+        return set(self._no_semsql_prefixes)
+
+    def _build_checked_adapter(self, adapter_string: str, prefix: str) -> object | None:
+        """Build an adapter, classifying a broken or missing semantic-sql database.
+
+        For a ``sqlite:obo:<slug>`` adapter, a failed decompression (first run)
+        or a cached database with no semantic-sql tables (later runs) means
+        the download went wrong. Whether that is expected depends on whether
+        the server has a database for the slug at all, so it is asked (#78).
+
+        Returns:
+            The adapter, or None for an unconfigured prefix the server has no
+            database for.
+
+        Raises:
+            OntologyAdapterUnavailableError: the server has the database but
+                the cached copy is broken, or oak_config.yaml maps the prefix
+                to a database the server does not have.
+        """
+        slug = semsql_slug(adapter_string)
+        try:
             adapter = self.retry_service_call(
                 lambda: self._build_adapter(adapter_string, prefix),
                 f"building the {prefix} adapter",
             )
-            self._configure_adapter_for_prefix(adapter, prefix)
-            self._adapter_cache[prefix] = adapter
-            self._adapter_strings[prefix] = adapter_string
-            return adapter
+        except OntologyServiceUnavailableError:
+            raise
+        except Exception as e:  # noqa: BLE001 - only the semsql cases are classified
+            if slug is None:
+                raise
+            # A download layer that reports the HTTP error itself (pystow once
+            # cthoyt/pystow#184 is fixed) needs no second request.
+            if http_status_of(e) in (404, 410):
+                self._no_semsql_database(prefix, adapter_string, slug)
+                return None
+            if not isinstance(e, _BROKEN_DOWNLOAD_EXC_TUPLE):
+                raise
+            self._unusable_semsql_database(
+                prefix, adapter_string, slug, f"decompressing the download failed ({e})", e
+            )
+            return None
+        if slug is not None and not semsql_database_is_usable(adapter):
+            self._unusable_semsql_database(
+                prefix, adapter_string, slug, "it is empty or has no semantic-sql tables"
+            )
+            return None
+        return adapter
 
-        self._adapter_cache[prefix] = None
-        return None
+    def _unusable_semsql_database(
+        self,
+        prefix: str,
+        adapter_string: str,
+        slug: str,
+        problem: str,
+        original: Optional[BaseException] = None,
+    ) -> None:
+        """Handle a ``sqlite:obo:`` database that downloaded or loaded badly.
+
+        Returns (via :meth:`_no_semsql_database`) when the server has no such
+        database, which is the expected case for a generic namespace.
+        Otherwise the cached copy is broken and the run cannot go on.
+        """
+        exists = self.retry_service_call(
+            lambda: semsql_database_exists(slug),
+            f"checking for a {slug} semantic-sql database",
+        )
+        if exists is False:
+            self._no_semsql_database(prefix, adapter_string, slug)
+            return
+
+        path = semsql_cache_path(slug)
+        if exists:
+            lead = (
+                f"The semantic-sql server has a database for {slug}, but the "
+                f"cached copy could not be loaded: {problem}."
+            )
+        else:
+            lead = (
+                f"The {adapter_string} database could not be loaded: {problem}. "
+                f"It is not known whether the server has a database for {slug}."
+            )
+        raise self._remember_adapter_error(
+            OntologyAdapterUnavailableError(
+                prefix,
+                adapter_string,
+                f"{lead} Delete {path} (and {path.name}.gz next to it, if present) "
+                f"to download it again, or map {prefix} to another adapter in "
+                "oak_config.yaml.",
+                original,
+            )
+        )
+
+    def _no_semsql_database(self, prefix: str, adapter_string: str, slug: str) -> None:
+        """Handle a prefix the semantic-sql server has no database for.
+
+        An unconfigured prefix is a generic namespace (dcterms, schema, ...)
+        that the automatic adapter simply cannot check: it gets no adapter, and
+        its terms are reported as not checked. A prefix oak_config.yaml
+        explicitly maps to that database is a configuration error.
+        """
+        if self.is_prefix_configured(prefix):
+            raise self._remember_adapter_error(
+                OntologyAdapterUnavailableError(
+                    prefix,
+                    adapter_string,
+                    f"oak_config.yaml maps {prefix} to {adapter_string}, but the "
+                    f"semantic-sql server has no database for {slug}. Map {prefix} "
+                    "to an adapter that has its terms (such as ols:, or simpleobo: or "
+                    "pronto: with a local file), or set it to an empty value to skip "
+                    f"{prefix} terms.",
+                )
+            )
+        logger.info("No semantic-sql database for %s; %s terms are not checked", slug, prefix)
+        self._no_semsql_prefixes.add(prefix)
+
+    def _remember_adapter_error(
+        self, error: OntologyAdapterUnavailableError
+    ) -> OntologyAdapterUnavailableError:
+        """Keep an adapter error so later lookups re-raise it without retrying."""
+        self._adapter_errors[error.prefix] = error
+        return error
 
     @staticmethod
     def _build_adapter(adapter_string: str, prefix: str) -> object:

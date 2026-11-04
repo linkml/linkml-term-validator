@@ -26,7 +26,11 @@ from linkml_term_validator.plugins import (
     BindingValidationPlugin,
     DynamicEnumPlugin,
 )
-from linkml_term_validator.utils import OntologyServiceUnavailableError, redact_secrets
+from linkml_term_validator.utils import (
+    OntologyAdapterUnavailableError,
+    OntologyServiceUnavailableError,
+    redact_secrets,
+)
 from linkml_term_validator.validator import EnumValidator
 
 app = typer.Typer(
@@ -39,6 +43,11 @@ app = typer.Typer(
 # code 1 used for genuine validation failures so callers/scripts can tell an
 # ontology-service outage apart from invalid data.
 EXIT_SERVICE_UNAVAILABLE = 2
+
+# Exit code for "could not validate this prefix with its adapter": the adapter
+# cannot be built or loaded, and retrying won't help (#78). Distinct from 1
+# (invalid data) and 2 (a transient outage worth retrying).
+EXIT_ADAPTER_UNAVAILABLE = 3
 
 
 class FailOn(str, Enum):
@@ -146,6 +155,22 @@ def _fail_service_unavailable(exc: OntologyServiceUnavailableError) -> typer.Exi
     return typer.Exit(code=EXIT_SERVICE_UNAVAILABLE)
 
 
+def _fail_adapter_unavailable(exc: OntologyAdapterUnavailableError) -> typer.Exit:
+    """Report an adapter that cannot be built or loaded, with a distinct exit code.
+
+    Every term under the prefix is unverifiable until the user fixes the cache
+    or the configuration, and the message says how. Not retried: it is not an
+    outage.
+    """
+    typer.echo(
+        f"\n⛔ Unable to validate {exc.prefix} terms: no usable adapter.\n"
+        f"   {exc}\n"
+        "   Terms could not be checked; this is not a data error.",
+        err=True,
+    )
+    return typer.Exit(code=EXIT_ADAPTER_UNAVAILABLE)
+
+
 # How many unchecked CURIEs to list by name before collapsing to a count.
 _NOT4CURATION_UNCHECKED_LIST_LIMIT = 10
 
@@ -176,6 +201,23 @@ def _echo_not4curation_unchecked(unchecked: set[str], offline: bool) -> None:
         typer.echo(f"  ... and {remaining} more")
     if offline:
         typer.echo("  Run once online to check these terms.")
+
+
+def _echo_unknown_prefixes(validator: EnumValidator) -> None:
+    """Report prefixes whose terms were skipped because no adapter was available.
+
+    A prefix the semantic-sql server has no database for (a generic namespace
+    such as dcterms) is marked as such, so the note says why (#78).
+    """
+    unknown = validator.get_unknown_prefixes()
+    if not unknown:
+        return
+    no_semsql = validator.get_no_semsql_prefixes()
+    typer.echo("\n⚠️  Unknown prefixes encountered (validation skipped):")
+    for prefix in sorted(unknown):
+        reason = " (no semantic-sql database)" if prefix in no_semsql else ""
+        typer.echo(f"  - {prefix}{reason}")
+    typer.echo("\nConsider adding these to oak_config.yaml to enable validation.")
 
 
 # The retry knobs are shared verbatim by every command that resolves terms
@@ -309,6 +351,8 @@ def validate_schema(
         result = validator.validate_schema(schema_path)
     except OntologyServiceUnavailableError as exc:
         raise _fail_service_unavailable(exc) from exc
+    except OntologyAdapterUnavailableError as exc:
+        raise _fail_adapter_unavailable(exc) from exc
 
     if verbose or result.has_errors() or result.has_warnings():
         result.print_summary(verbose=verbose)
@@ -317,12 +361,8 @@ def validate_schema(
 
     # In offline mode unresolved terms are reported as errors above (not skipped),
     # so the "validation skipped / add to oak_config" note would be misleading.
-    unknown_prefixes = validator.get_unknown_prefixes()
-    if unknown_prefixes and not offline:
-        typer.echo("\n⚠️  Unknown prefixes encountered (validation skipped):")
-        for prefix in sorted(unknown_prefixes):
-            typer.echo(f"  - {prefix}")
-        typer.echo("\nConsider adding these to oak_config.yaml to enable validation.")
+    if not offline:
+        _echo_unknown_prefixes(validator)
 
     if result.error_count() > 0:
         typer.echo(
@@ -590,6 +630,8 @@ def validate_data(
             report = validator.validate_source(loader, target_class=target_class)
         except OntologyServiceUnavailableError as exc:
             raise _fail_service_unavailable(exc) from exc
+        except OntologyAdapterUnavailableError as exc:
+            raise _fail_adapter_unavailable(exc) from exc
 
         if len(report.results) == 0:
             if len(data_paths) > 1:
@@ -972,6 +1014,8 @@ def migrate_cache(
                     new_label = plugin.get_ontology_label(curie)
                 except OntologyServiceUnavailableError as exc:
                     raise _fail_service_unavailable(exc) from exc
+                except OntologyAdapterUnavailableError as exc:
+                    raise _fail_adapter_unavailable(exc) from exc
                 if new_label and new_label != old_label:
                     relabeled += 1
                     if dry_run:
@@ -1204,6 +1248,8 @@ def validate_text_file(
         issues = validator.validate_curie_label_pairs(pairs)
     except OntologyServiceUnavailableError as exc:
         raise _fail_service_unavailable(exc) from exc
+    except OntologyAdapterUnavailableError as exc:
+        raise _fail_adapter_unavailable(exc) from exc
 
     unchecked_terms = validator.get_unchecked_terms()
 
@@ -1226,12 +1272,8 @@ def validate_text_file(
 
     # Offline mode reports unresolved terms as errors, so the "skipped" note
     # (and the oak_config suggestion) would be misleading there.
-    unknown_prefixes = validator.get_unknown_prefixes()
-    if unknown_prefixes and not offline:
-        typer.echo("\n⚠️  Unknown prefixes encountered (validation skipped):")
-        for prefix in sorted(unknown_prefixes):
-            typer.echo(f"  - {prefix}")
-        typer.echo("\nConsider adding these to oak_config.yaml to enable validation.")
+    if not offline:
+        _echo_unknown_prefixes(validator)
 
     _echo_not4curation_unchecked(validator.get_not4curation_unchecked(), offline)
 

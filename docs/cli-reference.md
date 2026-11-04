@@ -192,6 +192,7 @@ linkml-term-validator validate-text-file document.md \
 | `0` | No validation errors |
 | `1` | Validation errors, missing files, invalid options, or cache migration failure |
 | `2` | Unable to validate: the ontology service was unreachable (network outage, or a transient HTTP status — 5xx, 408 timeout, or 429 rate-limit), so terms could not be checked. This is distinct from invalid data — retry when the service is reachable, or use `--offline` to validate against the local cache only. The lookup is retried first (`--retries`, default 2, with an exponential `--retry-wait`), so this code means the service stayed unavailable across every attempt, not that one request stalled. Once the attempts are spent validation *fails fast*: the run aborts on that outage rather than reporting every subsequent term as missing. Across a multi-file `validate-data` run this means one prefix's transient outage stops the whole run, including files that were fully resolvable from the local cache. |
+| `3` | Unable to validate a prefix's terms with its adapter: the adapter cannot be built or loaded, and retrying won't help. Either the cached `sqlite:obo:` database is broken (an interrupted or failed download; the message names the file to delete), or `oak_config.yaml` maps the prefix to a `sqlite:obo:` database the semantic-sql server does not have. Like `2`, this is not a data error. See [Prefixes without a semantic-sql database](ontology-access.md#prefixes-without-a-semantic-sql-database). |
 
 ## See Also
 

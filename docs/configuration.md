@@ -223,7 +223,10 @@ The validator automatically creates per-prefix adapters based on the prefix in t
 - `UBERON:0000468` → uses `sqlite:obo:uberon`
 - `CL:0000540` → uses `sqlite:obo:cl`
 
-This works for any OBO ontology that OAK knows about.
+This works for any ontology the semantic-sql project publishes a database for.
+A prefix without one (a generic namespace such as `dcterms` or `schema`) is
+reported as not checked rather than as an error; see
+[Prefixes without a semantic-sql database](ontology-access.md#prefixes-without-a-semantic-sql-database).
 
 When you set a different default adapter with `--adapter` or the Python API
 (for example `--adapter "ols:"` or `oak_adapter_string="ubergraph:"`), that

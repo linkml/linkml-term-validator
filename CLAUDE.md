@@ -280,3 +280,22 @@ never counted as validated, and the CLI ends with "No errors, but N ... could
 not be checked" instead of ✅ (exit code stays 0; `--strict` makes them errors).
 `PermissibleValueMeaningPlugin` already reports every unresolved meaning at
 ERROR and needed no change.
+
+### Missing or Broken semantic-sql Databases (#78)
+
+`sqlite:obo:<prefix>` only exists for ontologies semantic-sql builds; a generic
+namespace (`dcterms`, `schema`, `skos`) has none, and nothing in a prefix says
+which kind it is. pystow saves the server's 404 page as `<slug>.db.gz`
+(cthoyt/pystow#184): the first run's gunzip raises `BadGzipFile` and leaves a
+0-byte `<slug>.db`, which every later run opens as a database with no tables.
+`OntologyAccess._build_checked_adapter()` catches both (a gunzip error, or
+`semsql_database_is_usable()` false) and asks the server once per prefix with
+`semsql_database_exists()` (a HEAD request; a 404/410 already in the build
+error's chain skips it, for when pystow is fixed). No database + unconfigured
+prefix: no adapter, `get_no_semsql_prefixes()`, terms "not checked" (INFO,
+exit 0 unless `--strict`). No database + prefix configured in oak_config.yaml,
+or a broken copy of a database that exists: `OntologyAdapterUnavailableError`,
+kept per prefix and re-raised (never retried, not an outage), CLI exit code 3
+(`EXIT_ADAPTER_UNAVAILABLE`) naming the file to delete or the entry to fix.
+Never write or delete in oaklib's pystow cache: it is shared with other tools;
+`semsql_cache_path()` only names the file.
