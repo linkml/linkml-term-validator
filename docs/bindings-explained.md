@@ -82,9 +82,9 @@ bindings:
 
 | Property | Description |
 |----------|-------------|
-| `binds_value_of` | The field path within the nested object to validate |
-| `range` | The enum (static or dynamic) defining allowed values |
-| `obligation_level` | `REQUIRED`, `RECOMMENDED`, or `OPTIONAL` |
+| `binds_value_of` | Dot-separated field path within the value (e.g., `id`, `term.id`, `coding.code`, `extensions.0.value`); defaults to `.` (the slot value itself) |
+| `range` | The enum (static or dynamic) defining target values |
+| `obligation_level` | `REQUIRED` (default), `RECOMMENDED`, `OPTIONAL`, `EXAMPLE`, or `DISCOURAGED` |
 
 ## Comparison with FHIR Terminology Bindings
 
@@ -92,14 +92,14 @@ LinkML bindings are conceptually similar to [FHIR terminology bindings](https://
 
 ### FHIR Binding Strengths
 
-FHIR defines five binding strengths:
+FHIR defines four main binding strengths:
 
 | Strength | Description | LinkML Equivalent |
 |----------|-------------|-------------------|
 | **Required** | Must use a code from the value set | `obligation_level: REQUIRED` |
 | **Extensible** | Should use value set codes if applicable | `obligation_level: RECOMMENDED` |
 | **Preferred** | Encouraged but not required | `obligation_level: RECOMMENDED` |
-| **Example** | Illustrative only | No validation |
+| **Example** | Illustrative only | `obligation_level: EXAMPLE` |
 
 ### FHIR CodeableConcept
 

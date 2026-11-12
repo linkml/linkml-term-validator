@@ -38,14 +38,30 @@ Example:
 
 from collections.abc import Iterable, Iterator
 from pathlib import Path
-from typing import Any, Literal, Optional
+import re
+from typing import Any, Literal, NamedTuple, Optional
 
-from linkml.validator.report import ValidationResult  # type: ignore[import-untyped]
+from linkml.validator.report import Severity, ValidationResult  # type: ignore[import-untyped]
 from linkml.validator.validation_context import ValidationContext  # type: ignore[import-untyped]
 
 from linkml_term_validator.models import CacheStrategy, ErrorMode
 from linkml_term_validator.plugins.base import BaseOntologyPlugin, SeverityOverrides
 from linkml_term_validator.utils import not4curation_message
+
+VALID_OBLIGATION_LEVELS = frozenset(
+    {"REQUIRED", "RECOMMENDED", "OPTIONAL", "EXAMPLE", "DISCOURAGED"}
+)
+SKIP_MEMBERSHIP_OBLIGATION_LEVELS = frozenset({"OPTIONAL", "EXAMPLE"})
+
+
+class _ExtractedTarget(NamedTuple):
+    """A single target value resolved by ``binds_value_of`` within a slot value."""
+
+    value: Any
+    field_path: str
+    label_parent: Optional[dict[str, Any]]
+    label_class: Optional[str]
+    parent_subpath: str
 
 # Ontology properties that represent labels
 LABEL_PROPERTIES = {
@@ -192,10 +208,15 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                 if slot.bindings:
                     key = (cls.name, slot.name)
                     self.bindings_map[key] = slot.bindings
-                    # Track referenced enums
+                    # Track referenced enums (skip enums only bound via OPTIONAL/EXAMPLE,
+                    # whose membership is never checked)
                     for binding in slot.bindings:
                         if binding.range:
-                            self._referenced_enums.add(binding.range)
+                            level = self._normalize_obligation_level(
+                                getattr(binding, "obligation_level", None)
+                            )
+                            if level not in SKIP_MEMBERSHIP_OBLIGATION_LEVELS:
+                                self._referenced_enums.add(binding.range)
                 # Collect implements and slot_uri for label detection
                 slot_props: set[str] = set()
                 if slot.implements:
@@ -279,6 +300,8 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                         continue
 
                     item_path = f"{slot_path}[{i}]" if isinstance(value, list) else slot_path
+                    seen_checks: set[tuple[Any, ...]] = set()
+                    hard_rejected_fields: set[tuple[str, str]] = set()
 
                     # Validate each binding constraint
                     for binding in self.bindings_map[key]:
@@ -289,6 +312,8 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                             instance=root_instance,
                             target_class=current_class,
                             path=item_path,
+                            _seen_checks=seen_checks,
+                            _hard_rejected_fields=hard_rejected_fields,
                         )
 
             # Recurse into nested objects
@@ -325,6 +350,40 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                 return slot
         return None
 
+    @staticmethod
+    def _normalize_obligation_level(raw_level: Any) -> str:
+        """Normalize a binding's ``obligation_level`` (defaulting to ``REQUIRED``).
+
+        Accepts LinkML ``ObligationLevelEnum`` ``PermissibleValue`` objects,
+        Python ``Enum`` members, plain strings, or ``None``. Maps the metamodel
+        alias ``ENCOURAGED`` to ``RECOMMENDED``.
+
+        Examples:
+            >>> BindingValidationPlugin._normalize_obligation_level(None)
+            'REQUIRED'
+            >>> BindingValidationPlugin._normalize_obligation_level("recommended")
+            'RECOMMENDED'
+            >>> BindingValidationPlugin._normalize_obligation_level("ENCOURAGED")
+            'RECOMMENDED'
+            >>> BindingValidationPlugin._normalize_obligation_level("DISCOURAGED")
+            'DISCOURAGED'
+        """
+        if raw_level is None:
+            return "REQUIRED"
+        text = str(
+            getattr(raw_level, "text", getattr(raw_level, "value", raw_level))
+        ).strip().upper()
+        if not text:
+            return "REQUIRED"
+        if text == "ENCOURAGED":
+            return "RECOMMENDED"
+        if text not in VALID_OBLIGATION_LEVELS:
+            valid = ", ".join(sorted(VALID_OBLIGATION_LEVELS))
+            raise ValueError(
+                f"Unknown obligation_level: {raw_level!r}. Valid levels are: {valid}"
+            )
+        return text
+
     def _validate_binding(
         self,
         value: Any,
@@ -333,11 +392,13 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         instance: dict,
         target_class: str,
         path: str = "",
+        _seen_checks: Optional[set[tuple[Any, ...]]] = None,
+        _hard_rejected_fields: Optional[set[tuple[str, str]]] = None,
     ) -> Iterator[ValidationResult]:
         """Validate a single binding constraint.
 
         Args:
-            value: Value to validate (may be complex object)
+            value: Value to validate (scalar or nested complex object)
             binding: EnumBinding object
             slot_name: Name of the slot
             instance: Full instance being validated
@@ -347,96 +408,122 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         Yields:
             ValidationResult for each violation
         """
-        # Extract the field specified by binds_value_of
-        field_path = binding.binds_value_of
-        field_value = self._extract_field(value, field_path)
+        seen_checks = _seen_checks if _seen_checks is not None else set()
+        hard_rejected_fields = (
+            _hard_rejected_fields if _hard_rejected_fields is not None else set()
+        )
 
-        # Check if field is required but missing
-        if field_value is None:
-            obligation_level = getattr(binding, "obligation_level", None)
-            if obligation_level == "REQUIRED":
-                yield ValidationResult(
-                    type="binding_validation",
-                    severity=self.severity_for(ErrorMode.BINDING_VALIDATION),
-                    message=f"Required binding field '{field_path}' not found at {path}",
-                    instance=instance,
-                    instantiates=target_class,
-                    context=[f"path: {path}", f"slot: {slot_name}", f"binding: {binding.range}"],
+        obligation_level = self._normalize_obligation_level(
+            getattr(binding, "obligation_level", None)
+        )
+        slot_def = self._get_slot_definition(target_class, slot_name)
+        slot_range_class = (
+            slot_def.range
+            if (slot_def and slot_def.range and slot_def.range in self._class_names)
+            else None
+        )
+
+        raw_field_path = getattr(binding, "binds_value_of", None)
+        targets = self._extract_targets(value, raw_field_path, slot_range_class)
+
+        for target in targets:
+            field_value = target.value
+            field_path = target.field_path
+
+            # Validate against the enum range according to obligation_level
+            enum_results: list[ValidationResult] = []
+            if binding.range and obligation_level not in SKIP_MEMBERSHIP_OBLIGATION_LEVELS:
+                enum_results = list(
+                    self._validate_against_enum(
+                        field_value=field_value,
+                        enum_name=binding.range,
+                        field_path=field_path,
+                        slot_name=slot_name,
+                        instance=instance,
+                        target_class=target_class,
+                        path=path,
+                        obligation_level=obligation_level,
+                    )
                 )
-            return
+                yield from enum_results
 
-        # Validate against the enum range
-        enum_results: list[ValidationResult] = []
-        if binding.range:
-            enum_results = list(
-                self._validate_against_enum(
+            if not isinstance(field_value, str):
+                continue
+
+            if any(
+                r.type == ErrorMode.BINDING_VALIDATION.value and r.severity == Severity.ERROR
+                for r in enum_results
+            ):
+                hard_rejected_fields.add((field_path, field_value))
+
+            # Check term existence for configured prefixes (strict mode). Offline mode
+            # always checks existence so an uncached term can't pass silently (#51).
+            exists_results: list[ValidationResult] = []
+            exists_key = ("exists", field_path, field_value)
+            if (self.strict or self.config.offline) and exists_key not in seen_checks:
+                seen_checks.add(exists_key)
+                exists_results = list(
+                    self._validate_term_exists(
+                        field_value=field_value,
+                        field_path=field_path,
+                        slot_name=slot_name,
+                        instance=instance,
+                        target_class=target_class,
+                        path=path,
+                    )
+                )
+                yield from exists_results
+                if any(r.type == ErrorMode.TERM_NOT_FOUND.value for r in exists_results):
+                    seen_checks.add(("not_found", field_path, field_value))
+
+            # A term the enum accepted (or only warned on under RECOMMENDED) may
+            # still be one its ontology says not to annotate with (a Not4Curation
+            # synonym; see #70). Skip only when membership hard-rejected at ERROR
+            # or the term was reported absent.
+            hard_rejected = (field_path, field_value) in hard_rejected_fields
+            not_found = ("not_found", field_path, field_value) in seen_checks
+            not4curation_key = ("not4curation", field_path, field_value)
+            not4curation_enum = (
+                binding.range if obligation_level not in SKIP_MEMBERSHIP_OBLIGATION_LEVELS else None
+            )
+            if (
+                not hard_rejected
+                and not not_found
+                and not4curation_key not in seen_checks
+                and self._not4curation_in_scope(field_value, not4curation_enum)
+            ):
+                seen_checks.add(not4curation_key)
+                yield from self._validate_not4curation(
                     field_value=field_value,
-                    enum_name=binding.range,
                     field_path=field_path,
                     slot_name=slot_name,
                     instance=instance,
                     target_class=target_class,
                     path=path,
                 )
-            )
-            yield from enum_results
 
-        # Check term existence for configured prefixes (strict mode). Offline mode
-        # always checks existence so an uncached term can't pass silently (#51).
-        exists_results: list[ValidationResult] = []
-        if (self.strict or self.config.offline) and isinstance(field_value, str):
-            exists_results = list(
-                self._validate_term_exists(
-                    field_value=field_value,
-                    field_path=field_path,
-                    slot_name=slot_name,
-                    instance=instance,
-                    target_class=target_class,
-                    path=path,
-                )
-            )
-            yield from exists_results
-
-        # A term the enum accepted may still be one its ontology says not to
-        # annotate with (a Not4Curation synonym; see #70). It is checked only
-        # when membership passed and the term was not just reported absent: a
-        # value already rejected as out-of-enum or not-found needs no second
-        # result, and an absent term must not land in the "could not be
-        # checked" note. Both gates name the result type they mean, so an
-        # unrelated advisory result added later cannot silently suppress the
-        # flag. When existence is not checked at all (lenient, online) the term
-        # is not known to be absent, so an unresolvable one is reported as
-        # unchecked, which is the truth.
-        rejected = any(r.type == ErrorMode.BINDING_VALIDATION.value for r in enum_results)
-        not_found = any(r.type == ErrorMode.TERM_NOT_FOUND.value for r in exists_results)
-        if (
-            not rejected
-            and not not_found
-            and isinstance(field_value, str)
-            and self._not4curation_in_scope(field_value, binding.range)
-        ):
-            yield from self._validate_not4curation(
-                field_value=field_value,
-                field_path=field_path,
-                slot_name=slot_name,
-                instance=instance,
-                target_class=target_class,
-                path=path,
-            )
-
-        # Optionally validate label matches ontology
-        if self.validate_labels and isinstance(value, dict):
-            # Get the range class to find label slots
-            range_class = self._get_binding_range_class(binding, slot_name)
-            yield from self._validate_label(
-                value=value,
-                field_value=field_value,
-                slot_name=slot_name,
-                instance=instance,
-                target_class=target_class,
-                range_class=range_class,
-                path=path,
-            )
+            # Optionally validate label matches ontology on the enclosing dict
+            if self.validate_labels and isinstance(target.label_parent, dict):
+                label_key = ("label", id(target.label_parent), field_value)
+                if label_key not in seen_checks:
+                    seen_checks.add(label_key)
+                    range_class = target.label_class
+                    if range_class is None and not target.parent_subpath:
+                        range_class = self._get_binding_range_class(binding, slot_name)
+                    label_path = (
+                        f"{path}.{target.parent_subpath}"
+                        if (path and target.parent_subpath)
+                        else (target.parent_subpath or path)
+                    )
+                    yield from self._validate_label(
+                        value=target.label_parent,
+                        field_value=field_value,
+                        slot_name=slot_name,
+                        instance=instance,
+                        target_class=target_class,
+                        range_class=range_class,
+                        path=label_path,
+                    )
 
     def _get_binding_range_class(self, binding: Any, slot_name: str) -> Optional[str]:
         """Get the range class for a binding's slot.
@@ -484,44 +571,202 @@ class BindingValidationPlugin(BaseOntologyPlugin):
 
         return label_slots
 
-    def _extract_field(self, value: Any, field_path: str) -> Optional[Any]:
-        """Extract a field from a value using a path.
+    @staticmethod
+    def _parse_field_path(raw_path: Optional[str]) -> list[str]:
+        """Parse ``binds_value_of`` into path segments.
+
+        ``None``, ``""``, and ``"."`` all denote the slot value itself (``[]``).
+        Bracket indices (``extensions[0].value``) and wildcard brackets
+        (``coding[*].code``) are normalized to dot segments.
+
+        Examples:
+            >>> BindingValidationPlugin._parse_field_path(None)
+            []
+            >>> BindingValidationPlugin._parse_field_path(".")
+            []
+            >>> BindingValidationPlugin._parse_field_path("term.id")
+            ['term', 'id']
+            >>> BindingValidationPlugin._parse_field_path("extensions.0.value")
+            ['extensions', '0', 'value']
+            >>> BindingValidationPlugin._parse_field_path("extensions[0].value")
+            ['extensions', '0', 'value']
+        """
+        if raw_path is None:
+            return []
+        cleaned = raw_path.strip()
+        if cleaned in ("", "."):
+            return []
+        cleaned = re.sub(r"\[\*\]", "", cleaned)
+        cleaned = re.sub(r"\[(\d+)\]", r".\1", cleaned)
+        return [seg for seg in cleaned.split(".") if seg and seg != "."]
+
+    @staticmethod
+    def _iter_leaf_items(val: Any, base_path: str) -> Iterator[tuple[Any, str]]:
+        """Flatten multivalued list leaves, preserving index paths."""
+        if val is None:
+            return
+        if isinstance(val, list):
+            for i, item in enumerate(val):
+                if item is None:
+                    continue
+                item_path = f"{base_path}[{i}]" if base_path else f"[{i}]"
+                yield from BindingValidationPlugin._iter_leaf_items(item, item_path)
+        else:
+            yield (val, base_path or ".")
+
+    def _step_segment(
+        self,
+        curr_val: Any,
+        curr_class: Optional[str],
+        curr_path: str,
+        seg: str,
+    ) -> Iterator[tuple[Any, Optional[str], str, Optional[dict[str, Any]], Optional[str], str]]:
+        """Advance one path segment from ``curr_val``, fanning out across lists."""
+        if curr_val is None:
+            return
+
+        if seg.isdigit():
+            idx = int(seg)
+            if isinstance(curr_val, list):
+                if 0 <= idx < len(curr_val) and curr_val[idx] is not None:
+                    next_path = f"{curr_path}[{idx}]" if curr_path else f"[{idx}]"
+                    yield (curr_val[idx], curr_class, next_path, None, None, "")
+                return
+            if isinstance(curr_val, dict) and seg in curr_val and curr_val[seg] is not None:
+                slot_def = self._get_slot_definition(curr_class, seg) if curr_class else None
+                next_class = (
+                    slot_def.range
+                    if (slot_def and slot_def.range and slot_def.range in self._class_names)
+                    else None
+                )
+                next_path = f"{curr_path}.{seg}" if curr_path else seg
+                yield (curr_val[seg], next_class, next_path, curr_val, curr_class, curr_path)
+            return
+
+        if isinstance(curr_val, dict):
+            if seg in curr_val and curr_val[seg] is not None:
+                slot_def = self._get_slot_definition(curr_class, seg) if curr_class else None
+                next_class = (
+                    slot_def.range
+                    if (slot_def and slot_def.range and slot_def.range in self._class_names)
+                    else None
+                )
+                next_path = f"{curr_path}.{seg}" if curr_path else seg
+                yield (curr_val[seg], next_class, next_path, curr_val, curr_class, curr_path)
+        elif isinstance(curr_val, list):
+            for i, elem in enumerate(curr_val):
+                if elem is None:
+                    continue
+                elem_path = f"{curr_path}[{i}]" if curr_path else f"[{i}]"
+                yield from self._step_segment(elem, curr_class, elem_path, seg)
+
+    def _extract_targets(
+        self,
+        value: Any,
+        raw_field_path: Optional[str] = None,
+        slot_range_class: Optional[str] = None,
+    ) -> list[_ExtractedTarget]:
+        """Extract target value(s) from ``value`` along ``binds_value_of``.
+
+        Supports:
+        - ``None`` / ``""`` / ``"."``: binds ``value`` itself (implicit default ``"."``)
+        - Multi-level dot paths across nested dicts (e.g. ``"term.id"``, ``"a.b.c"``)
+        - Auto-fan-out across intermediate or leaf lists (e.g. ``"coding.code"``)
+        - Explicit integer list indices (e.g. ``"extensions.0.value"``)
+        """
+        if value is None:
+            return []
+
+        segments = self._parse_field_path(raw_field_path)
+        if not segments:
+            if isinstance(value, list):
+                return [
+                    _ExtractedTarget(item, item_path, None, None, "")
+                    for item, item_path in self._iter_leaf_items(value, "")
+                ]
+            return [_ExtractedTarget(value, ".", None, None, "")]
+
+        cursors: list[
+            tuple[Any, Optional[str], str, Optional[dict[str, Any]], Optional[str], str]
+        ] = [(value, slot_range_class, "", None, None, "")]
+
+        for seg in segments:
+            next_cursors: list[
+                tuple[Any, Optional[str], str, Optional[dict[str, Any]], Optional[str], str]
+            ] = []
+            for curr_val, curr_class, curr_path, _p_dict, _p_cls, _p_sub in cursors:
+                next_cursors.extend(self._step_segment(curr_val, curr_class, curr_path, seg))
+            cursors = next_cursors
+            if not cursors:
+                return []
+
+        targets: list[_ExtractedTarget] = []
+        for leaf_val, _leaf_cls, leaf_path, p_dict, p_cls, p_sub in cursors:
+            if leaf_val is None:
+                continue
+            if isinstance(leaf_val, list):
+                for item, item_path in self._iter_leaf_items(leaf_val, leaf_path):
+                    targets.append(_ExtractedTarget(item, item_path, None, None, ""))
+            else:
+                targets.append(_ExtractedTarget(leaf_val, leaf_path, p_dict, p_cls, p_sub))
+        return targets
+
+    def _extract_field(self, value: Any, field_path: Optional[str] = None) -> Optional[Any]:
+        """Extract field value(s) from ``value`` using ``field_path`` (defaults to ``"."``).
 
         Args:
-            value: Value to extract from (dict, object, etc.)
-            field_path: Path to field (e.g., "id", "extensions.0.value")
+            value: Value to extract from (scalar, dict, list, etc.)
+            field_path: Dot path to field (e.g., ``"."``, ``"id"``,
+                ``"term.id"``, ``"coding.code"``, ``"extensions.0.value"``)
 
         Returns:
-            Extracted value or None
+            Extracted scalar value, list of values when fanned out across a list,
+            or ``None`` if absent
+
+        Examples:
+            >>> plugin = BindingValidationPlugin(cache_labels=False)
+            >>> plugin._extract_field("GO:0008150")
+            'GO:0008150'
+            >>> plugin._extract_field("GO:0008150", ".")
+            'GO:0008150'
+            >>> plugin._extract_field({"term": {"id": "GO:0008150"}}, "term.id")
+            'GO:0008150'
+            >>> plugin._extract_field({"extensions": [{"value": "GO:1"}, {"value": "GO:2"}]}, "extensions.0.value")
+            'GO:1'
+            >>> plugin._extract_field({"coding": [{"code": "GO:1"}, {"code": "GO:2"}]}, "coding.code")
+            ['GO:1', 'GO:2']
         """
-        if not isinstance(value, dict):
+        targets = self._extract_targets(value, field_path)
+        if not targets:
             return None
-
-        # Simple case: direct field access
-        if field_path in value:
-            return value[field_path]
-
-        # Complex case: nested path (e.g., "extensions.0.value")
-        # For now, just support simple field access
-        # TODO: Implement full path navigation
-        return None
+        segments = self._parse_field_path(field_path)
+        expected_single_path = (
+            "."
+            if not segments
+            else ".".join(f"[{s}]" if s.isdigit() else s for s in segments).replace(".[", "[")
+        )
+        if len(targets) == 1 and targets[0].field_path == expected_single_path:
+            return targets[0].value
+        return [t.value for t in targets]
 
     def _validate_against_enum(
         self,
-        field_value: str,
+        field_value: Any,
         enum_name: str,
         field_path: str,
         slot_name: str,
         instance: dict,
         target_class: str,
         path: str = "",
+        obligation_level: str = "REQUIRED",
     ) -> Iterator[ValidationResult]:
-        """Validate field value against enum (static or dynamic).
+        """Validate field value against enum (static or dynamic) under ``obligation_level``.
 
-        For static enums, validates against permissible values.
-        For dynamic enums (reachable_from, matches, concepts):
-        - Progressive mode: validates lazily using ontology lookup
-        - Greedy mode: validates against pre-expanded set
+        Obligation levels:
+        - ``REQUIRED`` (default): ``ERROR`` when value is outside the enum
+        - ``RECOMMENDED`` / ``ENCOURAGED``: ``WARN`` when value is outside the enum
+        - ``OPTIONAL`` / ``EXAMPLE``: skipped (no membership validation)
+        - ``DISCOURAGED``: ``WARN`` when value IS inside the enum
 
         Args:
             field_value: Value to validate
@@ -531,16 +776,45 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             instance: Full instance
             target_class: Name of the class
             path: JSON path to this location
+            obligation_level: Binding obligation level (default ``"REQUIRED"``)
 
         Yields:
-            ValidationResult if value not in enum
+            ValidationResult on binding violation
         """
+        level = self._normalize_obligation_level(obligation_level)
+        if level in SKIP_MEMBERSHIP_OBLIGATION_LEVELS:
+            return
+
         if self.schema_view is None:
             return
         enum_def = self.schema_view.get_enum(enum_name)
         if not enum_def:
             return
 
+        default_severity = Severity.ERROR if level == "REQUIRED" else Severity.WARN
+        severity = self.severity_for(ErrorMode.BINDING_VALIDATION, default=default_severity)
+        extra_ctx = [f"obligation_level: {level}"] if level != "REQUIRED" else []
+
+        if isinstance(field_value, (dict, list)):
+            yield ValidationResult(
+                type="binding_validation",
+                severity=severity,
+                message=(
+                    f"Bound value at '{field_path}' must be a scalar to validate "
+                    f"against enum '{enum_name}', got {type(field_value).__name__}"
+                ),
+                instance=instance,
+                instantiates=target_class,
+                context=[
+                    f"path: {path}",
+                    f"slot: {slot_name}",
+                    f"field: {field_path}",
+                    *extra_ctx,
+                ],
+            )
+            return
+
+        field_str = field_value if isinstance(field_value, str) else str(field_value)
         is_dynamic = self.is_dynamic_enum(enum_def)
 
         if is_dynamic:
@@ -551,11 +825,34 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             # diagnostic instead of silently passing via the static path below.
             if enum_name in self.expanded_enums:
                 valid_values = self.expanded_enums[enum_name]
-                if field_value not in valid_values:
+                in_enum = field_str in valid_values
+                if level == "DISCOURAGED":
+                    if in_enum:
+                        yield ValidationResult(
+                            type="binding_validation",
+                            severity=severity,
+                            message=(
+                                f"Value '{field_str}' is in discouraged dynamic enum "
+                                f"'{enum_name}' (expanded from ontology)"
+                            ),
+                            instance=instance,
+                            instantiates=target_class,
+                            context=[
+                                f"path: {path}",
+                                f"slot: {slot_name}",
+                                f"field: {field_path}",
+                                f"discouraged_values: {len(valid_values)} terms",
+                                *extra_ctx,
+                            ],
+                        )
+                elif not in_enum:
                     yield ValidationResult(
                         type="binding_validation",
-                        severity=self.severity_for(ErrorMode.BINDING_VALIDATION),
-                        message=f"Value '{field_value}' not in dynamic enum '{enum_name}' (expanded from ontology)",
+                        severity=severity,
+                        message=(
+                            f"Value '{field_str}' not in dynamic enum "
+                            f"'{enum_name}' (expanded from ontology)"
+                        ),
                         instance=instance,
                         instantiates=target_class,
                         context=[
@@ -563,34 +860,67 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                             f"slot: {slot_name}",
                             f"field: {field_path}",
                             f"allowed_values: {len(valid_values)} terms",
+                            *extra_ctx,
                         ],
                     )
                 return
 
-            is_valid = self.is_value_in_enum(field_value, enum_def, self.schema_view)
-            if not is_valid:
-                # Offline with an unmaterialized dynamic enum is a cache problem,
-                # not a data error - report it as such rather than "not in enum".
-                if self._offline_dynamic_enum_unmaterialized(enum_def):
-                    message = self._offline_unmaterialized_enum_message(field_value, enum_name)
-                    validation_note = "validation: offline (enum cache not materialized)"
-                else:
-                    message = (
-                        f"Value '{field_value}' not in dynamic enum "
-                        f"'{enum_name}' (expanded from ontology)"
-                    )
-                    validation_note = "validation: progressive (lazy)"
+            in_enum = self.is_value_in_enum(field_str, enum_def, self.schema_view)
+            # Offline with an unmaterialized dynamic enum is a cache problem,
+            # not a data error - escalate to ERROR so an incomplete cache never
+            # passes silently (#51).
+            if not in_enum and self._offline_dynamic_enum_unmaterialized(enum_def):
                 yield ValidationResult(
                     type="binding_validation",
                     severity=self.severity_for(ErrorMode.BINDING_VALIDATION),
-                    message=message,
+                    message=self._offline_unmaterialized_enum_message(field_str, enum_name),
                     instance=instance,
                     instantiates=target_class,
                     context=[
                         f"path: {path}",
                         f"slot: {slot_name}",
                         f"field: {field_path}",
-                        validation_note,
+                        "validation: offline (enum cache not materialized)",
+                        *extra_ctx,
+                    ],
+                )
+                return
+
+            if level == "DISCOURAGED":
+                if in_enum:
+                    yield ValidationResult(
+                        type="binding_validation",
+                        severity=severity,
+                        message=(
+                            f"Value '{field_str}' is in discouraged dynamic enum "
+                            f"'{enum_name}' (expanded from ontology)"
+                        ),
+                        instance=instance,
+                        instantiates=target_class,
+                        context=[
+                            f"path: {path}",
+                            f"slot: {slot_name}",
+                            f"field: {field_path}",
+                            "validation: progressive (lazy)",
+                            *extra_ctx,
+                        ],
+                    )
+            elif not in_enum:
+                yield ValidationResult(
+                    type="binding_validation",
+                    severity=severity,
+                    message=(
+                        f"Value '{field_str}' not in dynamic enum "
+                        f"'{enum_name}' (expanded from ontology)"
+                    ),
+                    instance=instance,
+                    instantiates=target_class,
+                    context=[
+                        f"path: {path}",
+                        f"slot: {slot_name}",
+                        f"field: {field_path}",
+                        "validation: progressive (lazy)",
+                        *extra_ctx,
                     ],
                 )
             return
@@ -609,12 +939,28 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         if not valid_values:
             return
 
-        # Check if value is valid
-        if field_value not in valid_values:
+        in_enum = field_str in valid_values
+        if level == "DISCOURAGED":
+            if in_enum:
+                yield ValidationResult(
+                    type="binding_validation",
+                    severity=severity,
+                    message=f"Value '{field_str}' is in discouraged enum '{enum_name}'",
+                    instance=instance,
+                    instantiates=target_class,
+                    context=[
+                        f"path: {path}",
+                        f"slot: {slot_name}",
+                        f"field: {field_path}",
+                        f"discouraged_values: {len(valid_values)} terms",
+                        *extra_ctx,
+                    ],
+                )
+        elif not in_enum:
             yield ValidationResult(
                 type="binding_validation",
-                severity=self.severity_for(ErrorMode.BINDING_VALIDATION),
-                message=f"Value '{field_value}' not in enum '{enum_name}'",
+                severity=severity,
+                message=f"Value '{field_str}' not in enum '{enum_name}'",
                 instance=instance,
                 instantiates=target_class,
                 context=[
@@ -622,6 +968,7 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                     f"slot: {slot_name}",
                     f"field: {field_path}",
                     f"allowed_values: {len(valid_values)} terms",
+                    *extra_ctx,
                 ],
             )
 

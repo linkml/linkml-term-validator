@@ -289,9 +289,10 @@ Additional options:
 The plugin:
 
 - Recursively walks nested objects, including multivalued nested objects
-- Applies `binds_value_of` to extract the field constrained by the binding
+- Resolves `binds_value_of` across multi-level paths (`term.id`, list fan-out `coding.code`, integer indices `extensions.0.value`), defaulting to `.` (the slot value itself) when omitted
+- Enforces `obligation_level` on enum membership (`REQUIRED` -> `ERROR`, `RECOMMENDED` -> `WARN`, `OPTIONAL`/`EXAMPLE` -> skipped, `DISCOURAGED` -> `WARN` when value is in the enum)
 - Validates static and dynamic enum ranges
-- Uses slots with `implements: [rdfs:label]` or `slot_uri: rdfs:label` as label fields
+- Uses slots with `implements: [rdfs:label]` or `slot_uri: rdfs:label` as label fields on the immediate enclosing object
 - Falls back to a field named `label` when no label property is declared
 
 ## Composition

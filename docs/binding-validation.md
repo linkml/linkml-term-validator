@@ -70,17 +70,19 @@ classes:
 
 | Property | Required | Description |
 |----------|----------|-------------|
-| `binds_value_of` | Yes | The field path within the nested object |
-| `range` | Yes | The enum (static or dynamic) defining allowed values |
-| `obligation_level` | No | `REQUIRED`, `RECOMMENDED`, or `OPTIONAL` |
+| `binds_value_of` | No | Dot-separated field path within the value (e.g., `id`, `term.id`, `coding.code`, `extensions.0.value`). Defaults to `.` (binds the slot value directly). |
+| `range` | Yes | The enum (static or dynamic) defining target values |
+| `obligation_level` | No | `REQUIRED` (default), `RECOMMENDED`, `OPTIONAL`, `EXAMPLE`, or `DISCOURAGED` |
 
 ### Obligation Levels
 
-| Level | Description | Validation Behavior |
-|-------|-------------|---------------------|
-| `REQUIRED` | Must satisfy constraint | ERROR on violation |
-| `RECOMMENDED` | Should satisfy constraint | WARN on violation |
-| `OPTIONAL` | May satisfy constraint | No validation |
+| Level | Description | Enum Membership Behavior |
+|-------|-------------|--------------------------|
+| `REQUIRED` | Must satisfy constraint *(default)* | `ERROR` when value is outside enum |
+| `RECOMMENDED` | Should satisfy constraint (alias `ENCOURAGED`) | `WARN` when value is outside enum |
+| `OPTIONAL` | May satisfy constraint | Membership check skipped |
+| `EXAMPLE` | Illustrative value set only | Membership check skipped |
+| `DISCOURAGED` | Allowed, but discouraged value set | `WARN` when value **is** inside enum |
 
 ```yaml
 bindings:
@@ -88,6 +90,17 @@ bindings:
     range: BiologicalProcessEnum
     obligation_level: REQUIRED     # Default if not specified
 ```
+
+Under `linkml-validate` (or `linkml-term-validator validate-data --fail-on error`), `RECOMMENDED` and `DISCOURAGED` emit warnings without failing the exit code, while `--strict` (or `--fail-on warn`) turns warnings into a non-zero exit.
+
+### Multi-Level `binds_value_of` Paths and `.` Default
+
+`binds_value_of` supports nested paths as well as direct scalar bindings:
+
+- **Implicit `.` default (scalar / self binding):** Omitting `binds_value_of` (or writing `binds_value_of: .`) binds the slot's own value directly—for example, attaching a `RECOMMENDED` or `DISCOURAGED` binding to a `string` or `uriorcurie` slot.
+- **Multi-level nested dicts:** `binds_value_of: term.id` or `wrapper.term.id` traverses nested objects; label validation automatically checks the immediate enclosing object (`term`).
+- **List auto-fan-out:** `binds_value_of: coding.code` (or `coding[*].code`) validates every element when `coding` is a list (such as a FHIR-style `CodeableConcept`).
+- **Explicit list indices:** `binds_value_of: extensions.0.value` (or `extensions[0].value`) constrains only the specified index.
 
 ## Label Field Detection
 
