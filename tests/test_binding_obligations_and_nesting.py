@@ -19,7 +19,9 @@ TEST_ONTOLOGY = "simpleobo:tests/data/test_ontology.obo"
 OAK_CONFIG = Path("tests/data/test_oak_config.yaml")
 
 
-def _run_plugin(schema_yaml: str, instance: dict, target_class: str, tmp_path: Path, **kwargs: Any):
+def _run_plugin(
+    schema_yaml: str, instance: dict, target_class: str, tmp_path: Path, **kwargs: Any
+):
     schema_path = tmp_path / "schema.yaml"
     schema_path.write_text(schema_yaml)
     plugin_kwargs: dict[str, Any] = {
@@ -87,12 +89,19 @@ enums:
     # Invalid values on both single and multivalued scalar slots
     _, bad_results = _run_plugin(
         schema,
-        {"id": "s2", "process": "TEST:0000002", "tags": ["TEST:0000006", "TEST:0000003"]},
+        {
+            "id": "s2",
+            "process": "TEST:0000002",
+            "tags": ["TEST:0000006", "TEST:0000003"],
+        },
         "Sample",
         tmp_path,
     )
     assert len(bad_results) == 2
-    assert all(r.type == "binding_validation" and r.severity is Severity.ERROR for r in bad_results)
+    assert all(
+        r.type == "binding_validation" and r.severity is Severity.ERROR
+        for r in bad_results
+    )
     contexts = [tuple(r.context) for r in bad_results]
     assert any("path: process" in c and "field: ." in c for c in contexts)
     assert any("path: tags[1]" in c and "field: ." in c for c in contexts)
@@ -190,7 +199,9 @@ enums:
         {
             "descriptor": {
                 "name": "Unrelated outer name",
-                "wrapper": {"term": {"id": "TEST:0000002", "display_name": "child term one"}},
+                "wrapper": {
+                    "term": {"id": "TEST:0000002", "display_name": "child term one"}
+                },
             }
         },
         "Record",
@@ -215,7 +226,9 @@ enums:
         {
             "descriptor": {
                 "name": "child term one",
-                "wrapper": {"term": {"id": "TEST:0000002", "display_name": "wrong label"}},
+                "wrapper": {
+                    "term": {"id": "TEST:0000002", "display_name": "wrong label"}
+                },
             }
         },
         "Record",
@@ -273,12 +286,20 @@ enums:
             "text": "Summary text",
             "coding": [
                 {"code": "TEST:0000002", "display": "child term one"},  # valid
-                {"code": "TEST:0000006", "display": "cell_cycle"},  # out of RootChildEnum
-                {"code": "TEST:0000003", "display": "wrong display"},  # valid ID, bad label
+                {
+                    "code": "TEST:0000006",
+                    "display": "cell_cycle",
+                },  # out of RootChildEnum
+                {
+                    "code": "TEST:0000003",
+                    "display": "wrong display",
+                },  # valid ID, bad label
             ],
         }
     }
-    _, results = _run_plugin(schema, instance, "Observation", tmp_path, validate_labels=True)
+    _, results = _run_plugin(
+        schema, instance, "Observation", tmp_path, validate_labels=True
+    )
     assert len(results) == 2
 
     enum_err = next(r for r in results if r.type == "binding_validation")
@@ -462,7 +483,9 @@ enums:
 @pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize("strategy", ["progressive", "greedy"])
 @pytest.mark.parametrize("level", [None, "REQUIRED"])
-def test_obligation_required_emits_error_on_non_member(tmp_path, dynamic, strategy, level):
+def test_obligation_required_emits_error_on_non_member(
+    tmp_path, dynamic, strategy, level
+):
     """REQUIRED (and omitted default) emits ERROR when value is outside enum."""
     schema = _obligation_schema(level, dynamic=dynamic)
     _, ok = _run_plugin(
@@ -541,7 +564,9 @@ def test_obligation_optional_and_example_skip_enum_membership(tmp_path, level, d
 
 @pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize("strategy", ["progressive", "greedy"])
-def test_obligation_discouraged_warns_only_when_value_in_enum(tmp_path, dynamic, strategy):
+def test_obligation_discouraged_warns_only_when_value_in_enum(
+    tmp_path, dynamic, strategy
+):
     """DISCOURAGED emits WARN when value IS in the enum, and passes when outside."""
     schema = _obligation_schema("DISCOURAGED", dynamic=dynamic)
 
@@ -647,7 +672,9 @@ enums:
         "Annotation",
         tmp_path,
     )
-    assert [(r.type, r.severity) for r in non_preferred] == [("binding_validation", Severity.WARN)]
+    assert [(r.type, r.severity) for r in non_preferred] == [
+        ("binding_validation", Severity.WARN)
+    ]
 
     # TEST:0000004 with wrong label: in REQUIRED & RECOMMENDED, in DISCOURAGED -> 1 WARN + 1 label ERROR (not 3!)
     _, discouraged_bad_label = _run_plugin(
@@ -664,12 +691,17 @@ enums:
 
 def test_encouraged_alias_and_invalid_obligation_level():
     """ENCOURAGED normalizes to RECOMMENDED; unknown levels raise ValueError."""
-    assert BindingValidationPlugin._normalize_obligation_level("ENCOURAGED") == "RECOMMENDED"
+    assert (
+        BindingValidationPlugin._normalize_obligation_level("ENCOURAGED")
+        == "RECOMMENDED"
+    )
     with pytest.raises(ValueError, match="Unknown obligation_level"):
         BindingValidationPlugin._normalize_obligation_level("MANDATORY")
 
     plugin = BindingValidationPlugin(cache_labels=False)
-    bad_binding = SimpleNamespace(binds_value_of=".", range="SomeEnum", obligation_level="BOGUS")
+    bad_binding = SimpleNamespace(
+        binds_value_of=".", range="SomeEnum", obligation_level="BOGUS"
+    )
     with pytest.raises(ValueError, match="Unknown obligation_level"):
         list(plugin._validate_binding("X", bad_binding, "s", {}, "Cls"))
 
@@ -726,8 +758,258 @@ def test_cli_recommended_binding_exits_zero_with_fail_on_error(tmp_path):
         cache_labels=False,
         cache_enum_expansions=False,
     )
-    report = Validator(schema=str(schema_path), validation_plugins=[plugin]).validate_source(
-        YamlLoader(str(data_path)), target_class="Annotation"
-    )
+    report = Validator(
+        schema=str(schema_path), validation_plugins=[plugin]
+    ).validate_source(YamlLoader(str(data_path)), target_class="Annotation")
     assert len(report.results) == 1
     assert report.results[0].severity is Severity.WARN
+
+
+# =============================================================================
+# Edge cases: absent/null fields, severity_overrides, binding order, offline,
+# multivalued leaf labels, and partial list fan-out
+# =============================================================================
+
+
+def test_required_binding_skips_absent_or_null_bound_field(tmp_path):
+    """REQUIRED binding constrains values when present; field presence belongs to slot `required`."""
+    schema = _obligation_schema("REQUIRED", dynamic=False)
+    for payload in [
+        {"id": "a1", "term": {"label": "only label"}},
+        {"id": "a2", "term": {"id": None, "label": "null id"}},
+        {"id": "a3", "term": None},
+        {"id": "a4"},
+    ]:
+        _, results = _run_plugin(schema, payload, "Annotation", tmp_path)
+        assert results == [], f"Expected no binding errors for {payload}, got {results}"
+
+
+def test_severity_overrides_takes_precedence_over_obligation_level(tmp_path):
+    """Explicit severity_overrides for binding_validation wins over obligation_level defaults."""
+    # Promote RECOMMENDED miss from WARN -> ERROR
+    rec_schema = _obligation_schema("RECOMMENDED", dynamic=False)
+    _, rec_promoted = _run_plugin(
+        rec_schema,
+        {"id": "a1", "term": {"id": "TEST:0000002", "label": "child term one"}},
+        "Annotation",
+        tmp_path,
+        severity_overrides={"binding_validation": "ERROR"},
+    )
+    assert [(r.type, r.severity) for r in rec_promoted] == [
+        ("binding_validation", Severity.ERROR)
+    ]
+
+    # Promote DISCOURAGED hit from WARN -> ERROR
+    disc_schema = _obligation_schema("DISCOURAGED", dynamic=False)
+    _, disc_promoted = _run_plugin(
+        disc_schema,
+        {"id": "a2", "term": {"id": "TEST:0000006", "label": "cell_cycle"}},
+        "Annotation",
+        tmp_path,
+        severity_overrides={"binding_validation": "ERROR"},
+    )
+    assert [(r.type, r.severity) for r in disc_promoted] == [
+        ("binding_validation", Severity.ERROR)
+    ]
+
+    # Demote REQUIRED miss from ERROR -> WARN
+    req_schema = _obligation_schema("REQUIRED", dynamic=False)
+    _, req_demoted = _run_plugin(
+        req_schema,
+        {"id": "a3", "term": {"id": "TEST:0000002", "label": "child term one"}},
+        "Annotation",
+        tmp_path,
+        severity_overrides={"binding_validation": "WARN"},
+    )
+    assert [(r.type, r.severity) for r in req_demoted] == [
+        ("binding_validation", Severity.WARN)
+    ]
+
+
+@pytest.mark.parametrize("recommended_first", [True, False])
+def test_not4curation_suppression_is_independent_of_binding_order(
+    tmp_path, recommended_first
+):
+    """Hard-rejection by any REQUIRED binding suppresses Not4Curation regardless of binding order."""
+    rec_block = "          - binds_value_of: id\n            range: BroadStaticEnum\n            obligation_level: RECOMMENDED"
+    req_block = "          - binds_value_of: id\n            range: StrictStaticEnum\n            obligation_level: REQUIRED"
+    ordered = (
+        f"{rec_block}\n{req_block}"
+        if recommended_first
+        else f"{req_block}\n{rec_block}"
+    )
+    schema = f"""
+id: https://example.org/order-independence
+name: order-independence
+prefixes:
+  linkml: https://w3id.org/linkml/
+  TEST: http://example.org/TEST_
+default_range: string
+classes:
+  Annotation:
+    attributes:
+      term:
+        range: Term
+        inlined: true
+        bindings:
+{ordered}
+  Term:
+    attributes:
+      id:
+      label:
+enums:
+  BroadStaticEnum:
+    permissible_values:
+      FLAGGED:
+        meaning: TEST:0000008
+      CELL_CYCLE:
+        meaning: TEST:0000006
+  StrictStaticEnum:
+    permissible_values:
+      CELL_CYCLE:
+        meaning: TEST:0000006
+"""
+    # TEST:0000008 is in BroadStaticEnum (RECOMMENDED passes) and NOT in StrictStaticEnum (REQUIRED fails)
+    _, results = _run_plugin(
+        schema,
+        {"term": {"id": "TEST:0000008", "label": "flagged process"}},
+        "Annotation",
+        tmp_path,
+    )
+    assert [(r.type, r.severity) for r in results] == [
+        ("binding_validation", Severity.ERROR)
+    ]
+
+
+@pytest.mark.parametrize("level", ["RECOMMENDED", "DISCOURAGED"])
+@pytest.mark.parametrize("strategy", ["progressive", "greedy"])
+def test_offline_unmaterialized_dynamic_enum_errors_even_for_discouraged_and_recommended(
+    tmp_path, level, strategy
+):
+    """Offline mode with an unmaterialized dynamic enum emits ERROR even for RECOMMENDED/DISCOURAGED (#51)."""
+    schema = _obligation_schema(level, dynamic=True)
+    _, results = _run_plugin(
+        schema,
+        {"id": "a1", "term": {"id": "TEST:0000002", "label": "child term one"}},
+        "Annotation",
+        tmp_path,
+        offline=True,
+        validate_labels=False,
+        strict=False,
+        cache_strategy=strategy,
+    )
+    bv_results = [r for r in results if r.type == "binding_validation"]
+    assert len(bv_results) == 1
+    assert bv_results[0].severity is Severity.ERROR
+    assert "not materialized" in bv_results[0].message
+
+
+def test_fanned_out_leaf_list_skips_parent_label_check(tmp_path):
+    """When binds_value_of resolves to a multivalued scalar list, container `label` is not checked against items."""
+    schema = f"""
+id: https://example.org/leaf-list
+name: leaf-list
+prefixes:
+  linkml: https://w3id.org/linkml/
+  TEST: http://example.org/TEST_
+default_range: string
+classes:
+  Record:
+    attributes:
+      bundle:
+        range: KeywordBundle
+        inlined: true
+        bindings:
+          - binds_value_of: keywords
+            range: BioProcessEnum
+  KeywordBundle:
+    attributes:
+      label:
+      keywords:
+        multivalued: true
+enums:
+  BioProcessEnum:
+    reachable_from:
+      source_ontology: {TEST_ONTOLOGY}
+      source_nodes:
+        - TEST:0000005
+"""
+    # KeywordBundle.label describes the bundle itself, NOT individual CURIEs in keywords
+    _, ok_results = _run_plugin(
+        schema,
+        {"bundle": {"label": "Cell cycle keyword set", "keywords": ["TEST:0000006"]}},
+        "Record",
+        tmp_path,
+        validate_labels=True,
+    )
+    assert ok_results == []
+
+    # Out-of-enum item in keywords still fails at its exact leaf index without false label mismatch
+    _, bad_results = _run_plugin(
+        schema,
+        {
+            "bundle": {
+                "label": "Cell cycle keyword set",
+                "keywords": ["TEST:0000006", "TEST:0000002"],
+            }
+        },
+        "Record",
+        tmp_path,
+        validate_labels=True,
+    )
+    assert len(bad_results) == 1
+    assert bad_results[0].type == "binding_validation"
+    assert "field: keywords[1]" in bad_results[0].context
+
+
+def test_partial_list_fanout_skips_none_and_missing_items_preserving_indices(tmp_path):
+    """List fan-out skips entries with missing/null target fields while reporting exact indices on remaining items."""
+    schema = f"""
+id: https://example.org/partial-fanout
+name: partial-fanout
+prefixes:
+  linkml: https://w3id.org/linkml/
+  TEST: http://example.org/TEST_
+default_range: string
+classes:
+  Observation:
+    attributes:
+      concept:
+        range: CodeableConcept
+        inlined: true
+        bindings:
+          - binds_value_of: coding.code
+            range: BioProcessEnum
+  CodeableConcept:
+    attributes:
+      coding:
+        range: Coding
+        multivalued: true
+        inlined_as_list: true
+  Coding:
+    attributes:
+      code:
+      display:
+        implements:
+          - rdfs:label
+enums:
+  BioProcessEnum:
+    reachable_from:
+      source_ontology: {TEST_ONTOLOGY}
+      source_nodes:
+        - TEST:0000005
+"""
+    instance = {
+        "concept": {
+            "coding": [
+                {"display": "unencoded free text"},
+                {"code": None, "display": "null code"},
+                {"code": "TEST:0000006", "display": "cell_cycle"},
+                {"code": "TEST:0000002", "display": "child term one"},
+            ]
+        }
+    }
+    _, results = _run_plugin(schema, instance, "Observation", tmp_path)
+    assert len(results) == 1
+    assert results[0].type == "binding_validation"
+    assert "field: coding[3].code" in results[0].context

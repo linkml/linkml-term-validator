@@ -79,7 +79,7 @@ classes:
 | Level | Description | Enum Membership Behavior |
 |-------|-------------|--------------------------|
 | `REQUIRED` | Must satisfy constraint *(default)* | `ERROR` when value is outside enum |
-| `RECOMMENDED` | Should satisfy constraint (alias `ENCOURAGED`) | `WARN` when value is outside enum |
+| `RECOMMENDED` | Should satisfy constraint | `WARN` when value is outside enum |
 | `OPTIONAL` | May satisfy constraint | Membership check skipped |
 | `EXAMPLE` | Illustrative value set only | Membership check skipped |
 | `DISCOURAGED` | Allowed, but discouraged value set | `WARN` when value **is** inside enum |
@@ -92,6 +92,9 @@ bindings:
 ```
 
 Under `linkml-validate` (or `linkml-term-validator validate-data --fail-on error`), `RECOMMENDED` and `DISCOURAGED` emit warnings without failing the exit code, while `--strict` (or `--fail-on warn`) turns warnings into a non-zero exit.
+
+- **Absent or `null` fields:** Binding validation constrains values *when present*. If a bound field (or an optional intermediate object along `binds_value_of`) is omitted or `null`, no binding error is emitted—even for `obligation_level: REQUIRED`. Use LinkML's `required: true` on the corresponding slot or attribute to enforce field presence.
+- **`severity_overrides` precedence:** If `severity_overrides` configures `binding_validation`, that explicit override takes precedence over the default severity implied by `obligation_level` (`ERROR` for `REQUIRED`; `WARN` for `RECOMMENDED` and `DISCOURAGED`).
 
 ### Multi-Level `binds_value_of` Paths and `.` Default
 

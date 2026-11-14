@@ -63,6 +63,18 @@ class _ExtractedTarget(NamedTuple):
     label_class: Optional[str]
     parent_subpath: str
 
+
+class _PathCursor(NamedTuple):
+    """Intermediate cursor while walking ``binds_value_of`` path segments."""
+
+    curr_val: Any
+    curr_class: Optional[str]
+    curr_path: str
+    parent_dict: Optional[dict[str, Any]]
+    parent_class: Optional[str]
+    parent_subpath: str
+
+
 # Ontology properties that represent labels
 LABEL_PROPERTIES = {
     "rdfs:label",
@@ -116,7 +128,8 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         saturate_enum_caches: bool = False,
         cache_dir: Path | str = Path("cache"),
         oak_config_path: Optional[Path | str] = None,
-        cache_strategy: Literal["progressive", "greedy"] | CacheStrategy = CacheStrategy.PROGRESSIVE,
+        cache_strategy: Literal["progressive", "greedy"]
+        | CacheStrategy = CacheStrategy.PROGRESSIVE,
         offline: bool = False,
         severity_overrides: Optional[SeverityOverrides] = None,
         check_not4curation: Optional[bool] = None,
@@ -175,6 +188,10 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         self.schema_view = None
         # Map (class_name, slot_name) -> [EnumBinding]
         self.bindings_map: dict[tuple[str, str], list] = {}
+        # Map (class_name, slot_name) -> range name for O(1) class-range lookups
+        self._slot_range_map: dict[tuple[str, str], str] = {}
+        # Map id(binding) -> normalized obligation level precomputed in pre_process
+        self._binding_levels: dict[int, str] = {}
         # Map class_name -> {slot_name: set of properties (from implements and slot_uri)}
         self.slot_properties_map: dict[str, dict[str, set[str]]] = {}
         # Map enum_name -> set of expanded values (for dynamic enums)
@@ -199,24 +216,31 @@ class BindingValidationPlugin(BaseOntologyPlugin):
 
         # Track which enums are referenced by bindings
         self._referenced_enums: set[str] = set()
+        self._slot_range_map.clear()
+        self._binding_levels.clear()
         all_classes = list(self.schema_view.all_classes().values())
         self._class_names = {cls.name for cls in all_classes}
 
         for cls in all_classes:
             class_properties: dict[str, set[str]] = {}
             for slot in self.schema_view.class_induced_slots(cls.name):
+                if slot.range:
+                    self._slot_range_map[(cls.name, slot.name)] = slot.range
                 if slot.bindings:
                     key = (cls.name, slot.name)
                     self.bindings_map[key] = slot.bindings
                     # Track referenced enums (skip enums only bound via OPTIONAL/EXAMPLE,
                     # whose membership is never checked)
                     for binding in slot.bindings:
-                        if binding.range:
-                            level = self._normalize_obligation_level(
-                                getattr(binding, "obligation_level", None)
-                            )
-                            if level not in SKIP_MEMBERSHIP_OBLIGATION_LEVELS:
-                                self._referenced_enums.add(binding.range)
+                        level = self._normalize_obligation_level(
+                            getattr(binding, "obligation_level", None)
+                        )
+                        self._binding_levels[id(binding)] = level
+                        if (
+                            binding.range
+                            and level not in SKIP_MEMBERSHIP_OBLIGATION_LEVELS
+                        ):
+                            self._referenced_enums.add(binding.range)
                 # Collect implements and slot_uri for label detection
                 slot_props: set[str] = set()
                 if slot.implements:
@@ -239,9 +263,13 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                 # surfaces the clear "not materialized" diagnostic (nothing cached).
                 if self._offline_skip_pre_expansion(enum_def):
                     continue
-                self.expanded_enums[enum_name] = self.expand_enum(enum_def, self.schema_view)
+                self.expanded_enums[enum_name] = self.expand_enum(
+                    enum_def, self.schema_view
+                )
 
-    def process(self, instance: dict, context: ValidationContext) -> Iterator[ValidationResult]:
+    def process(
+        self, instance: dict, context: ValidationContext
+    ) -> Iterator[ValidationResult]:
         """Validate binding constraints on nested fields.
 
         Recursively walks the instance structure to validate bindings at all
@@ -299,39 +327,39 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                     if val is None:
                         continue
 
-                    item_path = f"{slot_path}[{i}]" if isinstance(value, list) else slot_path
-                    seen_checks: set[tuple[Any, ...]] = set()
-                    hard_rejected_fields: set[tuple[str, str]] = set()
+                    item_path = (
+                        f"{slot_path}[{i}]" if isinstance(value, list) else slot_path
+                    )
 
-                    # Validate each binding constraint
-                    for binding in self.bindings_map[key]:
-                        yield from self._validate_binding(
-                            value=val,
-                            binding=binding,
-                            slot_name=slot_name,
-                            instance=root_instance,
-                            target_class=current_class,
-                            path=item_path,
-                            _seen_checks=seen_checks,
-                            _hard_rejected_fields=hard_rejected_fields,
-                        )
+                    # Validate all binding constraints on this item together so
+                    # membership checks run before deduplicated existence,
+                    # Not4Curation, and label checks regardless of binding order.
+                    yield from self._validate_bindings_for_value(
+                        value=val,
+                        bindings=self.bindings_map[key],
+                        slot_name=slot_name,
+                        instance=root_instance,
+                        target_class=current_class,
+                        path=item_path,
+                    )
 
             # Recurse into nested objects
-            slot_def = self._get_slot_definition(current_class, slot_name)
-            if slot_def and slot_def.range:
-                nested_class = slot_def.range
-                # Only recurse if the range is a class (not a type like string)
-                if nested_class in self._class_names:
-                    values = value if isinstance(value, list) else [value]
-                    for i, val in enumerate(values):
-                        if isinstance(val, dict):
-                            item_path = f"{slot_path}[{i}]" if isinstance(value, list) else slot_path
-                            yield from self._process_recursive(
-                                instance=val,
-                                current_class=nested_class,
-                                path=item_path,
-                                root_instance=root_instance,
-                            )
+            nested_class = self._get_slot_class_range(current_class, slot_name)
+            if nested_class:
+                values = value if isinstance(value, list) else [value]
+                for i, val in enumerate(values):
+                    if isinstance(val, dict):
+                        item_path = (
+                            f"{slot_path}[{i}]"
+                            if isinstance(value, list)
+                            else slot_path
+                        )
+                        yield from self._process_recursive(
+                            instance=val,
+                            current_class=nested_class,
+                            path=item_path,
+                            root_instance=root_instance,
+                        )
 
     def _get_slot_definition(self, class_name: str, slot_name: str) -> Optional[Any]:
         """Get the slot definition for a class.
@@ -350,13 +378,28 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                 return slot
         return None
 
+    def _get_slot_class_range(
+        self, class_name: Optional[str], slot_name: str
+    ) -> Optional[str]:
+        """Return the LinkML class range of ``(class_name, slot_name)`` if it is a class."""
+        if not class_name:
+            return None
+        rng = self._slot_range_map.get((class_name, slot_name))
+        if rng is None:
+            slot_def = self._get_slot_definition(class_name, slot_name)
+            rng = slot_def.range if slot_def else None
+        if rng and rng in self._class_names:
+            return rng
+        return None
+
     @staticmethod
     def _normalize_obligation_level(raw_level: Any) -> str:
         """Normalize a binding's ``obligation_level`` (defaulting to ``REQUIRED``).
 
         Accepts LinkML ``ObligationLevelEnum`` ``PermissibleValue`` objects,
-        Python ``Enum`` members, plain strings, or ``None``. Maps the metamodel
-        alias ``ENCOURAGED`` to ``RECOMMENDED``.
+        Python ``Enum`` members, plain strings, or ``None``. Also accepts
+        ``ENCOURAGED`` (listed under ``aliases`` on ``RECOMMENDED`` in
+        LinkML's ``meta.yaml``, though YAML schemas should use ``RECOMMENDED``).
 
         Examples:
             >>> BindingValidationPlugin._normalize_obligation_level(None)
@@ -370,9 +413,11 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         """
         if raw_level is None:
             return "REQUIRED"
-        text = str(
-            getattr(raw_level, "text", getattr(raw_level, "value", raw_level))
-        ).strip().upper()
+        text = (
+            str(getattr(raw_level, "text", getattr(raw_level, "value", raw_level)))
+            .strip()
+            .upper()
+        )
         if not text:
             return "REQUIRED"
         if text == "ENCOURAGED":
@@ -392,73 +437,100 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         instance: dict,
         target_class: str,
         path: str = "",
-        _seen_checks: Optional[set[tuple[Any, ...]]] = None,
-        _hard_rejected_fields: Optional[set[tuple[str, str]]] = None,
     ) -> Iterator[ValidationResult]:
-        """Validate a single binding constraint.
+        """Validate a single binding constraint on ``value``."""
+        yield from self._validate_bindings_for_value(
+            value=value,
+            bindings=[binding],
+            slot_name=slot_name,
+            instance=instance,
+            target_class=target_class,
+            path=path,
+        )
 
-        Args:
-            value: Value to validate (scalar or nested complex object)
-            binding: EnumBinding object
-            slot_name: Name of the slot
-            instance: Full instance being validated
-            target_class: Name of the class being validated
-            path: JSON path to this location (for error messages)
+    def _validate_bindings_for_value(
+        self,
+        value: Any,
+        bindings: list[Any],
+        slot_name: str,
+        instance: dict,
+        target_class: str,
+        path: str = "",
+    ) -> Iterator[ValidationResult]:
+        """Validate all bindings on a single slot value in two passes.
 
-        Yields:
-            ValidationResult for each violation
+        Pass 1 evaluates enum membership across all bindings first so
+        ``hard_rejected_fields`` is complete regardless of binding order in the
+        schema. Pass 2 then runs term existence, ``Not4Curation``, and label
+        validation once per unique resolved target.
         """
-        seen_checks = _seen_checks if _seen_checks is not None else set()
-        hard_rejected_fields = (
-            _hard_rejected_fields if _hard_rejected_fields is not None else set()
-        )
+        slot_range_class = self._get_slot_class_range(target_class, slot_name)
+        hard_rejected_fields: set[tuple[str, str]] = set()
+        not4curation_scope_fields: set[tuple[str, str]] = set()
+        post_check_targets: list[tuple[_ExtractedTarget, Any]] = []
 
-        obligation_level = self._normalize_obligation_level(
-            getattr(binding, "obligation_level", None)
-        )
-        slot_def = self._get_slot_definition(target_class, slot_name)
-        slot_range_class = (
-            slot_def.range
-            if (slot_def and slot_def.range and slot_def.range in self._class_names)
-            else None
-        )
+        # Pass 1: enum membership checks across all bindings
+        for binding in bindings:
+            obligation_level = self._binding_levels.get(id(binding))
+            if obligation_level is None:
+                obligation_level = self._normalize_obligation_level(
+                    getattr(binding, "obligation_level", None)
+                )
 
-        raw_field_path = getattr(binding, "binds_value_of", None)
-        targets = self._extract_targets(value, raw_field_path, slot_range_class)
+            raw_field_path = getattr(binding, "binds_value_of", None)
+            targets = self._extract_targets(value, raw_field_path, slot_range_class)
 
-        for target in targets:
+            for target in targets:
+                field_value = target.value
+                field_path = target.field_path
+
+                enum_results: list[ValidationResult] = []
+                if (
+                    binding.range
+                    and obligation_level not in SKIP_MEMBERSHIP_OBLIGATION_LEVELS
+                ):
+                    enum_results = list(
+                        self._validate_against_enum(
+                            field_value=field_value,
+                            enum_name=binding.range,
+                            field_path=field_path,
+                            slot_name=slot_name,
+                            instance=instance,
+                            target_class=target_class,
+                            path=path,
+                            obligation_level=obligation_level,
+                        )
+                    )
+                    yield from enum_results
+
+                if not isinstance(field_value, str):
+                    continue
+
+                if any(
+                    r.type == ErrorMode.BINDING_VALIDATION.value
+                    and r.severity == Severity.ERROR
+                    for r in enum_results
+                ):
+                    hard_rejected_fields.add((field_path, field_value))
+
+                not4curation_enum = (
+                    binding.range
+                    if obligation_level not in SKIP_MEMBERSHIP_OBLIGATION_LEVELS
+                    else None
+                )
+                if self._not4curation_in_scope(field_value, not4curation_enum):
+                    not4curation_scope_fields.add((field_path, field_value))
+
+                post_check_targets.append((target, binding))
+
+        # Pass 2: deduplicated ontology hygiene checks (existence, Not4Curation, labels)
+        seen_checks: set[tuple[Any, ...]] = set()
+        for target, binding in post_check_targets:
             field_value = target.value
             field_path = target.field_path
 
-            # Validate against the enum range according to obligation_level
-            enum_results: list[ValidationResult] = []
-            if binding.range and obligation_level not in SKIP_MEMBERSHIP_OBLIGATION_LEVELS:
-                enum_results = list(
-                    self._validate_against_enum(
-                        field_value=field_value,
-                        enum_name=binding.range,
-                        field_path=field_path,
-                        slot_name=slot_name,
-                        instance=instance,
-                        target_class=target_class,
-                        path=path,
-                        obligation_level=obligation_level,
-                    )
-                )
-                yield from enum_results
-
-            if not isinstance(field_value, str):
-                continue
-
-            if any(
-                r.type == ErrorMode.BINDING_VALIDATION.value and r.severity == Severity.ERROR
-                for r in enum_results
-            ):
-                hard_rejected_fields.add((field_path, field_value))
-
             # Check term existence for configured prefixes (strict mode). Offline mode
             # always checks existence so an uncached term can't pass silently (#51).
-            exists_results: list[ValidationResult] = []
             exists_key = ("exists", field_path, field_value)
             if (self.strict or self.config.offline) and exists_key not in seen_checks:
                 seen_checks.add(exists_key)
@@ -473,24 +545,23 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                     )
                 )
                 yield from exists_results
-                if any(r.type == ErrorMode.TERM_NOT_FOUND.value for r in exists_results):
+                if any(
+                    r.type == ErrorMode.TERM_NOT_FOUND.value for r in exists_results
+                ):
                     seen_checks.add(("not_found", field_path, field_value))
 
             # A term the enum accepted (or only warned on under RECOMMENDED) may
             # still be one its ontology says not to annotate with (a Not4Curation
             # synonym; see #70). Skip only when membership hard-rejected at ERROR
-            # or the term was reported absent.
+            # (across any binding on this slot) or the term was reported absent.
             hard_rejected = (field_path, field_value) in hard_rejected_fields
             not_found = ("not_found", field_path, field_value) in seen_checks
             not4curation_key = ("not4curation", field_path, field_value)
-            not4curation_enum = (
-                binding.range if obligation_level not in SKIP_MEMBERSHIP_OBLIGATION_LEVELS else None
-            )
             if (
                 not hard_rejected
                 and not not_found
                 and not4curation_key not in seen_checks
-                and self._not4curation_in_scope(field_value, not4curation_enum)
+                and (field_path, field_value) in not4curation_scope_fields
             ):
                 seen_checks.add(not4curation_key)
                 yield from self._validate_not4curation(
@@ -620,45 +691,33 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         curr_class: Optional[str],
         curr_path: str,
         seg: str,
-    ) -> Iterator[tuple[Any, Optional[str], str, Optional[dict[str, Any]], Optional[str], str]]:
+    ) -> Iterator[_PathCursor]:
         """Advance one path segment from ``curr_val``, fanning out across lists."""
         if curr_val is None:
             return
 
-        if seg.isdigit():
-            idx = int(seg)
-            if isinstance(curr_val, list):
+        if isinstance(curr_val, list):
+            if seg.isdigit():
+                idx = int(seg)
                 if 0 <= idx < len(curr_val) and curr_val[idx] is not None:
                     next_path = f"{curr_path}[{idx}]" if curr_path else f"[{idx}]"
-                    yield (curr_val[idx], curr_class, next_path, None, None, "")
+                    yield _PathCursor(
+                        curr_val[idx], curr_class, next_path, None, None, ""
+                    )
                 return
-            if isinstance(curr_val, dict) and seg in curr_val and curr_val[seg] is not None:
-                slot_def = self._get_slot_definition(curr_class, seg) if curr_class else None
-                next_class = (
-                    slot_def.range
-                    if (slot_def and slot_def.range and slot_def.range in self._class_names)
-                    else None
-                )
-                next_path = f"{curr_path}.{seg}" if curr_path else seg
-                yield (curr_val[seg], next_class, next_path, curr_val, curr_class, curr_path)
-            return
-
-        if isinstance(curr_val, dict):
-            if seg in curr_val and curr_val[seg] is not None:
-                slot_def = self._get_slot_definition(curr_class, seg) if curr_class else None
-                next_class = (
-                    slot_def.range
-                    if (slot_def and slot_def.range and slot_def.range in self._class_names)
-                    else None
-                )
-                next_path = f"{curr_path}.{seg}" if curr_path else seg
-                yield (curr_val[seg], next_class, next_path, curr_val, curr_class, curr_path)
-        elif isinstance(curr_val, list):
             for i, elem in enumerate(curr_val):
                 if elem is None:
                     continue
                 elem_path = f"{curr_path}[{i}]" if curr_path else f"[{i}]"
                 yield from self._step_segment(elem, curr_class, elem_path, seg)
+            return
+
+        if isinstance(curr_val, dict) and seg in curr_val and curr_val[seg] is not None:
+            next_class = self._get_slot_class_range(curr_class, seg)
+            next_path = f"{curr_path}.{seg}" if curr_path else seg
+            yield _PathCursor(
+                curr_val[seg], next_class, next_path, curr_val, curr_class, curr_path
+            )
 
     def _extract_targets(
         self,
@@ -673,6 +732,20 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         - Multi-level dot paths across nested dicts (e.g. ``"term.id"``, ``"a.b.c"``)
         - Auto-fan-out across intermediate or leaf lists (e.g. ``"coding.code"``)
         - Explicit integer list indices (e.g. ``"extensions.0.value"``)
+
+        Absent or ``None`` fields yield no target (slot presence is governed by
+        LinkML's ``required`` metaslot rather than bindings).
+
+        Examples:
+            >>> plugin = BindingValidationPlugin(cache_labels=False)
+            >>> [t.value for t in plugin._extract_targets("GO:0008150")]
+            ['GO:0008150']
+            >>> [t.value for t in plugin._extract_targets({"term": {"id": "GO:1"}}, "term.id")]
+            ['GO:1']
+            >>> [(t.value, t.field_path) for t in plugin._extract_targets(
+            ...     {"coding": [{"code": "GO:1"}, {"code": "GO:2"}]}, "coding.code"
+            ... )]
+            [('GO:1', 'coding[0].code'), ('GO:2', 'coding[1].code')]
         """
         if value is None:
             return []
@@ -686,64 +759,69 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                 ]
             return [_ExtractedTarget(value, ".", None, None, "")]
 
-        cursors: list[
-            tuple[Any, Optional[str], str, Optional[dict[str, Any]], Optional[str], str]
-        ] = [(value, slot_range_class, "", None, None, "")]
+        cursors: list[_PathCursor] = [
+            _PathCursor(value, slot_range_class, "", None, None, "")
+        ]
 
         for seg in segments:
-            next_cursors: list[
-                tuple[Any, Optional[str], str, Optional[dict[str, Any]], Optional[str], str]
-            ] = []
-            for curr_val, curr_class, curr_path, _p_dict, _p_cls, _p_sub in cursors:
-                next_cursors.extend(self._step_segment(curr_val, curr_class, curr_path, seg))
+            next_cursors: list[_PathCursor] = []
+            for cursor in cursors:
+                next_cursors.extend(
+                    self._step_segment(
+                        cursor.curr_val, cursor.curr_class, cursor.curr_path, seg
+                    )
+                )
             cursors = next_cursors
             if not cursors:
                 return []
 
         targets: list[_ExtractedTarget] = []
-        for leaf_val, _leaf_cls, leaf_path, p_dict, p_cls, p_sub in cursors:
-            if leaf_val is None:
+        for cursor in cursors:
+            if cursor.curr_val is None:
                 continue
-            if isinstance(leaf_val, list):
-                for item, item_path in self._iter_leaf_items(leaf_val, leaf_path):
+            if isinstance(cursor.curr_val, list):
+                for item, item_path in self._iter_leaf_items(
+                    cursor.curr_val, cursor.curr_path
+                ):
                     targets.append(_ExtractedTarget(item, item_path, None, None, ""))
             else:
-                targets.append(_ExtractedTarget(leaf_val, leaf_path, p_dict, p_cls, p_sub))
+                targets.append(
+                    _ExtractedTarget(
+                        cursor.curr_val,
+                        cursor.curr_path,
+                        cursor.parent_dict,
+                        cursor.parent_class,
+                        cursor.parent_subpath,
+                    )
+                )
         return targets
 
-    def _extract_field(self, value: Any, field_path: Optional[str] = None) -> Optional[Any]:
-        """Extract field value(s) from ``value`` using ``field_path`` (defaults to ``"."``).
-
-        Args:
-            value: Value to extract from (scalar, dict, list, etc.)
-            field_path: Dot path to field (e.g., ``"."``, ``"id"``,
-                ``"term.id"``, ``"coding.code"``, ``"extensions.0.value"``)
-
-        Returns:
-            Extracted scalar value, list of values when fanned out across a list,
-            or ``None`` if absent
+    def _extract_field(
+        self, value: Any, field_path: Optional[str] = None
+    ) -> Optional[Any]:
+        """Convenience helper returning the scalar or fanned-out list at ``field_path``.
 
         Examples:
             >>> plugin = BindingValidationPlugin(cache_labels=False)
             >>> plugin._extract_field("GO:0008150")
             'GO:0008150'
-            >>> plugin._extract_field("GO:0008150", ".")
-            'GO:0008150'
-            >>> plugin._extract_field({"term": {"id": "GO:0008150"}}, "term.id")
-            'GO:0008150'
             >>> plugin._extract_field({"extensions": [{"value": "GO:1"}, {"value": "GO:2"}]}, "extensions.0.value")
             'GO:1'
-            >>> plugin._extract_field({"coding": [{"code": "GO:1"}, {"code": "GO:2"}]}, "coding.code")
-            ['GO:1', 'GO:2']
+            >>> plugin._extract_field({"coding": [{"code": "GO:1"}]}, "coding.code")
+            ['GO:1']
         """
         targets = self._extract_targets(value, field_path)
         if not targets:
             return None
         segments = self._parse_field_path(field_path)
+        # Distinguish direct/indexed access ("extensions.0.value" -> "extensions[0].value")
+        # from implicit list fan-out ("coding.code" -> "coding[0].code").
         expected_single_path = (
             "."
             if not segments
-            else ".".join(f"[{s}]" if s.isdigit() else s for s in segments).replace(".[", "[")
+            else ".".join(f"[{s}]" if s.isdigit() else s for s in segments).replace(
+                ".[", "["
+            )
         )
         if len(targets) == 1 and targets[0].field_path == expected_single_path:
             return targets[0].value
@@ -792,7 +870,9 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             return
 
         default_severity = Severity.ERROR if level == "REQUIRED" else Severity.WARN
-        severity = self.severity_for(ErrorMode.BINDING_VALIDATION, default=default_severity)
+        severity = self.severity_for(
+            ErrorMode.BINDING_VALIDATION, default=default_severity
+        )
         extra_ctx = [f"obligation_level: {level}"] if level != "REQUIRED" else []
 
         if isinstance(field_value, (dict, list)):
@@ -866,14 +946,18 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                 return
 
             in_enum = self.is_value_in_enum(field_str, enum_def, self.schema_view)
-            # Offline with an unmaterialized dynamic enum is a cache problem,
-            # not a data error - escalate to ERROR so an incomplete cache never
-            # passes silently (#51).
+            # Offline with an unmaterialized dynamic enum is an infrastructure/cache
+            # problem, not a data error. Report ERROR intentionally regardless of
+            # obligation_level (including RECOMMENDED and DISCOURAGED, since without
+            # a complete cache we cannot confirm a value is outside a discouraged
+            # closure either; see #51).
             if not in_enum and self._offline_dynamic_enum_unmaterialized(enum_def):
                 yield ValidationResult(
                     type="binding_validation",
                     severity=self.severity_for(ErrorMode.BINDING_VALIDATION),
-                    message=self._offline_unmaterialized_enum_message(field_str, enum_name),
+                    message=self._offline_unmaterialized_enum_message(
+                        field_str, enum_name
+                    ),
                     instance=instance,
                     instantiates=target_class,
                     context=[
@@ -1030,7 +1114,9 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                 ],
             )
 
-    def _not4curation_in_scope(self, field_value: str, enum_name: Optional[str]) -> bool:
+    def _not4curation_in_scope(
+        self, field_value: str, enum_name: Optional[str]
+    ) -> bool:
         """Whether the Not4Curation check may consult an adapter for this term.
 
         The check reads synonyms through an OAK adapter, and building one can
@@ -1191,7 +1277,9 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             elif isinstance(provided_label, list):
                 # Reached only when the list holds something non-null and
                 # non-string; the all-null and empty cases are absent labels.
-                provided_labels = [label for label in provided_label if isinstance(label, str)]
+                provided_labels = [
+                    label for label in provided_label if isinstance(label, str)
+                ]
                 if not provided_labels:
                     yield ValidationResult(
                         type="binding_label_invalid",
@@ -1229,7 +1317,8 @@ class BindingValidationPlugin(BaseOntologyPlugin):
             normalized_ontology = self.normalize_string(ontology_label)
 
             if not any(
-                self.normalize_string(label) == normalized_ontology for label in provided_labels
+                self.normalize_string(label) == normalized_ontology
+                for label in provided_labels
             ):
                 yield ValidationResult(
                     type="binding_label_mismatch",

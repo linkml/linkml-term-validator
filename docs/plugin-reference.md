@@ -47,7 +47,7 @@ The available error modes, and the severity each is reported at by default:
 
 | Error mode | Default | Emitted by |
 |------------|---------|------------|
-| `binding_validation` | `ERROR` | `BindingValidationPlugin` |
+| `binding_validation` | `ERROR` (`WARN` for `RECOMMENDED` / `DISCOURAGED` bindings) | `BindingValidationPlugin` |
 | `binding_label_invalid` | `ERROR` | `BindingValidationPlugin` |
 | `binding_label_mismatch` | `ERROR` | `BindingValidationPlugin` |
 | `binding_not4curation` | `ERROR` | `BindingValidationPlugin` |
@@ -76,7 +76,9 @@ severity_overrides:
 ```
 
 Constructor arguments win over the config file. For
-`permissible_value_label_mismatch`, an explicit override wins over `strict_mode`.
+`permissible_value_label_mismatch`, an explicit override wins over `strict_mode`;
+for `binding_validation`, an explicit override wins over the binding's
+`obligation_level`.
 
 ### Not4Curation check
 
