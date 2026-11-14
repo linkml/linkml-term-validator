@@ -837,6 +837,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#multi-level-binds_value_of-paths-and-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-Level binds_value_of Paths and . Default
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1629,6 +1640,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#multi-level-binds_value_of-paths-and-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-Level binds_value_of Paths and . Default
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2094,18 +2116,18 @@ linkml-term-validator validate-data data.yaml -s schema.yaml --config oak_config
 <tbody>
 <tr>
 <td><code>binds_value_of</code></td>
-<td>Yes</td>
-<td>The field path within the nested object</td>
+<td>No</td>
+<td>Dot-separated field path within the value (e.g., <code>id</code>, <code>term.id</code>, <code>coding.code</code>, <code>extensions.0.value</code>). Defaults to <code>.</code> (binds the slot value directly).</td>
 </tr>
 <tr>
 <td><code>range</code></td>
 <td>Yes</td>
-<td>The enum (static or dynamic) defining allowed values</td>
+<td>The enum (static or dynamic) defining target values</td>
 </tr>
 <tr>
 <td><code>obligation_level</code></td>
 <td>No</td>
-<td><code>REQUIRED</code>, <code>RECOMMENDED</code>, or <code>OPTIONAL</code></td>
+<td><code>REQUIRED</code> (default), <code>RECOMMENDED</code>, <code>OPTIONAL</code>, <code>EXAMPLE</code>, or <code>DISCOURAGED</code></td>
 </tr>
 </tbody>
 </table>
@@ -2115,24 +2137,34 @@ linkml-term-validator validate-data data.yaml -s schema.yaml --config oak_config
 <tr>
 <th>Level</th>
 <th>Description</th>
-<th>Validation Behavior</th>
+<th>Enum Membership Behavior</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><code>REQUIRED</code></td>
-<td>Must satisfy constraint</td>
-<td>ERROR on violation</td>
+<td>Must satisfy constraint <em>(default)</em></td>
+<td><code>ERROR</code> when value is outside enum</td>
 </tr>
 <tr>
 <td><code>RECOMMENDED</code></td>
 <td>Should satisfy constraint</td>
-<td>WARN on violation</td>
+<td><code>WARN</code> when value is outside enum</td>
 </tr>
 <tr>
 <td><code>OPTIONAL</code></td>
 <td>May satisfy constraint</td>
-<td>No validation</td>
+<td>Membership check skipped</td>
+</tr>
+<tr>
+<td><code>EXAMPLE</code></td>
+<td>Illustrative value set only</td>
+<td>Membership check skipped</td>
+</tr>
+<tr>
+<td><code>DISCOURAGED</code></td>
+<td>Allowed, but discouraged value set</td>
+<td><code>WARN</code> when value <strong>is</strong> inside enum</td>
 </tr>
 </tbody>
 </table>
@@ -2141,6 +2173,20 @@ linkml-term-validator validate-data data.yaml -s schema.yaml --config oak_config
     range: BiologicalProcessEnum
     obligation_level: REQUIRED     # Default if not specified
 </code></pre>
+<p>Under <code>linkml-validate</code> (or <code>linkml-term-validator validate-data --fail-on error</code>), <code>RECOMMENDED</code> and <code>DISCOURAGED</code> emit warnings without failing the exit code, while <code>--strict</code> (or <code>--fail-on warn</code>) turns warnings into a non-zero exit.</p>
+<ul>
+<li><strong>Absent or <code>null</code> fields:</strong> Binding validation constrains values <em>when present</em>. If a bound field (or an optional intermediate object along <code>binds_value_of</code>) is omitted or <code>null</code>, no binding error is emitted—even for <code>obligation_level: REQUIRED</code>. Use LinkML's <code>required: true</code> on the corresponding slot or attribute to enforce field presence.</li>
+<li><strong><code>OPTIONAL</code> and <code>EXAMPLE</code> bindings:</strong> Skip only the enum membership check; when a bound value is present, ontology checks (term existence in strict mode, <code>Not4Curation</code>, and label validation) still apply.</li>
+<li><strong><code>severity_overrides</code> precedence:</strong> If <code>severity_overrides</code> configures <code>binding_validation</code>, that explicit override takes precedence over the default severity implied by <code>obligation_level</code> (<code>ERROR</code> for <code>REQUIRED</code>; <code>WARN</code> for <code>RECOMMENDED</code> and <code>DISCOURAGED</code>).</li>
+</ul>
+<h3 id="multi-level-binds_value_of-paths-and-default">Multi-Level <code>binds_value_of</code> Paths and <code>.</code> Default</h3>
+<p><code>binds_value_of</code> supports nested paths as well as direct scalar bindings:</p>
+<ul>
+<li><strong>Implicit <code>.</code> default (scalar / self binding):</strong> Omitting <code>binds_value_of</code> (or writing <code>binds_value_of: .</code>) binds the slot's own value directly—for example, attaching a <code>RECOMMENDED</code> or <code>DISCOURAGED</code> binding to a <code>string</code> or <code>uriorcurie</code> slot.</li>
+<li><strong>Multi-level nested dicts:</strong> <code>binds_value_of: term.id</code> or <code>wrapper.term.id</code> traverses nested objects; label validation automatically checks the immediate enclosing object (<code>term</code>).</li>
+<li><strong>List auto-fan-out:</strong> <code>binds_value_of: coding.code</code> (or <code>coding[*].code</code>) validates every element when <code>coding</code> is a list (such as a FHIR-style <code>CodeableConcept</code>).</li>
+<li><strong>Explicit list indices:</strong> <code>binds_value_of: extensions.0.value</code> (or <code>extensions[0].value</code>) constrains only the specified index.</li>
+</ul>
 <h2 id="label-field-detection">Label Field Detection</h2>
 <p>The plugin needs to know which field contains the label to validate. There are three mechanisms:</p>
 <h3 id="1-using-implements-recommended">1. Using <code>implements</code> (Recommended)</h3>

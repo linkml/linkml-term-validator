@@ -1727,22 +1727,22 @@ enums:
 <tbody>
 <tr>
 <td><code>binds_value_of</code></td>
-<td>The field path within the nested object to validate</td>
+<td>Dot-separated field path within the value (e.g., <code>id</code>, <code>term.id</code>, <code>coding.code</code>, <code>extensions.0.value</code>); defaults to <code>.</code> (the slot value itself)</td>
 </tr>
 <tr>
 <td><code>range</code></td>
-<td>The enum (static or dynamic) defining allowed values</td>
+<td>The enum (static or dynamic) defining target values</td>
 </tr>
 <tr>
 <td><code>obligation_level</code></td>
-<td><code>REQUIRED</code>, <code>RECOMMENDED</code>, or <code>OPTIONAL</code></td>
+<td><code>REQUIRED</code> (default), <code>RECOMMENDED</code>, <code>OPTIONAL</code>, <code>EXAMPLE</code>, or <code>DISCOURAGED</code></td>
 </tr>
 </tbody>
 </table>
 <h2 id="comparison-with-fhir-terminology-bindings">Comparison with FHIR Terminology Bindings</h2>
 <p>LinkML bindings are conceptually similar to <a href="https://build.fhir.org/terminologies.html">FHIR terminology bindings</a>, which connect data elements to controlled vocabularies.</p>
 <h3 id="fhir-binding-strengths">FHIR Binding Strengths</h3>
-<p>FHIR defines five binding strengths:</p>
+<p>FHIR defines four main binding strengths:</p>
 <table>
 <thead>
 <tr>
@@ -1770,7 +1770,7 @@ enums:
 <tr>
 <td><strong>Example</strong></td>
 <td>Illustrative only</td>
-<td>No validation</td>
+<td><code>obligation_level: EXAMPLE</code></td>
 </tr>
 </tbody>
 </table>

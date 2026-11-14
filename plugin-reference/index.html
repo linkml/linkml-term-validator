@@ -1461,7 +1461,7 @@ one specific check without touching the severity of everything else.</p>
 <tbody>
 <tr>
 <td><code>binding_validation</code></td>
-<td><code>ERROR</code></td>
+<td><code>ERROR</code> (<code>WARN</code> for <code>RECOMMENDED</code> / <code>DISCOURAGED</code> bindings)</td>
 <td><code>BindingValidationPlugin</code></td>
 </tr>
 <tr>
@@ -1529,7 +1529,9 @@ severity_overrides:
   binding_label_mismatch: WARN
 </code></pre>
 <p>Constructor arguments win over the config file. For
-<code>permissible_value_label_mismatch</code>, an explicit override wins over <code>strict_mode</code>.</p>
+<code>permissible_value_label_mismatch</code>, an explicit override wins over <code>strict_mode</code>;
+for <code>binding_validation</code>, an explicit override wins over the binding's
+<code>obligation_level</code>.</p>
 <h3 id="not4curation-check">Not4Curation check</h3>
 <p>Some ontologies keep terms for hierarchy completeness that they explicitly do
 <strong>not</strong> want used for annotation, and mark them with a synonym rather than an
@@ -1762,9 +1764,10 @@ report = validator.validate_source(loader, target_class=&quot;GeneAnnotation&quo
 <p>The plugin:</p>
 <ul>
 <li>Recursively walks nested objects, including multivalued nested objects</li>
-<li>Applies <code>binds_value_of</code> to extract the field constrained by the binding</li>
+<li>Resolves <code>binds_value_of</code> across multi-level paths (<code>term.id</code>, list fan-out <code>coding.code</code>, integer indices <code>extensions.0.value</code>), defaulting to <code>.</code> (the slot value itself) when omitted</li>
+<li>Enforces <code>obligation_level</code> on enum membership (<code>REQUIRED</code> -&gt; <code>ERROR</code>, <code>RECOMMENDED</code> -&gt; <code>WARN</code>, <code>OPTIONAL</code>/<code>EXAMPLE</code> -&gt; skipped, <code>DISCOURAGED</code> -&gt; <code>WARN</code> when value is in the enum)</li>
 <li>Validates static and dynamic enum ranges</li>
-<li>Uses slots with <code>implements: [rdfs:label]</code> or <code>slot_uri: rdfs:label</code> as label fields</li>
+<li>Uses slots with <code>implements: [rdfs:label]</code> or <code>slot_uri: rdfs:label</code> as label fields on the immediate enclosing object</li>
 <li>Falls back to a field named <code>label</code> when no label property is declared</li>
 </ul>
 <h2 id="composition">Composition</h2>
