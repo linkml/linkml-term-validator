@@ -1,15 +1,18 @@
 """Shared utilities for ontology access and caching."""
 
 from linkml_term_validator.utils.oak_utils import (
+    ConfigurationError,
     DEFAULT_NOT4CURATION_MARKERS,
     DEFAULT_SERVICE_RETRIES,
     DEFAULT_SERVICE_RETRY_BACKOFF,
     MAX_SERVICE_RETRY_DELAY,
     OntologyAccess,
+    OntologyAdapterUnavailableError,
     OntologyServiceUnavailableError,
     RetryPolicy,
     get_prefix,
     is_connectivity_error,
+    no_semsql_database_message,
     normalize_marker_text,
     normalize_not4curation_markers,
     normalize_string,
@@ -26,15 +29,18 @@ from linkml_term_validator.utils.oak_utils import (
 )
 
 __all__ = [
+    "ConfigurationError",
     "DEFAULT_NOT4CURATION_MARKERS",
     "DEFAULT_SERVICE_RETRIES",
     "DEFAULT_SERVICE_RETRY_BACKOFF",
     "MAX_SERVICE_RETRY_DELAY",
     "OntologyAccess",
+    "OntologyAdapterUnavailableError",
     "OntologyServiceUnavailableError",
     "RetryPolicy",
     "get_prefix",
     "is_connectivity_error",
+    "no_semsql_database_message",
     "normalize_marker_text",
     "normalize_not4curation_markers",
     "normalize_string",

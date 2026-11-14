@@ -107,8 +107,11 @@ of the failure threshold. Do not add it, disable a check, or demote findings as
 an incidental data repair.
 
 An ontology service failure is reported as "Unable to validate at this time"
-with exit 2; invocation errors can also use 2. Inspect the diagnostic before
-classifying the run. Data validation findings normally fail with exit 1 when
+with exit 2; Click usage errors (an unknown flag, a missing argument) also use
+2. Exit 3 means validation could not run as set up: invalid input, an invalid
+or missing `oak_config.yaml`, or a prefix whose adapter cannot be built or
+loaded. Follow its message, which names what to fix. Neither 2 nor 3 says
+anything about the data. Inspect the diagnostic before classifying the run. Data validation findings normally fail with exit 1 when
 they meet the chosen threshold. Project wrappers may implement additional
 policy, so preserve their diagnostics as well.
 
