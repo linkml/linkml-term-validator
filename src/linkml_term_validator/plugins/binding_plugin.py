@@ -188,10 +188,10 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         self.schema_view = None
         # Map (class_name, slot_name) -> [EnumBinding]
         self.bindings_map: dict[tuple[str, str], list] = {}
+        # Parallel map (class_name, slot_name) -> [normalized obligation_level]
+        self._slot_binding_levels: dict[tuple[str, str], list[str]] = {}
         # Map (class_name, slot_name) -> range name for O(1) class-range lookups
         self._slot_range_map: dict[tuple[str, str], str] = {}
-        # Map id(binding) -> normalized obligation level precomputed in pre_process
-        self._binding_levels: dict[int, str] = {}
         # Map class_name -> {slot_name: set of properties (from implements and slot_uri)}
         self.slot_properties_map: dict[str, dict[str, set[str]]] = {}
         # Map enum_name -> set of expanded values (for dynamic enums)
@@ -214,10 +214,14 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         if self.schema_view is None:
             return
 
-        # Track which enums are referenced by bindings
+        # Reset per-schema state so a reused plugin instance starts cleanly
+        # (disk-backed enum/label caches under cache_dir still persist across runs).
         self._referenced_enums: set[str] = set()
+        self.bindings_map.clear()
+        self._slot_binding_levels.clear()
         self._slot_range_map.clear()
-        self._binding_levels.clear()
+        self.slot_properties_map.clear()
+        self.expanded_enums.clear()
         all_classes = list(self.schema_view.all_classes().values())
         self._class_names = {cls.name for cls in all_classes}
 
@@ -231,16 +235,18 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                     self.bindings_map[key] = slot.bindings
                     # Track referenced enums (skip enums only bound via OPTIONAL/EXAMPLE,
                     # whose membership is never checked)
+                    levels: list[str] = []
                     for binding in slot.bindings:
                         level = self._normalize_obligation_level(
                             getattr(binding, "obligation_level", None)
                         )
-                        self._binding_levels[id(binding)] = level
+                        levels.append(level)
                         if (
                             binding.range
                             and level not in SKIP_MEMBERSHIP_OBLIGATION_LEVELS
                         ):
                             self._referenced_enums.add(binding.range)
+                    self._slot_binding_levels[key] = levels
                 # Collect implements and slot_uri for label detection
                 slot_props: set[str] = set()
                 if slot.implements:
@@ -341,6 +347,7 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                         instance=root_instance,
                         target_class=current_class,
                         path=item_path,
+                        obligation_levels=self._slot_binding_levels.get(key),
                     )
 
             # Recurse into nested objects
@@ -456,6 +463,7 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         instance: dict,
         target_class: str,
         path: str = "",
+        obligation_levels: Optional[list[str]] = None,
     ) -> Iterator[ValidationResult]:
         """Validate all bindings on a single slot value in two passes.
 
@@ -467,12 +475,13 @@ class BindingValidationPlugin(BaseOntologyPlugin):
         slot_range_class = self._get_slot_class_range(target_class, slot_name)
         hard_rejected_fields: set[tuple[str, str]] = set()
         not4curation_scope_fields: set[tuple[str, str]] = set()
-        post_check_targets: list[tuple[_ExtractedTarget, Any]] = []
+        post_check_targets: list[_ExtractedTarget] = []
 
         # Pass 1: enum membership checks across all bindings
-        for binding in bindings:
-            obligation_level = self._binding_levels.get(id(binding))
-            if obligation_level is None:
+        for idx, binding in enumerate(bindings):
+            if obligation_levels is not None and idx < len(obligation_levels):
+                obligation_level = obligation_levels[idx]
+            else:
                 obligation_level = self._normalize_obligation_level(
                     getattr(binding, "obligation_level", None)
                 )
@@ -521,11 +530,11 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                 if self._not4curation_in_scope(field_value, not4curation_enum):
                     not4curation_scope_fields.add((field_path, field_value))
 
-                post_check_targets.append((target, binding))
+                post_check_targets.append(target)
 
         # Pass 2: deduplicated ontology hygiene checks (existence, Not4Curation, labels)
         seen_checks: set[tuple[Any, ...]] = set()
-        for target, binding in post_check_targets:
+        for target in post_check_targets:
             field_value = target.value
             field_path = target.field_path
 
@@ -578,9 +587,6 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                 label_key = ("label", id(target.label_parent), field_value)
                 if label_key not in seen_checks:
                     seen_checks.add(label_key)
-                    range_class = target.label_class
-                    if range_class is None and not target.parent_subpath:
-                        range_class = self._get_binding_range_class(binding, slot_name)
                     label_path = (
                         f"{path}.{target.parent_subpath}"
                         if (path and target.parent_subpath)
@@ -592,27 +598,26 @@ class BindingValidationPlugin(BaseOntologyPlugin):
                         slot_name=slot_name,
                         instance=instance,
                         target_class=target_class,
-                        range_class=range_class,
+                        range_class=target.label_class,
                         path=label_path,
                     )
 
-    def _get_binding_range_class(self, binding: Any, slot_name: str) -> Optional[str]:
-        """Get the range class for a binding's slot.
+    def _get_binding_range_class(
+        self, binding: Any, slot_name: str, target_class: Optional[str] = None
+    ) -> Optional[str]:
+        """Get the LinkML range class for a bound slot.
 
-        Args:
-            binding: EnumBinding object
-            slot_name: Name of the slot with the binding
-
-        Returns:
-            Range class name or None
+        Uses ``target_class`` for an O(1) lookup when provided; falls back to
+        scanning induced slots only when ``target_class`` is omitted.
         """
+        if target_class:
+            return self._get_slot_class_range(target_class, slot_name)
         if self.schema_view is None:
             return None
-        # The slot's range tells us what class the nested object is
         for cls in self.schema_view.all_classes().values():
             for slot in self.schema_view.class_induced_slots(cls.name):
                 if slot.name == slot_name and slot.bindings:
-                    return slot.range
+                    return slot.range if slot.range in self._class_names else None
         return None
 
     def _find_label_slots(self, class_name: Optional[str]) -> list[str]:

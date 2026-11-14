@@ -94,6 +94,7 @@ bindings:
 Under `linkml-validate` (or `linkml-term-validator validate-data --fail-on error`), `RECOMMENDED` and `DISCOURAGED` emit warnings without failing the exit code, while `--strict` (or `--fail-on warn`) turns warnings into a non-zero exit.
 
 - **Absent or `null` fields:** Binding validation constrains values *when present*. If a bound field (or an optional intermediate object along `binds_value_of`) is omitted or `null`, no binding error is emitted—even for `obligation_level: REQUIRED`. Use LinkML's `required: true` on the corresponding slot or attribute to enforce field presence.
+- **`OPTIONAL` and `EXAMPLE` bindings:** Skip only the enum membership check; when a bound value is present, ontology checks (term existence in strict mode, `Not4Curation`, and label validation) still apply.
 - **`severity_overrides` precedence:** If `severity_overrides` configures `binding_validation`, that explicit override takes precedence over the default severity implied by `obligation_level` (`ERROR` for `REQUIRED`; `WARN` for `RECOMMENDED` and `DISCOURAGED`).
 
 ### Multi-Level `binds_value_of` Paths and `.` Default

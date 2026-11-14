@@ -1013,3 +1013,115 @@ enums:
     assert len(results) == 1
     assert results[0].type == "binding_validation"
     assert "field: coding[3].code" in results[0].context
+
+
+@pytest.mark.parametrize("level", ["OPTIONAL", "EXAMPLE"])
+def test_optional_and_example_still_run_existence_and_label_checks(tmp_path, level):
+    """OPTIONAL/EXAMPLE skip enum membership only; strict existence and label checks still run."""
+    schema = _obligation_schema(level, dynamic=False)
+
+    # Non-existent CURIE in configured prefix still triggers term_not_found in strict mode
+    _, missing_term = _run_plugin(
+        schema,
+        {"id": "a1", "term": {"id": "TEST:9999999", "label": "ghost"}},
+        "Annotation",
+        tmp_path,
+        strict=True,
+    )
+    assert [r.type for r in missing_term] == ["term_not_found"]
+
+    # Existing out-of-enum CURIE skips binding_validation but still checks label
+    _, wrong_label = _run_plugin(
+        schema,
+        {"id": "a2", "term": {"id": "TEST:0000002", "label": "wrong label"}},
+        "Annotation",
+        tmp_path,
+        strict=True,
+        validate_labels=True,
+    )
+    assert [r.type for r in wrong_label] == ["binding_label_mismatch"]
+
+
+def test_plugin_reuse_across_schemas_resets_state_and_scopes_range_class(tmp_path):
+    """Reusing a plugin across schemas clears stale maps; range_class lookup stays scoped to target_class."""
+    schema1 = _obligation_schema("REQUIRED", dynamic=True)
+    schema2 = """
+id: https://example.org/second-schema
+name: second-schema
+prefixes:
+  linkml: https://w3id.org/linkml/
+  TEST: http://example.org/TEST_
+default_range: string
+classes:
+  UnrelatedClass:
+    attributes:
+      term:
+        range: CustomTitledTerm
+        inlined: true
+        bindings:
+          - binds_value_of: id
+            range: AllowedEnum
+  CustomTitledTerm:
+    attributes:
+      id:
+      custom_title:
+        implements:
+          - rdfs:label
+  TargetClass:
+    attributes:
+      term:
+        range: string
+        bindings:
+          - binds_value_of: id
+            range: AllowedEnum
+enums:
+  AllowedEnum:
+    permissible_values:
+      CELL_CYCLE:
+        meaning: TEST:0000006
+"""
+    s1_path = tmp_path / "s1.yaml"
+    s1_path.write_text(schema1)
+    s2_path = tmp_path / "s2.yaml"
+    s2_path.write_text(schema2)
+
+    plugin = BindingValidationPlugin(
+        oak_adapter_string=TEST_ONTOLOGY,
+        oak_config_path=OAK_CONFIG,
+        cache_labels=False,
+        cache_enum_expansions=False,
+        cache_strategy="greedy",
+        cache_dir=tmp_path / "cache",
+    )
+
+    # First run populates Annotation bindings and greedy expanded_enums
+    ctx1 = ValidationContext(
+        schema=SchemaView(str(s1_path)).schema, target_class="Annotation"
+    )
+    plugin.pre_process(ctx1)
+    assert ("Annotation", "term") in plugin.bindings_map
+    assert "TargetEnum" in plugin.expanded_enums
+
+    # Reusing the same plugin on schema2 resets stale maps from schema1
+    ctx2 = ValidationContext(
+        schema=SchemaView(str(s2_path)).schema, target_class="TargetClass"
+    )
+    plugin.pre_process(ctx2)
+    assert ("Annotation", "term") not in plugin.bindings_map
+    assert plugin.expanded_enums == {}
+
+    # TargetClass.term has range `string` (label_class=None), so conventional `label` is checked
+    # rather than borrowing UnrelatedClass.term's CustomTitledTerm (`custom_title`)
+    results = list(
+        plugin.process(
+            {
+                "term": {
+                    "id": "TEST:0000006",
+                    "label": "wrong label",
+                    "custom_title": "cell_cycle",
+                }
+            },
+            ctx2,
+        )
+    )
+    assert [r.type for r in results] == ["binding_label_mismatch"]
