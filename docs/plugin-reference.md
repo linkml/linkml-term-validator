@@ -47,7 +47,7 @@ The available error modes, and the severity each is reported at by default:
 
 | Error mode | Default | Emitted by |
 |------------|---------|------------|
-| `binding_validation` | `ERROR` | `BindingValidationPlugin` |
+| `binding_validation` | `ERROR` (`WARN` for `RECOMMENDED` / `DISCOURAGED` bindings) | `BindingValidationPlugin` |
 | `binding_label_invalid` | `ERROR` | `BindingValidationPlugin` |
 | `binding_label_mismatch` | `ERROR` | `BindingValidationPlugin` |
 | `binding_not4curation` | `ERROR` | `BindingValidationPlugin` |
@@ -76,7 +76,9 @@ severity_overrides:
 ```
 
 Constructor arguments win over the config file. For
-`permissible_value_label_mismatch`, an explicit override wins over `strict_mode`.
+`permissible_value_label_mismatch`, an explicit override wins over `strict_mode`;
+for `binding_validation`, an explicit override wins over the binding's
+`obligation_level`.
 
 ### Not4Curation check
 
@@ -289,9 +291,10 @@ Additional options:
 The plugin:
 
 - Recursively walks nested objects, including multivalued nested objects
-- Applies `binds_value_of` to extract the field constrained by the binding
+- Resolves `binds_value_of` across multi-level paths (`term.id`, list fan-out `coding.code`, integer indices `extensions.0.value`), defaulting to `.` (the slot value itself) when omitted
+- Enforces `obligation_level` on enum membership (`REQUIRED` -> `ERROR`, `RECOMMENDED` -> `WARN`, `OPTIONAL`/`EXAMPLE` -> skipped, `DISCOURAGED` -> `WARN` when value is in the enum)
 - Validates static and dynamic enum ranges
-- Uses slots with `implements: [rdfs:label]` or `slot_uri: rdfs:label` as label fields
+- Uses slots with `implements: [rdfs:label]` or `slot_uri: rdfs:label` as label fields on the immediate enclosing object
 - Falls back to a field named `label` when no label property is declared
 
 ## Composition
