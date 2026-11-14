@@ -1695,11 +1695,15 @@ linkml-term-validator validate-text-file document.md \
 </tr>
 <tr>
 <td><code>1</code></td>
-<td>Validation errors, missing files, invalid options, or cache migration failure</td>
+<td>Validation failed: the data or schema has errors at or above the <code>--fail-on</code> threshold</td>
 </tr>
 <tr>
 <td><code>2</code></td>
 <td>Unable to validate: the ontology service was unreachable (network outage, or a transient HTTP status — 5xx, 408 timeout, or 429 rate-limit), so terms could not be checked. This is distinct from invalid data — retry when the service is reachable, or use <code>--offline</code> to validate against the local cache only. The lookup is retried first (<code>--retries</code>, default 2, with an exponential <code>--retry-wait</code>), so this code means the service stayed unavailable across every attempt, not that one request stalled. Once the attempts are spent validation <em>fails fast</em>: the run aborts on that outage rather than reporting every subsequent term as missing. Across a multi-file <code>validate-data</code> run this means one prefix's transient outage stops the whole run, including files that were fully resolvable from the local cache.</td>
+</tr>
+<tr>
+<td><code>3</code></td>
+<td>Unable to validate as set up: someone has to fix the setup before validation can run, so retrying won't help. This covers invalid input (a data file or cache directory not found, an invalid <code>--regex</code> or <code>--cache-strategy</code>, no validation enabled), invalid configuration (an <code>oak_config.yaml</code> that is missing, is not valid YAML, or has an invalid value such as an unknown <code>severity_overrides</code> key), and a prefix whose adapter cannot be built or loaded (a broken cached <code>sqlite:obo:</code> database, or <code>oak_config.yaml</code> mapping a prefix to a <code>sqlite:obo:</code> database the server does not have; see <a href="../ontology-access/#prefixes-without-a-semantic-sql-database">Prefixes without a semantic-sql database</a>). The message says what to fix. Like <code>2</code>, this is not a data error.</td>
 </tr>
 </tbody>
 </table>

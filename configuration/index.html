@@ -1922,6 +1922,11 @@ fails a CI build whose data is fine; <code>service_retries: 0</code> restores fa
 behavior. A single wait is capped at 60s, so a generous <code>service_retries</code>
 cannot stall a run for minutes, and a <code>Retry-After</code> header on a rate-limited
 response (HTTP 429) overrides the backoff when the service asks for longer.</p>
+<p>The file is checked before anything is validated. A <code>--config</code> path that does
+not exist, a file that is not valid YAML, or an invalid value for any of these
+keys (an unknown <code>cache_strategy</code> or <code>severity_overrides</code> key, a negative
+<code>service_retries</code>) stops the run with exit code 3 and a message naming the
+problem. Python callers get a <code>ConfigurationError</code>, a <code>ValueError</code> subclass.</p>
 <h3 id="using-the-config-file">Using the Config File</h3>
 <p><strong>CLI:</strong></p>
 <pre><code class="language-bash">linkml-term-validator validate-schema --config oak_config.yaml schema.yaml
@@ -2038,7 +2043,10 @@ linkml-term-validator validate-schema --config oak_config.yaml schema.yaml
 <li><code>UBERON:0000468</code> → uses <code>sqlite:obo:uberon</code></li>
 <li><code>CL:0000540</code> → uses <code>sqlite:obo:cl</code></li>
 </ul>
-<p>This works for any OBO ontology that OAK knows about.</p>
+<p>This works for any ontology the semantic-sql project publishes a database for.
+A prefix without one (a generic namespace such as <code>dcterms</code> or <code>schema</code>) is
+reported as not checked rather than as an error; see
+<a href="../ontology-access/#prefixes-without-a-semantic-sql-database">Prefixes without a semantic-sql database</a>.</p>
 <p>When you set a different default adapter with <code>--adapter</code> or the Python API
 (for example <code>--adapter "ols:"</code> or <code>oak_adapter_string="ubergraph:"</code>), that
 adapter is used for every encountered prefix. This enables non-SQLite
